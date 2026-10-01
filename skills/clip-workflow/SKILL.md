@@ -52,6 +52,7 @@ python <MoonRacle>/knowledge_base/scripts/worklog.py add --agent <registered age
 ```
 - `--started-at`, `--minutes` and `human_fix_min` are measured, never estimated. Unknown = leave the field out.
 - A row about a problem also needs `--problem`, `--cause`, `--fix`.
+- Also update the client's `EDIT_LOG.md` (copy from `templates/EDIT_LOG.md` on the first clip): state table + per-clip history.
 - Machine without the MoonRacle repo: append the same fields as one JSON line to `clips_log.jsonl` in the client folder and hand it over.
 
 ## Time budget
