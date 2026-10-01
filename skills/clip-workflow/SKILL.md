@@ -29,6 +29,7 @@ Show the list to the person before cutting.
 - Transcribe the **edited timeline** again before captioning (`timeline_asr`). Never caption from the raw transcript - times shift after cutting.
 
 ## 4. Cards and subtitles
+- Pace and tricks change per beat: label each beat (hook, setup, proof, twist, reaction, laugh, list, number...) and pick the trick from `reference/tricks.md` whose trigger matches. Same trick everywhere = flat clip.
 - Cards are short rewrites (2-6 words) in the speaker's own slang, not a transcript.
 - Every spoken stretch has a card; no gap longer than about 1 s while someone talks.
 - Keep words spoken in English in English.
