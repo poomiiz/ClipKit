@@ -19,9 +19,10 @@ npx skills add poomiiz/ClipKit --agent codex -g
 Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the `npx skills add` line (Codex).
 
 ## Machine setup (once)
-1. Clone this repo (scripts run from it): `git clone https://github.com/poomiiz/ClipKit`
-2. Copy `config.example.json` to `config.json` and set your paths (drafts, stock, music, font).
-3. Python 3.12 with `faster-whisper`, `pythainlp`, `soundfile`; ffmpeg on PATH; NVIDIA GPU recommended (CPU works, slower). The card font must be installed.
+1. `git clone https://github.com/poomiiz/ClipKit` (scripts run from the clone).
+2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` - installs packages, creates `config.json`.
+3. Edit `config.json` (your folders), then `python scripts\doctor.py --asr` must show all OK.
+   The card font must be installed by hand (licensed font).
 
 ## What is inside
 | Path | What |
