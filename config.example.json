@@ -1,0 +1,11 @@
+{
+  "_note": "Copy to config.json next to this file (or to %USERPROFILE%\\.clip-kit\\config.json) and set your own paths. Scripts read it; never hard-code paths in a skill.",
+  "work_root": "D:\\work 2026",
+  "capcut_drafts": "E:\\Capcut\\CapCut Drafts",
+  "stock_video": "D:\\stock",
+  "stock_music": "D:\\Stock Music\\ผ่านแล้ว",
+  "sfx": "D:\\work 2026\\Nina\\Assets\\SFX",
+  "card_font": "DB Heavent Bd v3.2.1",
+  "whisper_model": "large-v3",
+  "whisper_device": "cuda"
+}

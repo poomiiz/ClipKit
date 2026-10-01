@@ -1,0 +1,23 @@
+---
+name: clip-qc
+description: Pre-delivery checklist for a finished short clip (CapCut draft or MP4). Use before saying a clip is done, before sending it for review, and on the first clip of every batch.
+---
+
+# Clip QC
+
+Check with your eyes and ears on the real output, not on the plan. Grab frames with `ffmpeg -ss <t> -i out.mp4 -frames:v 1 f.png` at a card, an insert and the ending; listen to the first 10 s and the last 10 s.
+
+1. **Story** - opens on the promise; one idea; ends on a full sentence plus a button.
+2. **Duplicates** - no point already made in an earlier clip of the series.
+3. **Subtitles** - every card matches what is said at that moment; names and brands spelled right; no gap > 1 s while someone talks.
+4. **Thai text** - no broken vowels or tone marks; long cards wrapped by hand.
+5. **Cuts** - no cut inside a word or syllable; no flash frames.
+6. **Inserts** - each on its keyword; framed on the subject; no watermark; no banding.
+7. **Audio** - voice clear; music audible but under the voice; SFX not louder than the voice.
+8. **Colour** - footage not washed out or over-saturated (HDR/Dolby Vision sources need checking on the export).
+9. **Format** - 1080x1920, length 60-130 s, file plays from start to end.
+10. **Branding** - client logo/overlay present per the style skill.
+
+Report: pass, or a list of `time - problem - fix`. A batch is released only after clip 1 passes and the person has watched it.
+
+Add a line here every time a reviewer sends a clip back for a reason not on this list.
