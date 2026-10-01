@@ -7,5 +7,8 @@
   "sfx": "D:\\work 2026\\Nina\\Assets\\SFX",
   "card_font": "DB Heavent Bd v3.2.1",
   "whisper_model": "large-v3",
-  "whisper_device": "cuda"
+  "whisper_device": "cuda",
+  "envato_backend": "local",
+  "_envato_backend_note": "local = this machine's Chrome via scripts/envato.py (run: python scripts/envato.py login once); bot = team bot on the bot host",
+  "bot_api_url": "http://127.0.0.1:8765"
 }

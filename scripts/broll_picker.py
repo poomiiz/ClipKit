@@ -62,19 +62,56 @@ def load(path):
     return rows
 
 
-def cmd_search(plan_path):
-    rows = load(plan_path)
+LOCAL = CFG.get("envato_backend", "bot") == "local"   # "local" = scripts/envato.py with this machine's Chrome
+ENVATO = str(Path(__file__).parent / "envato.py")
+
+
+def local(*args):
+    """Run envato.py once; returns (ok, parsed json or error text)."""
+    import subprocess
+    p = subprocess.run([sys.executable, ENVATO, *args], capture_output=True, text=True, encoding="utf-8")
+    if p.returncode != 0:
+        return False, (p.stderr.strip().splitlines() or ["envato.py failed"])[-1]
+    return True, json.loads(p.stdout)
+
+
+def searches(rows):
+    """One (status, items, screenshot, error) per row, from the bot or the local browser."""
+    if LOCAL:
+        out = []
+        for r in rows:
+            ok, res = local("search", r["query"], "--count", "4")
+            out.append(("done", res["items"], None, "") if ok else ("failed", [], None, res))
+        return out
     ids = [call("POST", "/jobs", {"site": "envato", "action": "search", "created_by": "clip-kit",
                                   "payload": {"query": r["query"], "count": 4}})["id"] for r in rows]
-    results = wait(ids)
+    res = wait(ids)
+    return [(res[i]["status"], (res[i].get("result") or {}).get("items") or [], res[i].get("artifact_url"),
+             res[i].get("error") or "") for i in ids]
+
+
+def downloads(sel):
+    """One (status, file, error) per ticked item."""
+    if LOCAL:
+        out = []
+        for s in sel:
+            ok, res = local("download", s["url"], "--kind", "video", "--quality", "1080P")
+            out.append(("done", res["file"], "") if ok else ("failed", None, res))
+        return out
+    ids = [call("POST", "/jobs", {"site": "envato", "action": "download", "created_by": "clip-kit",
+                                  "payload": {"url": s["url"], "kind": "video", "quality": "1080P"}})["id"] for s in sel]
+    res = wait(ids, timeout=3600)
+    return [(res[i]["status"], (res[i].get("result") or {}).get("file"), res[i].get("error") or "") for i in ids]
+
+
+def cmd_search(plan_path):
+    rows = load(plan_path)
     problems = []
-    for r, jid in zip(rows, ids):
-        j = results[jid]
-        r["job"] = jid
-        r["options"] = (j.get("result") or {}).get("items") or []
-        r["screenshot"] = j.get("artifact_url")
-        if j["status"] != "done":
-            problems.append(f"t={r['t']} '{r['query']}': {j['status']} {j.get('error') or ''}")
+    for r, (status, items, shot, err) in zip(rows, searches(rows)):
+        r["options"] = items
+        r["screenshot"] = shot
+        if status != "done":
+            problems.append(f"t={r['t']} '{r['query']}': {status} {err}")
     Path(plan_path).write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"{plan_path}: {len(rows) - len(problems)}/{len(rows)} searches have results")
     for p in problems:
@@ -90,14 +127,15 @@ def cmd_html(plan_path):
     for i, r in enumerate(rows):
         opts = "".join(
             f'<label class="opt"><input type="checkbox" data-row="{i}" data-url="{html.escape(o["url"])}">'
-            f'<a href="{html.escape(o["url"])}" target="_blank">{html.escape(o["title"])}</a></label>'
+            + (f'<img src="{html.escape(o["thumb"])}" loading="lazy">' if o.get("thumb") else "")
+            + f'<a href="{html.escape(o["url"])}" target="_blank">{html.escape(o["title"])}</a></label>'
             for o in r.get("options") or []) or "<em>no results - search by hand</em>"
         shot = f'<a href="{html.escape(r["screenshot"])}" target="_blank">screenshot</a>' if r.get("screenshot") else ""
         body.append(f'<tr><td>{r["t"]:.1f}s</td><td><b>{html.escape(r["said"])}</b><br><small>{html.escape(r["query"])} · {html.escape(r["topic"])} {shot}</small></td><td>{opts}</td></tr>')
     rows_js = json.dumps([{k: r[k] for k in ("t", "said", "query", "topic")} for r in rows], ensure_ascii=False)
     out.write_text(f"""<!doctype html><meta charset="utf-8"><title>B-roll picker</title>
 <style>body{{font:14px system-ui;margin:16px}}table{{border-collapse:collapse;width:100%}}td{{border-bottom:1px solid #ddd;padding:6px;vertical-align:top}}
-.opt{{display:block;margin:2px 0}}button{{position:sticky;top:0;padding:8px 16px;font-size:15px}}</style>
+.opt{{display:inline-flex;flex-direction:column;gap:4px;width:220px;margin:4px;vertical-align:top}}.opt img{{width:220px;border-radius:6px}}button{{position:sticky;top:0;padding:8px 16px;font-size:15px}}</style>
 <h2>B-roll picker - tick the clips to download (each download uses a licence)</h2>
 <button onclick="exp()">Export selected (broll_selected.json)</button> <span id="n"></span>
 <table>{''.join(body)}</table>
@@ -115,16 +153,11 @@ a.download='broll_selected.json';a.click();}}
 def cmd_download(sel_path):
     sel = load(sel_path)
     dest_root = Path(sel_path).resolve().parent / "inserts"
-    ids = [call("POST", "/jobs", {"site": "envato", "action": "download", "created_by": "clip-kit",
-                                  "payload": {"url": s["url"], "kind": "video", "quality": "1080P"}})["id"] for s in sel]
-    results = wait(ids, timeout=3600)
     failed = 0
-    for n, (s, jid) in enumerate(zip(sel, ids), 1):
-        j = results[jid]
-        src = (j.get("result") or {}).get("file")
-        if j["status"] != "done" or not src or not Path(src).is_file():
+    for n, (s, (status, src, err)) in enumerate(zip(sel, downloads(sel)), 1):
+        if status != "done" or not src or not Path(src).is_file():
             failed += 1
-            print(f"  FAILED t={s['t']} {s['url']}: {j['status']} {j.get('error') or ''}")
+            print(f"  FAILED t={s['t']} {s['url']}: {status} {err}")
             continue
         d = dest_root / s["topic"]
         d.mkdir(parents=True, exist_ok=True)
