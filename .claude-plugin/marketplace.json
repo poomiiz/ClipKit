@@ -1,0 +1,12 @@
+{
+  "name": "clip-kit",
+  "owner": { "name": "MoonRacle" },
+  "plugins": [
+    {
+      "name": "clip-kit",
+      "source": "./",
+      "description": "Talking-head short-clip workflow: Thai subtitles, story cut, B-roll search from Envato, CapCut drafts, QC checklist, per-client style guides."
+    }
+  ],
+  "description": "MoonRacle team video editing kit for Claude Code and Codex."
+}
