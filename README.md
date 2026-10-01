@@ -31,6 +31,8 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 | `skills/broll-finder` | Transcript -> Envato keywords -> HTML picker -> download ticked items only |
 | `skills/clip-qc` | Checklist before a clip is called done |
 | `skills/style-nina` | Nina look: cards, colours, animations, storytelling |
+| `skills/style-bps` | BPS คุณตั้น look: sentence-pair pop text, red hook, film-effect inserts |
+| `templates/EDIT_LOG.md` | Per-client edit log to copy into the client folder |
 | `scripts/clipkit.py` | Transcribe (Thai), pause-cut plan, ffmpeg render |
 | `scripts/capcut/` | Edit CapCut `draft_content.json`: cards, B-roll, SFX, trims, preview |
 
