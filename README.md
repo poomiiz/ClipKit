@@ -23,6 +23,15 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` - installs packages, creates `config.json`.
 3. Edit `config.json` (your folders), then `python scripts\doctor.py --asr` must show all OK.
    The card font must be installed by hand (licensed font).
+4. `python scripts\envato.py login` - sign in to the **company** Envato account once in the Chrome window that opens.
+5. Open the app from the desktop icon **ClipKit - Video to CapCut**.
+
+## Envato (shared company account, decided 2026-10-01)
+Everyone signs in with the one company account on their own machine. To keep the account safe:
+- Download only items a person ticked in the picker; every download registers a licence.
+- One download at a time per machine; never script bulk downloads.
+- Log out from machines that leave the team (`envato_profile` folder can be deleted).
+- If Envato shows a security check or blocks the account, stop all downloads and tell the account owner.
 
 ## What is inside
 | Path | What |
@@ -35,6 +44,12 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 | `templates/EDIT_LOG.md` | Per-client edit log to copy into the client folder |
 | `scripts/clipkit.py` | Transcribe (Thai), pause-cut plan, ffmpeg render |
 | `scripts/capcut/` | Edit CapCut `draft_content.json`: cards, B-roll, SFX, trims, preview |
+| `scripts/bps/` | BPS3 episode pipeline (analyze, build, verify) |
+| `scripts/envato.py` | Envato search/download with this machine's Chrome (Playwright) |
+| `scripts/broll_picker.py` | Keyword plan -> Envato search -> HTML picker with thumbnails -> download ticked |
+| `scripts/doctor.py`, `scripts/setup.ps1` | Machine check and one-time install |
+| `reference/tricks.md` | Every effect and when to use it |
+| `app/` | Video -> CapCut web app (desktop icon) |
 
 ## Rules
 - No video, footage, client files, fonts or passwords in this repo. Media stays on the shared drive.
