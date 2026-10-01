@@ -5,6 +5,7 @@ A missing config or key raises - never guess a path.
 """
 import json
 import os
+import shutil
 from pathlib import Path
 
 _KIT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,22 @@ DRAFTS = need("capcut_drafts")
 ROOT_META = CFG.get("capcut_root_meta") or str(
     Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft" / "root_meta_info.json")
 FONT_NAME = need("card_font")
+STOCK = need("stock_video")
+OLD_BUILDS = CFG.get("capcut_old_builds") or str(Path(DRAFTS).parent / "_old_builds")
+FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
+
+
+def enable_cuda_libs():
+    """ctranslate2 (faster-whisper) needs CUDA 12 cuBLAS/cuDNN; on Windows they ship in the nvidia-* pip wheels."""
+    if os.name != "nt":
+        return
+    import site
+    for sp in site.getsitepackages():
+        for sub in ("cublas", "cudnn"):
+            d = Path(sp) / "nvidia" / sub / "bin"
+            if d.is_dir():
+                os.add_dll_directory(str(d))
+                os.environ["PATH"] = str(d) + os.pathsep + os.environ["PATH"]
 
 
 def font_file():

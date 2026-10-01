@@ -76,11 +76,11 @@ Fonts seen: สุขุมวิท-CnExBd (`7545361202768121105`) + คณิ�
 
 ## 6. Draft file rules (CapCut breaks otherwise)
 - Times in microseconds. Segments on one track must not overlap (>1 ms). Every `material_id`/`extra_material_refs` must exist in materials. `source_timerange` ≤ source length.
-- One id across the draft: root `draft_content.json` id = `draft_meta_info.json` draft_id = `Timelines/<id>/` folder = `project.json` ids = `timeline_layout.json` timelineIds. CapCut reads `Timelines/<id>/draft_content.json`, not the root file. After any clone run `python _bot/fix_timeline_ids.py "<draft>"`.
+- One id across the draft: root `draft_content.json` id = `draft_meta_info.json` draft_id = `Timelines/<id>/` folder = `project.json` ids = `timeline_layout.json` timelineIds. CapCut reads `Timelines/<id>/draft_content.json`, not the root file. After any clone run `python scripts/bps/fix_timeline_ids.py "<draft>"`.
 - Rename a project: edit `draft_name` in `draft_meta_info.json` and the matching `root_meta_info.json` entry (match by `draft_fold_path` basename); don't rename the folder.
 - Before restoring any backup, check its mtime and size — stale same-name backups have wiped current work.
 
-## 7. Pipeline (BPS3, scripts in `<work_root>/BPS/คุณตั้น3/_bot/`; shared CapCut tools are in `scripts/capcut/`)
+## 7. Pipeline (BPS3 scripts in `scripts/bps/` of this kit: analyze_range, build_bps3_ep, verify_episode, fix_timeline_ids, add_inserts; shared CapCut tools in `scripts/capcut/`)
 1. `python analyze_range.py "<file>" <start> <len>` → read transcript, pick body + hook + cuts.
 2. Write `ep_XX.json` (name, title [red, white], cam, dji, dji_offset, hook, body, cuts, inserts `[cam_time, len, stock_prefix, stock_start]`, pops). Confirm every stock file exists.
 3. `python build_bps3_ep.py ep_XX.json` → check `cover %` 60–77.
