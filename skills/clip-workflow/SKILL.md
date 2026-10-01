@@ -43,5 +43,16 @@ Music under the voice (volume from the style skill). SFX only where the style sk
 ## 7. QC, pilot first
 Run the `clip-qc` checklist on the **first** clip and have the person watch it in CapCut before you build the rest of the batch. Report problems with time stamps.
 
+## 8. Log every clip when it is done
+One row per clip in the central work log, the moment the clip is finished (never later from memory):
+```
+python <MoonRacle>/knowledge_base/scripts/worklog.py add --agent <registered agent> --type video \
+  --project "<client>" --item "<clip name>" --stage done --started-at <ISO time> --minutes <agent minutes> \
+  --metadata '{"human_fix_min": N, "source_range": "a-b s", "final_len_s": N, "title": "...", "fixed_by": "agent|person", "rollback": "draft_content.before_*.json"}'
+```
+- `--started-at`, `--minutes` and `human_fix_min` are measured, never estimated. Unknown = leave the field out.
+- A row about a problem also needs `--problem`, `--cause`, `--fix`.
+- Machine without the MoonRacle repo: append the same fields as one JSON line to `clips_log.jsonl` in the client folder and hand it over.
+
 ## Time budget
 10 clips/day = about 45 min per clip including review. If one step eats more than its share, stop and say which step.
