@@ -15,7 +15,7 @@ description: Find B-roll inserts for a talking-head clip - turn the transcript i
    - One insert every 5-8 s; flash length per the client style skill.
    - Reuse files already in the client's stock folder before searching (match by file name).
 2. **Search** - `python scripts/broll_picker.py search broll_plan.json` queues one Envato search job per row on the team bot (runs on the bot host only) and waits for the results.
-3. **Picker page** - `python scripts/broll_picker.py html broll_plan.json` writes `broll_picker.html`: rows in clip order, each with the spoken line, 3-4 thumbnails and links, and a checkbox. The **Export** button saves `broll_selected.json`.
+3. **Picker page** - `python scripts/broll_picker.py html broll_plan.json` writes `broll_picker.html`: rows in clip order, each with the spoken line, the query, 3-4 Envato titles as links (open to preview) with checkboxes, and the bot's search screenshot. The **Export** button saves `broll_selected.json`.
 4. **Person ticks** - send the HTML to the person who owns the Envato decision. Wait.
 5. **Download** - `python scripts/broll_picker.py download broll_selected.json` queues one download job per ticked item (1080p, never 4K). Files are renamed `<topic>/<NN>_<said>.mp4` into the clip's insert folder.
 
