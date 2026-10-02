@@ -680,7 +680,7 @@
               <p>เลือกเพลงคลอจากคลังและควบคุมระดับเสียง</p>
             </div>
           </div>
-          <div class="form-row"><label>เลือกเพลง</label><select id="musicPick" class="grow"></select></div>
+          <div class="form-row"><label>เลือกเพลง</label><select id="musicPick" class="grow" onfocus="loadMusic()"></select></div>
           <div class="form-row"><label>ความดังเพลง (%)</label><input id="musicVol" type="number" step="1" value="10"></div>
           <div class="row">
             <button class="small grow" onclick="previewMusic()">▶️ ฟังตัวอย่าง</button>
@@ -1298,11 +1298,16 @@ function renderStock(r) {
 
 /* ── background music ─────────────────────────────── */
 let musicLib = [];
+let musicLoad = null;
 
-api('music').then(d => {
-  musicLib = d.music || [];
+// Probing every track runs ffprobe once per file, so the library is read only
+// when the music card is opened, and once per page.
+function loadMusic() {
   const sel = document.getElementById('musicPick');
-  if (!sel) return;
+  if (musicLoad || !sel) return;
+  sel.innerHTML = '<option>กำลังอ่านคลังเพลง…</option>';
+  musicLoad = api('music').then(d => {
+  musicLib = d.music || [];
   sel.innerHTML = '';
   musicLib.forEach((m, i) => {
     const o = document.createElement('option');
@@ -1313,7 +1318,11 @@ api('music').then(d => {
       (m.moods.length ? ' · ' + m.moods.join(' ') : '');
     sel.appendChild(o);
   });
-}).catch(() => {});
+  }).catch(e => {
+    musicLoad = null;
+    sel.replaceChildren(new Option('อ่านคลังเพลงไม่ได้: ' + (e.message || e)));
+  });
+}
 
 function previewMusic() {
   const m = musicLib[document.getElementById('musicPick').value];
@@ -1615,6 +1624,7 @@ function loadPreviewFrame() {
 function jump(id) {
   const advanced = document.getElementById('advancedTools');
   if (advanced) advanced.open = true;
+  if (id === 'c-music') loadMusic();
   const card = document.getElementById(id);
   if (!card) return;
   card.scrollIntoView({behavior: 'smooth', block: 'center'});
