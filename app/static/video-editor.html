@@ -1247,7 +1247,9 @@ function renderStock(r) {
     a.target = '_blank';
     a.rel = 'noopener';
     a.style.cssText = 'text-decoration:none;color:inherit';
-    a.innerHTML = '<div class="ico">🎞️</div><div class="body"><div class="t1">' +
+    const ico = it.thumb ? '<img src="' + it.thumb + '" style="width:96px;height:54px;object-fit:cover;border-radius:8px">'
+                         : '<div class="ico">🎞️</div>';
+    a.innerHTML = ico + '<div class="body"><div class="t1">' +
       it.title + '</div><div class="t2">เปิดหน้านี้เพื่อกดโหลดเอง</div></div><div class="go">›</div>';
     out.appendChild(a);
   });

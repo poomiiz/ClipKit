@@ -925,8 +925,31 @@ def _kb_call(path: str, payload: dict | None = None, method: str = "GET") -> dic
         raise VideoEditError(f"KB API not reachable at {KB_API_URL}: {exc}") from exc
 
 
+LOCAL_ENVATO = kitconfig.CFG.get("envato_backend", "bot") == "local"
+_ENVATO_PY = Path(__file__).resolve().parents[1] / "scripts" / "envato.py"
+_local_jobs: dict[int, dict[str, Any]] = {}
+
+
+def _run_local_search(job_id: int, query: str, count: int, kind: str) -> None:
+    """Run scripts/envato.py (this machine's Chrome) and keep the result for stock_result()."""
+    p = subprocess.run([_sys.executable, str(_ENVATO_PY), "search", query, "--count", str(count),
+                        "--kind", "music" if kind == "music" else "video"],
+                       capture_output=True, text=True, encoding="utf-8")
+    if p.returncode == 0:
+        _local_jobs[job_id] = {"status": "done", "items": json.loads(p.stdout)["items"], "error": None}
+    else:
+        _local_jobs[job_id] = {"status": "failed", "items": [],
+                               "error": (p.stderr.strip().splitlines() or ["envato.py failed"])[-1]}
+
+
 def stock_search(query: str, count: int = 4, kind: str = "stock-video") -> dict[str, Any]:
-    """Queue an Envato search for the browser bot to run in P'Ohm's own Chrome."""
+    """Envato search: this machine's Chrome (envato_backend=local) or the team bot."""
+    if LOCAL_ENVATO:
+        import threading
+        job_id = int(time.time() * 1000)
+        _local_jobs[job_id] = {"status": "running", "items": [], "error": None}
+        threading.Thread(target=_run_local_search, args=(job_id, query, count, kind), daemon=True).start()
+        return {"job_id": job_id, "status": "running", "query": query}
     job = _kb_call("/bot/api/jobs", {
         "site": "envato", "action": "search",
         "payload": {"query": query, "count": count, "kind": kind},
@@ -937,6 +960,9 @@ def stock_search(query: str, count: int = 4, kind: str = "stock-video") -> dict[
 
 def stock_result(job_id: int) -> dict[str, Any]:
     """Where that search got to: queued / running / done with the hits."""
+    if job_id in _local_jobs:
+        j = _local_jobs[job_id]
+        return {"job_id": job_id, "status": j["status"], "error": j["error"], "screenshot": "", "items": j["items"]}
     job = _kb_call(f"/bot/api/jobs/{job_id}")
     result = job.get("result") or {}
     if isinstance(result, str):
