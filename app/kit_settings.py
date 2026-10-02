@@ -289,6 +289,17 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     page, n = re.subn(r"<head>", lambda _: f"<head>\n<script>window.KIT = {kit};</script>", page, count=1)
     if not n:
         raise HTTPException(500, "template has no <head>")
+    # the renderer reads the clip length from the HTML attributes, not from the script
+    try:
+        p = body.params
+        length = float(p["duration"]) if body.template == "hook-title" else max(float(x[1]) for x in p["pairs"])
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise HTTPException(400, f"missing or bad length in params: {exc}")
+    if not 0.5 <= length <= 120:
+        raise HTTPException(400, f"length must be 0.5-120 s, got {length}")
+    page, n = re.subn(r'data-duration="[\d.]+"', f'data-duration="{length:g}"', page)
+    if not n:
+        raise HTTPException(500, "template has no data-duration")
     (work / "index.html").write_text(page, encoding="utf-8")
     name = re.sub(r'[\\/:*?"<>|]+', "", body.name).strip()[:40] or body.template
     target = out_dir / f"{name}.mov"
