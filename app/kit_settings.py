@@ -21,8 +21,18 @@ CONFIG = KIT / "config.json"
 EXAMPLE = KIT / "config.example.json"
 
 # keys the settings page may edit; everything else in config.json is kept untouched
-FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx"]
-TEXT_KEYS = ["card_font", "envato_backend", "whisper_device", "whisper_model", "bot_api_url"]
+FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx", "output_dir"]
+TEXT_KEYS = ["card_font", "envato_backend", "whisper_device", "whisper_model", "bot_api_url", "workspace"]
+# standard layout under one workspace folder: every machine in the team looks the same
+WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stock_music": "stock\\music",
+                    "sfx": "sfx", "output_dir": "output"}
+
+
+def capcut_default_drafts() -> str:
+    """CapCut's own default drafts folder on this Windows user, or '' if CapCut never created it."""
+    import os
+    d = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft"
+    return str(d) if d.is_dir() else ""
 
 router = APIRouter(prefix="/api/kit", tags=["kit-settings"])
 _jobs: dict[str, dict[str, Any]] = {}
@@ -74,7 +84,7 @@ def doctor(asr: bool = False) -> dict[str, Any]:
 def get_config() -> dict[str, Any]:
     cfg = _read_config()
     return {"exists": CONFIG.is_file(), "folders": {k: cfg.get(k, "") for k in FOLDER_KEYS},
-            "options": {k: cfg.get(k, "") for k in TEXT_KEYS}}
+            "options": {k: cfg.get(k, "") for k in TEXT_KEYS}, "layout": WORKSPACE_LAYOUT}
 
 
 class ConfigUpdate(BaseModel):
@@ -93,6 +103,37 @@ def save_config(body: ConfigUpdate) -> dict[str, Any]:
     cfg.update({k: v for k, v in body.values.items()})
     CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"saved": True, "note": "restart the app for scripts already running to pick up new paths"}
+
+
+class Workspace(BaseModel):
+    root: str
+
+
+@router.post("/workspace")
+def set_workspace(body: Workspace) -> dict[str, Any]:
+    """Pick one workspace folder: create the standard subfolders and point every path at them."""
+    root = Path(body.root.strip())
+    if not body.root.strip() or not root.anchor:
+        raise HTTPException(400, "choose a full folder path, e.g. D:\\ClipKit")
+    if not Path(root.anchor).exists():
+        raise HTTPException(400, f"drive not found: {root.anchor}")
+    cfg = _read_config()
+    paths = {k: str(root / sub) for k, sub in WORKSPACE_LAYOUT.items()}
+    for p in paths.values():
+        Path(p).mkdir(parents=True, exist_ok=True)
+    cfg.update(paths)
+    cfg["workspace"] = str(root)
+    if not cfg.get("capcut_drafts") or not Path(cfg["capcut_drafts"]).is_dir():
+        found = capcut_default_drafts()
+        if found:
+            cfg["capcut_drafts"] = found
+    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"saved": True, "paths": paths, "capcut_drafts": cfg.get("capcut_drafts", "")}
+
+
+@router.get("/capcut-detect")
+def capcut_detect() -> dict[str, str]:
+    return {"path": capcut_default_drafts()}
 
 
 @router.post("/browse")
