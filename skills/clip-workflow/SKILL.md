@@ -47,14 +47,12 @@ Run the `clip-qc` checklist on the **first** clip and have the person watch it i
 ## 8. Log every clip when it is done
 One row per clip in the central work log, the moment the clip is finished (never later from memory):
 ```
-python <MoonRacle>/knowledge_base/scripts/worklog.py add --agent <registered agent> --type video \
-  --project "<client>" --item "<clip name>" --stage done --started-at <ISO time> --minutes <agent minutes> \
-  --metadata '{"human_fix_min": N, "source_range": "a-b s", "final_len_s": N, "title": "...", "fixed_by": "agent|person", "rollback": "draft_content.before_*.json"}'
+python scripts/log_clip.py add --agent <claude|codex> --project "<client>" --item "<clip name>"   --started-at <ISO time> --minutes <agent minutes>   --metadata '{"human_fix_min": N, "source_range": "a-b s", "final_len_s": N, "title": "...", "fixed_by": "agent|person", "rollback": "draft_content.before_*.json"}'
 ```
 - `--started-at`, `--minutes` and `human_fix_min` are measured, never estimated. Unknown = leave the field out.
 - A row about a problem also needs `--problem`, `--cause`, `--fix`.
 - Also update the client's `EDIT_LOG.md` (copy from `templates/EDIT_LOG.md` on the first clip): state table + per-clip history.
-- Machine without the MoonRacle repo: append the same fields as one JSON line to `clips_log.jsonl` in the client folder and hand it over.
+- Always appended to `<output>/logs/clips_log.jsonl`; on the office machine it also writes the central work log. Team machine: hand that file to the office, where `python scripts/log_clip.py import <file>` loads new rows (already-imported rows are skipped).
 
 ## Time budget
 10 clips/day = about 45 min per clip including review. If one step eats more than its share, stop and say which step.

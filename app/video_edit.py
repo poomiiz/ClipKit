@@ -403,14 +403,17 @@ def create_capcut_draft(video_path: str, project_name: str,
     if target.exists():
         target = root / f"{safe_name} {time.strftime('%H%M%S')}"
     shutil.copytree(_template_dir(), target,
-                    ignore=shutil.ignore_patterns("*.bak_*", "draft_content.json.bak"))
+                    ignore=shutil.ignore_patterns("*.bak_*", "*.bak", "draft_content.before_*",
+                                                  "draft_content.user_edited_*", "*.tmp"))
 
     content_path = target / "draft_content.json"
     draft = json.loads(content_path.read_text(encoding="utf-8"))
     materials = draft["materials"]
     video_track = next(t for t in draft["tracks"] if t["type"] == "video")
     text_track = next((t for t in draft["tracks"] if t["type"] == "text"), None)
-    draft["tracks"] = [t for t in draft["tracks"] if t["type"] in ("video", "text")]
+    # keep ONE video and ONE text track: the template is the client's last real project, and any other
+    # track would carry that project's footage, inserts and cards into the new clip
+    draft["tracks"] = [t for t in (video_track, text_track) if t is not None]
 
     index: dict[str, tuple[str, dict]] = {}
     for key, value in materials.items():
