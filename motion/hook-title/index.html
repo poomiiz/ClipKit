@@ -30,7 +30,10 @@
 </div>
 <script>
   const HOOK = { key: "Burn out", sub: "เพราะพลาดเรื่องนี้", duration: 5.5 };
-  const STYLE = new URLSearchParams(location.search).get("style") || "nina";
+  const Q = new URLSearchParams(location.search);
+  const STYLE = Q.get("style") || "nina";
+  // SPEED 2 = every entrance twice as fast as the original CapCut edit (P'Ohm: original felt slow); ?speed= overrides
+  const SPEED = parseFloat(Q.get("speed")) || 2;
 
   const STYLES = {
     nina: { font: '"DB Heavent", "Sukhumvit Set", sans-serif', tilt: -4.3,
@@ -41,9 +44,9 @@
             sub: { size: 86, top: 1150, delay: 0 }, keyIn: "smear" },
   };
   const S = STYLES[STYLE];
-  const TYPE = 0.5, NEON = 0.5;
+  const TYPE = 0.5 / SPEED, NEON = 0.5 / SPEED, SUB_DELAY = S.sub.delay / SPEED;
 
-  const bg = new URLSearchParams(location.search).get("bg");
+  const bg = Q.get("bg");
   if (bg) { const im = document.getElementById("bg"); im.src = bg; im.style.display = "block"; }
 
   const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);
@@ -72,17 +75,17 @@
       tl.set(glow, { "--c": c, opacity: i % 2 ? 0.55 : 1, textShadow: `0 0 18px ${c}, 0 0 40px ${c}` }, i * NEON / 5));
     tl.set(glow, { opacity: 0 }, NEON);
     tl.set(solid, { opacity: 1 }, NEON);
-    tl.fromTo(key, { scale: 1.08 }, { scale: 1, duration: 0.18, ease: "power2.out" }, NEON);
+    tl.fromTo(key, { scale: 1.08 }, { scale: 1, duration: 0.18 / SPEED, ease: "power2.out" }, NEON);
   } else {
     gsap.set(glow, { opacity: 0 });
     tl.fromTo(key, { opacity: 0, x: -160, scaleX: 1.9, filter: "blur(10px)" },
-                   { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.45))", duration: 0.17, ease: "power2.out" },
-                   S.key.order ? 0.6 : 0);
+                   { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.45))", duration: 0.17 / SPEED, ease: "power2.out" },
+                   S.key.order ? 0.6 / SPEED : 0);
   }
   // sub-line types in one grapheme at a time (display toggles: same picture at any seek time)
   tl.set(chars, { display: "none" }, 0);
-  chars.forEach((c, k) => tl.set(c, { display: "inline" }, S.sub.delay + TYPE * (k + 1) / chars.length));
-  tl.set(cur, { opacity: 0 }, S.sub.delay + TYPE + 0.2);
+  chars.forEach((c, k) => tl.set(c, { display: "inline" }, SUB_DELAY + TYPE * (k + 1) / chars.length));
+  tl.set(cur, { opacity: 0 }, SUB_DELAY + TYPE + 0.2 / SPEED);
   tl.set(h, { opacity: 0 }, HOOK.duration);
 
   window.__timelines = window.__timelines || {};
