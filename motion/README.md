@@ -1,4 +1,4 @@
-﻿# Motion stock
+# Motion stock
 
 One folder = one reusable effect (HyperFrames project). Edit the data at the top of index.html, then:
 
@@ -11,3 +11,4 @@ No client footage or frames in this repo.
 | Folder | Effect | From |
 |---|---|---|
 | reference-sentence-pair | white lead types in, blue punch smears in, both end together | REF3 07 (P'Ohm's edit) |
+| hook-title | level 0 hook: Sample neon-flicker red keyword + typed sub-line (`?style=REF` for REF) | Sample 09 (P'Ohm's edit) |
