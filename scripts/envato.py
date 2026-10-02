@@ -56,13 +56,23 @@ def logged_out(page):
     return "/sign_in" in u or "/signin" in u or "/login" in u or "account.envato.com" in u
 
 
+def chrome_exe():
+    import os
+    for base in (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)"), os.environ.get("LOCALAPPDATA")):
+        exe = Path(base or "") / "Google" / "Chrome" / "Application" / "chrome.exe"
+        if base and exe.is_file():
+            return str(exe)
+    raise RuntimeError("Google Chrome not found - run scripts/setup.ps1")
+
+
 def cmd_login(a):
-    with sync_playwright() as p:
-        ctx, page = browser(p)
-        page.goto("https://elements.envato.com/sign-in", wait_until="domcontentloaded")
-        print("Sign in to Envato in the Chrome window, then close it.", file=sys.stderr)
-        page.wait_for_event("close", timeout=0)
-        ctx.close()
+    # plain Chrome, not Playwright: Google refuses "Sign in with Google" in an automation-controlled browser.
+    # Same profile folder, so the cookies are there for search/download afterwards.
+    import subprocess
+    PROFILE.mkdir(parents=True, exist_ok=True)
+    print("Sign in to Envato in the Chrome window, then close it.", file=sys.stderr)
+    subprocess.run([chrome_exe(), f"--user-data-dir={PROFILE}", "--no-first-run", "--new-window",
+                    "https://elements.envato.com/sign-in"], check=False)
     print(json.dumps({"profile": str(PROFILE)}))
 
 
