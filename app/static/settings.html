@@ -32,12 +32,13 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 .msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
 .ver{color:var(--mut);font-size:13px}
 </style>
+<link rel="stylesheet" href="/shell.css?v=1">
 </head>
 <body>
 <main>
   <div class="top">
     <h1>⚙️ ตั้งค่า ClipKit</h1>
-    <a class="back" href="/video-editor.html">← กลับไปหน้าตัดต่อ</a>
+    
   </div>
 
   <div class="card">
@@ -173,5 +174,6 @@ $('bUpdate').onclick = async () => { await startJob('update', $('bUpdate'), 'mUp
 async function showVersion() { try { const v = await api('version'); $('ver').textContent = 'เวอร์ชันนี้ ' + v.version + ' · ' + v.commit; } catch {} }
 loadConfig(); showVersion(); runDoctor(false);
 </script>
+<script src="/shell.js?v=1"></script>
 </body>
 </html>
