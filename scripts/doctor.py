@@ -29,7 +29,7 @@ def py():
 
 
 def modules():
-    missing = [m for m in ("faster_whisper", "pythainlp", "soundfile", "ctranslate2", "playwright", "fastapi", "uvicorn") if not importlib.util.find_spec(m)]
+    missing = [m for m in ("faster_whisper", "pythainlp", "soundfile", "ctranslate2", "playwright", "fastapi", "uvicorn", "cv2") if not importlib.util.find_spec(m)]
     if missing:
         raise RuntimeError("missing: " + ", ".join(missing) + " - run scripts/setup.ps1")
 

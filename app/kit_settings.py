@@ -250,6 +250,77 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     return {"file": str(target)}
 
 
+class FramesRequest(BaseModel):
+    source: str
+    count: int = 6
+
+
+_FRAME_DIR = Path(__import__("tempfile").gettempdir()) / "clipkit_cover_frames"
+
+
+@router.post("/cover-frames")
+def cover_frames(body: FramesRequest) -> dict[str, Any]:
+    """Suggest cover frames: sample the clip, score each frame (sharp + bright enough + a face, bigger is better),
+    return the best `count` spread across the clip."""
+    import shutil
+    try:
+        import cv2
+    except ImportError as exc:
+        raise HTTPException(400, "opencv-python is not installed - run setup") from exc
+    src = Path(body.source)
+    if not src.is_file():
+        raise HTTPException(400, f"file not found: {src}")
+    cap = cv2.VideoCapture(str(src))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total <= 0:
+        raise HTTPException(400, "cannot read this video")
+    face = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    samples = min(48, max(body.count * 4, total // int(fps)))  # about one per second, at most 48
+    cands = []
+    for i in range(samples):
+        idx = int((i + 0.5) * total / samples)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        small = cv2.resize(frame, (360, int(360 * frame.shape[0] / frame.shape[1])))
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        sharp = cv2.Laplacian(gray, cv2.CV_64F).var()
+        bright = gray.mean()
+        faces = face.detectMultiScale(gray, 1.15, 5, minSize=(40, 40))
+        area = max((w * h for (_x, _y, w, h) in faces), default=0) / (gray.shape[0] * gray.shape[1])
+        score = sharp * (1.0 if 60 < bright < 200 else 0.4) * (1 + 20 * area) * (1.0 if len(faces) else 0.5)
+        cands.append((score, idx / fps, small))
+    cap.release()
+    if not cands:
+        raise HTTPException(400, "no readable frames in this video")
+    # best first, but at least ~1.5 s apart so the choices are different moments
+    chosen = []
+    for c in sorted(cands, key=lambda c: -c[0]):
+        if all(abs(c[1] - k[1]) >= 1.5 for k in chosen):
+            chosen.append(c)
+        if len(chosen) == body.count:
+            break
+    shutil.rmtree(_FRAME_DIR, ignore_errors=True)
+    _FRAME_DIR.mkdir(parents=True, exist_ok=True)
+    out = []
+    for n, (_s, t, img) in enumerate(sorted(chosen, key=lambda c: c[1])):
+        f = _FRAME_DIR / f"f{n}_{t:.2f}.jpg"
+        cv2.imwrite(str(f), img)
+        out.append({"at": round(t, 2), "thumb": f"/api/kit/cover-frame/{f.name}"})
+    return {"frames": out}
+
+
+@router.get("/cover-frame/{name}")
+def cover_frame(name: str):
+    from fastapi.responses import FileResponse
+    p = _FRAME_DIR / Path(name).name
+    if not p.is_file():
+        raise HTTPException(404, "frame not found")
+    return FileResponse(str(p))
+
+
 @router.get("/cover-file")
 def cover_file(path: str):
     """Serve a rendered cover so the page can show it (only files under a covers folder)."""

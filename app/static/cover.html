@@ -33,7 +33,10 @@ button:disabled{opacity:.5;cursor:wait}
   <div class="card">
     <label>ภาพพื้นหลัง (เลือกคลิปวิดีโอ หรือรูป)</label>
     <div class="row"><input id="src" placeholder="D:\...\clip.mov"><button class="ghost" id="pick">เลือกไฟล์</button></div>
-    <label>ถ้าเป็นวิดีโอ: ใช้ภาพที่วินาทีที่</label>
+    <label>ถ้าเป็นวิดีโอ: เลือกภาพ</label>
+    <button class="ghost" id="suggest" style="width:100%">🔎 หาภาพสวย 6 ภาพให้เลือก</button>
+    <div id="frames" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px"></div>
+    <label>หรือใส่วินาทีเอง</label>
     <input id="at" type="number" min="0" step="0.5" value="1">
     <label>หัวข้อบรรทัด 1 (ใหญ่)</label>
     <input id="l1" placeholder="เช่น ธุรกิจสมัยนี้">
@@ -57,6 +60,21 @@ async function post(path, body) {
   return j;
 }
 $('pick').onclick = async () => { const r = await post('browse-file?start=' + encodeURIComponent($('src').value)); if (r.path) $('src').value = r.path; };
+$('suggest').onclick = async () => {
+  const b = $('suggest'), box = $('frames'); b.disabled = true; b.textContent = 'กำลังหาภาพ… (ประมาณ 10 วินาที)'; box.innerHTML = '';
+  try {
+    const r = await post('cover-frames', {source: $('src').value.trim(), count: 6});
+    r.frames.forEach(f => {
+      const im = document.createElement('img');
+      im.src = f.thumb; im.title = f.at + ' วินาที';
+      im.style.cssText = 'width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;cursor:pointer;border:3px solid transparent';
+      im.onclick = () => { $('at').value = f.at; box.querySelectorAll('img').forEach(x => x.style.borderColor = 'transparent'); im.style.borderColor = 'var(--acc)'; };
+      box.appendChild(im);
+    });
+    if (r.frames[0]) box.querySelector('img').click();
+  } catch (e) { box.innerHTML = '<div class="msg bad">❌ ' + e.message + '</div>'; }
+  b.disabled = false; b.textContent = '🔎 หาภาพสวย 6 ภาพให้เลือก';
+};
 $('go').onclick = async () => {
   const b = $('go'); b.disabled = true; $('msg').className = 'msg'; $('msg').textContent = 'กำลังทำปก… (ประมาณ 10–20 วินาที)';
   try {
