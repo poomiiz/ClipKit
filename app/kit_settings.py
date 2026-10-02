@@ -187,6 +187,79 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
     return {"project": str(project), "url": f"http://localhost:{HF_PORT}/#project/{slug}"}
 
 
+class CoverRequest(BaseModel):
+    source: str            # an image, or a video (a frame is taken at `at` seconds)
+    at: float = 1.0
+    l1: str
+    l2: str = ""
+    style: str = "nina"
+    layout: str = "cover-a"
+
+
+@router.post("/cover")
+def make_cover(body: CoverRequest) -> dict[str, Any]:
+    """Render a 1080x1920 cover PNG from a motion/cover-* template into <output_dir>/covers."""
+    import re
+    import shutil
+    import tempfile
+    src = Path(body.source)
+    if not src.is_file():
+        raise HTTPException(400, f"file not found: {src}")
+    tpl = KIT / "motion" / body.layout
+    if not (tpl / "index.html").is_file() or not body.layout.startswith("cover-"):
+        raise HTTPException(400, f"unknown cover layout: {body.layout}")
+    if not body.l1.strip():
+        raise HTTPException(400, "headline (l1) is empty")
+    npx = shutil.which("npx")
+    if not npx:
+        raise HTTPException(400, "Node.js (npx) is not installed - run setup")
+    cfg = _read_config()
+    out_dir = Path(cfg.get("output_dir") or cfg.get("work_root") or "") / "covers"
+    if not out_dir.parent.is_dir():
+        raise HTTPException(400, "set the workspace folder in Settings first")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="clipkit_cover_"))
+    shutil.copytree(tpl, work, dirs_exist_ok=True, ignore=shutil.ignore_patterns("preview-bg*"))
+    bg = work / "preview-bg.jpg"
+    if src.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+        cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", str(bg)]
+    else:
+        cmd = ["ffmpeg", "-v", "error", "-y", "-ss", str(body.at), "-i", str(src), "-frames:v", "1",
+               "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", str(bg)]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0 or not bg.is_file():
+        raise HTTPException(500, "could not read the background: " + p.stderr.strip()[-300:])
+    page = (work / "index.html").read_text(encoding="utf-8")
+    cover = json.dumps({"l1": body.l1, "l2": body.l2, "bg": "preview-bg.jpg", "style": body.style}, ensure_ascii=False)
+    page, n = re.subn(r"const COVER = \{.*?\};", lambda _: f"const COVER = {cover};", page, count=1)
+    if not n:
+        raise HTTPException(500, "template has no COVER line")
+    (work / "index.html").write_text(page, encoding="utf-8")
+    frames = work / "_frames"
+    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
+    r = subprocess.run([npx, "--yes", f"hyperframes@{HF_VERSION}", "render", "--format", "png-sequence", "--quiet",
+                        "-o", str(frames)], cwd=str(work), capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", env=env, timeout=600)
+    first = sorted(frames.glob("*.png"))[:1] if frames.is_dir() else []
+    if r.returncode != 0 or not first:
+        raise HTTPException(500, "cover render failed: " + (r.stderr or r.stdout).strip()[-500:])
+    name = re.sub(r'[\\/:*?"<>|]+', "", body.l1).strip()[:40] or "cover"
+    target = out_dir / f"{name}.png"
+    shutil.copy2(first[0], target)
+    shutil.rmtree(work, ignore_errors=True)
+    return {"file": str(target)}
+
+
+@router.get("/cover-file")
+def cover_file(path: str):
+    """Serve a rendered cover so the page can show it (only files under a covers folder)."""
+    from fastapi.responses import FileResponse
+    p = Path(path)
+    if p.parent.name != "covers" or p.suffix.lower() != ".png" or not p.is_file():
+        raise HTTPException(404, "not a cover file")
+    return FileResponse(str(p))
+
+
 @router.get("/capcut-detect")
 def capcut_detect() -> dict[str, str]:
     return {"path": capcut_default_drafts()}
@@ -197,6 +270,17 @@ def browse(start: str = "") -> dict[str, str]:
     """Native folder picker on this machine (the app is local-only)."""
     script = ("import tkinter as t,tkinter.filedialog as f,sys;r=t.Tk();r.withdraw();r.attributes('-topmost',1);"
               "print(f.askdirectory(initialdir=sys.argv[1] or None) or '')")
+    p = subprocess.run([sys.executable, "-c", script, start], capture_output=True, text=True, encoding="utf-8",
+                       timeout=600)
+    return {"path": p.stdout.strip().replace("/", "\\")}
+
+
+@router.post("/browse-file")
+def browse_file(start: str = "") -> dict[str, str]:
+    """Native file picker (video or image) on this machine."""
+    script = ("import tkinter as t,tkinter.filedialog as f,sys;r=t.Tk();r.withdraw();r.attributes('-topmost',1);"
+              "print(f.askopenfilename(initialdir=sys.argv[1] or None,filetypes=[('Video / image','*.mov *.mp4 *.mkv "
+              "*.jpg *.jpeg *.png *.webp'),('All','*.*')]) or '')")
     p = subprocess.run([sys.executable, "-c", script, start], capture_output=True, text=True, encoding="utf-8",
                        timeout=600)
     return {"path": p.stdout.strip().replace("/", "\\")}
