@@ -33,7 +33,7 @@ DRAFTS = need("capcut_drafts")
 # CapCut's project registry; default location for the current Windows user
 ROOT_META = CFG.get("capcut_root_meta") or str(
     Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft" / "root_meta_info.json")
-FONT_NAME = need("card_font")
+FONT_NAME = CFG.get("card_font")  # optional: editors pick fonts themselves; only previews need one
 STOCK = need("stock_video")
 OLD_BUILDS = CFG.get("capcut_old_builds") or str(Path(DRAFTS).parent / "_old_builds")
 FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
@@ -54,6 +54,8 @@ def enable_cuda_libs():
 
 def font_file():
     """Absolute path of the card font, for ffmpeg previews."""
+    if not FONT_NAME:
+        raise RuntimeError("set \"card_font\" in config.json to a font installed on this machine to render previews")
     for d in (Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts", Path(r"C:\Windows\Fonts")):
         for f in d.glob(FONT_NAME + ".*"):
             return str(f)
