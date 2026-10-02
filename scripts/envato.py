@@ -104,7 +104,11 @@ def cmd_download(a):
             page.wait_for_timeout(7000)       # elements.* forwards to app.envato.com
             if logged_out(page):
                 raise RuntimeError("Envato is not signed in - run: python envato.py login")
-            main = page.get_by_role("button", name=re.compile(r"^Download")).first
+            # app.envato.com/search/... opens the item in a modal over the search grid; the grid's own
+            # Download buttons sit underneath it, so look inside the modal first
+            portal = page.locator("#item-details-portal")
+            scope = portal if portal.count() else page
+            main = scope.get_by_role("button", name=re.compile(r"^Download")).first
             try:
                 main.wait_for(state="visible", timeout=20000)
             except PWTimeout:
