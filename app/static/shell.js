@@ -12,9 +12,8 @@
   window.CLIPKIT_ICONS = I;
   const svg = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
   const NAV = [
-    ['งาน', [['home', 'หน้าแรก', '/video-editor.html'], ['clip', 'เริ่มคลิปใหม่', '/video-editor.html#new'],
-             ['drafts', 'โปรเจกต์เดิม', '/video-editor.html#drafts']]],
-    ['ระบบ', [['settings', 'ตั้งค่า', '/settings.html']]],
+    // starting or continuing a clip lives on the home tiles; the sidebar only moves between pages
+    ['', [['home', 'หน้าแรก', '/video-editor.html'], ['settings', 'ตั้งค่า', '/settings.html']]],
   ];
   const here = location.pathname + location.hash;
   const isOn = href => href === here || (href === location.pathname && !location.hash && !href.includes('#'));
@@ -22,7 +21,7 @@
   aside.className = 'sb';
   aside.innerHTML = `<a class="sb-brand" href="/video-editor.html"><span class="sb-logo">${svg('clip').replace('<svg', '<svg stroke="#fff" fill="none" stroke-width="2"')}</span>
       <span class="sb-name">ClipKit<small>Video → CapCut</small></span></a>` +
-    NAV.map(([g, items]) => `<div class="sb-group">${g}</div>` + items.map(([k, label, href]) =>
+    NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
   document.body.prepend(aside);
