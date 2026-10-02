@@ -477,22 +477,20 @@
         </div>
       </div>
       
-      <!-- Metrics Pills -->
-      <div class="metrics-bar" id="draftMetricsBar">
-        <div class="m-pill"><span class="m-ico">⏱️</span> <b id="mDuration">-</b> <span class="m-lbl">ความยาว</span></div>
-        <div class="m-pill"><span class="m-ico">🎬</span> <b id="mSegments">-</b> <span class="m-lbl">ท่อนวิดีโอ</span></div>
-        <div class="m-pill"><span class="m-ico">💬</span> <b id="mSubtitles">-</b> <span class="m-lbl">บรรทัดซับ</span></div>
-        <div class="m-pill success" id="mGradePill" style="display:none"><span class="m-ico">🎨</span> <b>เกรดสีแล้ว</b></div>
+      <!-- One quiet line of facts instead of pills + banner -->
+      <div class="hint" id="draftMetricsBar" style="margin:4px 0 14px">
+        ⏱️ <b id="mDuration">-</b> วินาที · 🎬 <b id="mSegments">-</b> ท่อน · 💬 <b id="mSubtitles">-</b> บรรทัดซับ
+        <span id="mGradePill" style="display:none"> · 🎨 เกรดสีแล้ว</span>
+        <br>⚠️ ปิด CapCut ก่อนกดแก้ทุกครั้ง
       </div>
 
-      <!-- Safety Callout Banner -->
-      <div class="warn-banner">
-        <span class="w-ico">⚠️</span>
-        <div><b>ข้อควรระวัง:</b> กรุณาปิดโปรแกรม CapCut ก่อนกดแก้ไขทุกครั้ง เพื่อป้องกันไฟล์เซฟทับ</div>
-      </div>
+      <!-- Guided steps: one obvious next action -->
+      <div id="guide" class="guide"></div>
 
-      <!-- Compact Unified Workflow Deck -->
-      <div class="workflow-deck">
+      <!-- Every tool, folded away for people who know what they want -->
+      <details id="allTools" style="margin-top:14px">
+      <summary style="cursor:pointer;color:var(--txt-sub);font-weight:600">🧰 เครื่องมือทั้งหมด</summary>
+      <div class="workflow-deck" style="margin-top:10px">
         
         <!-- Column 1: Subtitles -->
         <div class="deck-group">
@@ -556,6 +554,7 @@
         </div>
 
       </div>
+      </details>
 
       <div class="busy" id="dtBusy"></div>
       <div class="hint" id="subsSummary"></div>
