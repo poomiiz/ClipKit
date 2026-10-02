@@ -28,6 +28,8 @@ VIDEO_SUFFIXES = {".mov", ".mp4", ".mkv", ".avi", ".m4v", ".mts", ".webm"}
 
 FFMPEG = os.environ.get("FFMPEG_BIN") or kitconfig.FFMPEG
 FFPROBE = os.environ.get("FFPROBE_BIN", "ffprobe")
+# pythonw has no console: without this each ffprobe/ffmpeg spawn opens its own console window.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 CAPCUT_DRAFTS_ROOT = kitconfig.DRAFTS
 CAPCUT_TEMPLATE_DRAFT = os.environ.get("CAPCUT_TEMPLATE_DRAFT", "")
 
@@ -52,7 +54,7 @@ def probe(path: str) -> dict[str, Any]:
     out = subprocess.run(
         [FFPROBE, "-v", "error", "-print_format", "json",
          "-show_format", "-show_streams", path],
-        capture_output=True, text=True, encoding="utf-8", errors="replace")
+        capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
     if out.returncode != 0 or not out.stdout.strip():
         raise VideoEditError(f"ffprobe failed for {path}: {out.stderr[-300:]}")
     data = json.loads(out.stdout)
@@ -150,7 +152,7 @@ def suggest_projects(folder: str) -> list[dict[str, Any]]:
 def _extract_audio(path: str, start: float, end: float, dest: Path) -> Path:
     cmd = [FFMPEG, "-y", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
            "-i", path, "-vn", "-ac", "1", "-ar", "16000", str(dest)]
-    run = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    run = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
     if run.returncode != 0 or not dest.exists():
         raise VideoEditError(f"audio extract failed: {run.stderr[-300:]}")
     return dest
@@ -172,7 +174,7 @@ def detect_pauses(path: str, start: float, end: float,
                 [FFMPEG, "-v", "error", "-i", str(work), "-af",
                  f"silencedetect=n={gate}dB:d={min_len},ametadata=print:file=-",
                  "-f", "null", "-"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace")
+                capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
             values = [float(m.group(2)) for m in
                       re.finditer(r"silence_(start|end)=([0-9.]+)", run.stdout + run.stderr)]
             pauses = [{"start": round(a, 2), "end": round(b, 2),
@@ -310,7 +312,7 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
             run = subprocess.run(
                 [FFMPEG, "-y", "-v", "error", "-ss", f"{offset:.3f}", "-t", f"{span:.3f}",
                  "-i", str(full), str(chunk)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace")
+                capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
             if run.returncode != 0:
                 raise VideoEditError(f"window extract failed: {run.stderr[-200:]}")
             try:
@@ -861,7 +863,7 @@ def grab_frame(path: str, at: float = 1.0, width: int = 360) -> bytes:
     run = subprocess.run(
         [FFMPEG, "-v", "error", "-ss", f"{max(at, 0):.3f}", "-i", path,
          "-frames:v", "1", "-vf", f"scale={width}:-2", "-f", "image2", "-vcodec", "mjpeg",
-         "-"], capture_output=True)
+         "-"], capture_output=True, creationflags=NO_WINDOW)
     if run.returncode != 0 or not run.stdout:
         raise VideoEditError(f"cannot read a frame from {Path(path).name}")
     return run.stdout
@@ -937,7 +939,7 @@ def _run_local_search(job_id: int, query: str, count: int, kind: str) -> None:
     """Run scripts/envato.py (this machine's Chrome) and keep the result for stock_result()."""
     p = subprocess.run([_sys.executable, str(_ENVATO_PY), "search", query, "--count", str(count),
                         "--kind", "music" if kind == "music" else "video"],
-                       capture_output=True, text=True, encoding="utf-8")
+                       capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8")
     if p.returncode == 0:
         _local_jobs[job_id] = {"status": "done", "items": json.loads(p.stdout)["items"], "error": None}
     else:

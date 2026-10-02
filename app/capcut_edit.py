@@ -748,15 +748,15 @@ _MOODS = {
 
 
 def _music_meta(path: Path) -> dict[str, Any]:
-    from video_edit import FFPROBE
+    from video_edit import FFPROBE, NO_WINDOW
     import subprocess
     out = subprocess.run([FFPROBE, "-v", "error", "-show_entries",
                           "format=duration", "-of", "csv=p=0", str(path)],
-                         capture_output=True, text=True)
+                         capture_output=True, creationflags=NO_WINDOW, text=True)
     try:
         duration = round(float(out.stdout.strip()), 1)
-    except ValueError:
-        duration = 0.0
+    except ValueError as exc:
+        raise VideoEditError(f"ffprobe could not read duration of {path}: {out.stderr.strip()[-300:]}") from exc
     name = path.stem.lower()
     moods = sorted({thai for key, thai in _MOODS.items() if key in name})
     bpm = None
