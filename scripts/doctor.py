@@ -14,12 +14,12 @@ sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
 results = []
 
 
-def check(name, fn):
+def check(name, fn, optional=False):
     try:
         detail = fn()
         results.append((True, name, detail or ""))
     except Exception as e:  # report every failure, keep checking the rest
-        results.append((False, name, str(e)))
+        results.append(("WARN" if optional else False, name, str(e)))
 
 
 def py():
@@ -88,12 +88,14 @@ def asr():
 
 
 for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("config + folders", config),
-             ("card font", font), ("GPU", gpu), ("disk space", disk)]:
+             ("GPU", gpu), ("disk space", disk)]:
     check(n, f)
+# fonts are each editor's own choice; only the preview render needs "card_font" installed
+check("preview font", font, optional=True)
 if "--asr" in sys.argv:
     check("speech-to-text", asr)
 
 sys.stdout.reconfigure(encoding="utf-8")
 for ok, name, detail in results:
-    print(f"{'OK  ' if ok else 'FAIL'} {name:18} {detail}")
+    print(f"{'WARN' if ok == 'WARN' else 'OK  ' if ok else 'FAIL'} {name:18} {detail}")
 sys.exit(0 if all(r[0] for r in results) else 1)
