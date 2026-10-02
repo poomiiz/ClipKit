@@ -14,6 +14,13 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.responses import RedirectResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+# first run on a new machine: create config.json from the example (same as setup.ps1) so the app can open
+# and the Settings page can show what is still missing; the folders stay unset until the person picks them
+_CFG = HERE.parent / "config.json"
+if not _CFG.is_file():
+    import shutil
+    shutil.copyfile(HERE.parent / "config.example.json", _CFG)
+
 import kit_settings  # noqa: E402
 import video_editor  # noqa: E402
 
