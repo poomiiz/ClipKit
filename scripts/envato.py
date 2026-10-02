@@ -47,7 +47,7 @@ def browser(p, headless=False):
     PROFILE.mkdir(parents=True, exist_ok=True)
     # real Chrome (channel) and a visible window: Envato's sign-in and anti-bot checks reject headless browsers
     ctx = p.chromium.launch_persistent_context(str(PROFILE), channel="chrome", headless=headless,
-                                               accept_downloads=True, viewport={"width": 1400, "height": 900})
+                                               accept_downloads=True, no_viewport=True)  # page follows the window size, never wider than the screen
     return ctx, (ctx.pages[0] if ctx.pages else ctx.new_page())
 
 
@@ -100,15 +100,13 @@ def cmd_download(a):
     with sync_playwright() as p:
         ctx, page = browser(p)
         try:
-            page.goto(a.url, wait_until="domcontentloaded", timeout=60000)
+            url = a.url.replace("app.envato.com/search/", "app.envato.com/")   # search links open a modal route
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(7000)       # elements.* forwards to app.envato.com
             if logged_out(page):
                 raise RuntimeError("Envato is not signed in - run: python envato.py login")
-            # app.envato.com/search/... opens the item in a modal over the search grid; the grid's own
-            # Download buttons sit underneath it, so look inside the modal first
-            portal = page.locator("#item-details-portal")
-            scope = portal if portal.count() else page
-            main = scope.get_by_role("button", name=re.compile(r"^Download")).first
+            # the item panel's own button; the grid behind it has small icon-only Download buttons too
+            main = page.locator('[data-cy="idp-download-button"]').first
             try:
                 main.wait_for(state="visible", timeout=20000)
             except PWTimeout:
