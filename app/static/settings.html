@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตั้งค่า ClipKit</title>
+<style>
+:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+h1{font-size:24px;margin:0}
+a.back{color:var(--acc2);text-decoration:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+.card h2{font-size:17px;margin:0 0 4px}
+.card p.sub{margin:0 0 12px;color:var(--mut);font-size:13.5px}
+button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:var(--card2);color:var(--sub);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.row label{width:190px;color:var(--sub);font-size:14px}
+.row input,.row select{flex:1;min-width:200px;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:8px 10px;font:inherit}
+.checks{display:grid;gap:6px;margin-top:10px}
+.chk{display:flex;gap:10px;align-items:flex-start;background:var(--card2);border-radius:9px;padding:8px 12px;font-size:14px}
+.dot{width:11px;height:11px;border-radius:50%;margin-top:6px;flex:none}
+.OK{background:var(--ok)}.WARN{background:var(--warn)}.FAIL{background:var(--bad)}
+.chk b{width:150px;flex:none}
+.chk span{color:var(--mut);word-break:break-all}
+pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10px;max-height:260px;overflow:auto;font-size:12.5px;white-space:pre-wrap;margin:10px 0 0;display:none}
+.msg{font-size:14px;margin-left:6px}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+.ver{color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>⚙️ ตั้งค่า ClipKit</h1>
+    <a class="back" href="/video-editor.html">← กลับไปหน้าตัดต่อ</a>
+  </div>
+
+  <div class="card">
+    <h2>1. ตรวจเครื่อง</h2>
+    <p class="sub">เช็กว่าเครื่องพร้อมใช้ทุกอย่าง · เขียว = พร้อม · เหลือง = เตือน (ใช้งานได้) · แดง = ต้องแก้</p>
+    <div class="row"><button id="bDoctor">ตรวจเครื่อง</button><button class="ghost" id="bDoctorAsr">ตรวจ + ทดสอบถอดเสียง</button><span class="msg" id="mDoctor"></span></div>
+    <div class="checks" id="checks"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. ติดตั้ง / ลงโปรแกรมที่ขาด</h2>
+    <p class="sub">ลง Python, ffmpeg, Chrome และโปรแกรมเสริมทั้งหมดให้อัตโนมัติ · กดซ้ำได้ ไม่เสียหาย · ครั้งแรกอาจใช้ 5–15 นาที</p>
+    <div class="row"><button id="bSetup">ติดตั้ง</button><span class="msg" id="mSetup"></span></div>
+    <pre id="logSetup"></pre>
+  </div>
+
+  <div class="card">
+    <h2>3. โฟลเดอร์งาน</h2>
+    <p class="sub">กด “เลือก” เพื่อเปิดหน้าต่างเลือกโฟลเดอร์ แล้วกดบันทึก</p>
+    <div id="folders"></div>
+    <h2 style="margin-top:16px">ตัวเลือก</h2>
+    <div class="row"><label>หาภาพ Envato ผ่าน</label><select id="o_envato_backend"><option value="local">Chrome ของเครื่องนี้</option><option value="bot">บอทกลาง (เครื่องหลัก)</option></select></div>
+    <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ NVIDIA (เร็ว)</option><option value="cpu">CPU (ช้า)</option></select></div>
+    <div class="row"><label>ฟอนต์ภาพตัวอย่าง (ไม่บังคับ)</label><input id="o_card_font" placeholder="ชื่อฟอนต์ที่ลงในเครื่อง เช่น DB Heavent Bd v3.2.1"></div>
+    <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
+  </div>
+
+  <div class="card">
+    <h2>4. ล็อกอิน Envato</h2>
+    <p class="sub">เปิด Chrome ให้ล็อกอินบัญชีบริษัทครั้งเดียว แล้วปิดหน้าต่าง · ทุกครั้งที่โหลดภาพ = ใช้สิทธิ์ 1 ครั้ง</p>
+    <div class="row"><button id="bLogin">เปิดหน้าล็อกอิน Envato</button><span class="msg" id="mLogin"></span></div>
+  </div>
+
+  <div class="card">
+    <h2>5. อัปเดต ClipKit</h2>
+    <p class="sub">ดึงเวอร์ชันล่าสุดจาก GitHub (สกิล เครื่องมือ สต๊อกโมชัน) · <span class="ver" id="ver"></span></p>
+    <div class="row"><button id="bUpdate">อัปเดต</button><span class="msg" id="mUpdate"></span></div>
+    <pre id="logUpdate"></pre>
+  </div>
+</main>
+<script>
+const FOLDER_LABELS = {work_root:'โฟลเดอร์งานหลัก (ฟุตเทจลูกค้า)', capcut_drafts:'โปรเจกต์ CapCut (CapCut Drafts)', stock_video:'ที่เก็บวิดีโอจาก Envato', stock_music:'ที่เก็บเพลง', sfx:'เสียงประกอบ (SFX)'};
+const $ = id => document.getElementById(id);
+async function api(path, opt={}) {
+  const r = await fetch('/api/kit/' + path, {method: opt.method || 'GET', headers:{'Content-Type':'application/json'},
+                                            body: opt.body ? JSON.stringify(opt.body) : undefined});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+function say(id, text, ok) { const m = $(id); m.textContent = text; m.className = 'msg ' + (ok === undefined ? '' : ok ? 'ok' : 'bad'); }
+
+async function runDoctor(asr) {
+  const b1 = $('bDoctor'), b2 = $('bDoctorAsr'); b1.disabled = b2.disabled = true;
+  say('mDoctor', asr ? 'กำลังตรวจ + ทดสอบถอดเสียง (อาจนานถึง 1 นาที)…' : 'กำลังตรวจ…');
+  try {
+    const r = await api('doctor' + (asr ? '?asr=true' : ''));
+    $('checks').innerHTML = r.checks.map(c => `<div class="chk"><i class="dot ${c.state}"></i><b>${c.name}</b><span>${c.detail || ''}</span></div>`).join('');
+    say('mDoctor', r.ok ? '✅ เครื่องพร้อมใช้งาน' : '⚠ มีรายการที่ต้องแก้ (สีแดง)', r.ok);
+  } catch (e) { say('mDoctor', '❌ ' + e.message, false); }
+  b1.disabled = b2.disabled = false;
+}
+
+async function watchJob(name, btn, msgId, logId) {
+  btn.disabled = true;
+  const log = logId ? $(logId) : null;
+  if (log) log.style.display = 'block';
+  for (;;) {
+    const j = await api('job/' + name);
+    if (log) { log.textContent = j.log; log.scrollTop = log.scrollHeight; }
+    if (j.status !== 'running') {
+      say(msgId, j.status === 'done' ? '✅ เสร็จแล้ว' : '❌ ไม่สำเร็จ ดูรายละเอียดด้านล่าง', j.status === 'done');
+      btn.disabled = false; return j;
+    }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+}
+async function startJob(path, btn, msgId, logId, busyText) {
+  try { await api(path, {method:'POST'}); say(msgId, busyText); return await watchJob(path, btn, msgId, logId); }
+  catch (e) { say(msgId, '❌ ' + e.message, false); btn.disabled = false; }
+}
+
+async function loadConfig() {
+  const c = await api('config');
+  $('folders').innerHTML = Object.keys(FOLDER_LABELS).map(k =>
+    `<div class="row"><label>${FOLDER_LABELS[k]}</label><input id="f_${k}" value="${(c.folders[k] || '').replace(/"/g,'&quot;')}"><button class="ghost" data-k="${k}">เลือก</button></div>`).join('');
+  document.querySelectorAll('#folders button').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { const r = await api('browse?start=' + encodeURIComponent($('f_' + b.dataset.k).value), {method:'POST'}); if (r.path) $('f_' + b.dataset.k).value = r.path; }
+    finally { b.disabled = false; }
+  });
+  for (const k of ['envato_backend', 'whisper_device', 'card_font']) if (c.options[k]) $('o_' + k).value = c.options[k];
+  if (!c.exists) say('mSave', 'ยังไม่มีไฟล์ตั้งค่า — ตรวจค่าแล้วกดบันทึก', false);
+}
+async function saveConfig() {
+  const values = {};
+  Object.keys(FOLDER_LABELS).forEach(k => values[k] = $('f_' + k).value.trim());
+  ['envato_backend', 'whisper_device', 'card_font'].forEach(k => values[k] = $('o_' + k).value.trim());
+  try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
+  catch (e) { say('mSave', '❌ ' + e.message, false); }
+}
+
+$('bDoctor').onclick = () => runDoctor(false);
+$('bDoctorAsr').onclick = () => runDoctor(true);
+$('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
+$('bSave').onclick = saveConfig;
+$('bLogin').onclick = () => startJob('envato-login', $('bLogin'), 'mLogin', null, 'เปิด Chrome แล้ว — ล็อกอินให้เสร็จแล้วปิดหน้าต่าง');
+$('bUpdate').onclick = async () => { await startJob('update', $('bUpdate'), 'mUpdate', 'logUpdate', 'กำลังอัปเดต…'); showVersion(); };
+async function showVersion() { try { const v = await api('version'); $('ver').textContent = 'เวอร์ชันนี้ ' + v.version + ' · ' + v.commit; } catch {} }
+loadConfig(); showVersion(); runDoctor(false);
+</script>
+</body>
+</html>
