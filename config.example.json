@@ -6,6 +6,7 @@
   "stock_music": "D:\\Stock Music\\ผ่านแล้ว",
   "sfx": "D:\\work 2026\\Nina\\Assets\\SFX",
   "card_font": "DB Heavent Bd v3.2.1",
+  "_card_font_note": "optional: any installed font, only used for quick preview renders; editors pick their own fonts in CapCut",
   "whisper_model": "large-v3",
   "whisper_device": "cuda",
   "envato_backend": "local",
