@@ -38,27 +38,8 @@ button:disabled{opacity:.5;cursor:wait}
   <div class="top"><h1>ตัวหนังสือเคลื่อนไหว</h1></div>
   <div class="card">
     <label>แบบ</label>
-    <select id="tpl">
-      <option value="hook-title">หัวคลิป · คำเด่น + คำรอง (3–5 วินาทีแรก)</option>
-      <option value="bps-sentence-pair">คำโปรย · ประโยคขาว + คำเน้นน้ำเงิน</option>
-    </select>
-
-    <div id="f-hook">
-      <label>คำเด่น</label><input id="key" value="Burn out">
-      <label>คำรอง</label><input id="sub" value="เพราะพลาดเรื่องนี้">
-      <div class="row">
-        <div><label>สไตล์</label><select id="style"><option value="nina">Nina · แดงเอียง ไฟนีออน</option><option value="bps">คุณตั้น · ขาวบน แดงล่าง</option></select></div>
-        <div><label>ยาว (วินาที)</label><input id="duration" type="number" min="1" step="0.5" value="5.5"></div>
-      </div>
-    </div>
-
-    <div id="f-pair" hidden>
-      <label>ประโยค (บรรทัดละคู่: ตัวขาว / คำเน้น)</label>
-      <textarea id="pairs">ผู้รับเหมาก็จะ / ถูกกดดัน
-เรื่องงานที่ต้องเสร็จ / ตามกำหนดเวลา
-เพื่อตอบสนอง / โจทย์ผู้บริโภค</textarea>
-      <label>แต่ละคู่โชว์กี่วินาที</label><input id="each" type="number" min="1" step="0.5" value="2.5">
-    </div>
+    <select id="tpl"></select>
+    <div id="fields"></div>
 
     <label>ความเร็ว <span class="hint">(2 = เร็วกว่าต้นฉบับ CapCut เท่าตัว · 1 = เท่าต้นฉบับ)</span></label>
     <input id="speed" type="number" min="0.5" max="5" step="0.5" value="2">
@@ -70,18 +51,35 @@ button:disabled{opacity:.5;cursor:wait}
 </main>
 <script>
 const $ = id => document.getElementById(id);
+// the form comes from each template's <script id="clipkit-motion"> spec (GET /api/kit/motion-templates)
+let SPECS = {};
+const spec = () => SPECS[$('tpl').value];
+function drawFields() {
+  $('fields').innerHTML = spec().fields.map(f => {
+    const id = 'f_' + f.key;
+    if (f.type === 'select') return `<label>${f.label}</label><select id="${id}">${f.options.map(([v, t]) =>
+      `<option value="${v}"${v === f.default ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+    if (f.type === 'pairs') return `<label>${f.label}</label><textarea id="${id}">${f.default || ''}</textarea>
+      <label>แต่ละคู่โชว์กี่วินาที</label><input id="${id}_each" type="number" min="1" step="0.5" value="${f.each || 2.5}">`;
+    return `<label>${f.label}</label><input id="${id}" ${f.type === 'number' ? 'type="number" step="0.5"' : ''} value="${f.default ?? ''}">`;
+  }).join('');
+  $('fields').querySelectorAll('input,select,textarea').forEach(e => e.addEventListener('input', refresh));
+}
 function params() {
-  const sp = parseFloat($('speed').value) || 2;
-  if ($('tpl').value === 'hook-title')
-    return {key: $('key').value.trim(), sub: $('sub').value.trim(), style: $('style').value,
-            duration: parseFloat($('duration').value) || 5.5, speed: sp};
-  const each = parseFloat($('each').value) || 2.5;
-  const lines = $('pairs').value.split('\n').map(s => s.trim()).filter(Boolean);
-  // punch lands right after the white line finishes typing (original edit: 0.6-1.0 s, here 0.8 s at speed 1)
-  return {speed: sp, pairs: lines.map((l, i) => {
-    const [lead, punch = ''] = l.split('/').map(s => s.trim());
-    return [i * each, (i + 1) * each, lead, punch, 0.8];
-  })};
+  const out = {speed: parseFloat($('speed').value) || 2};
+  for (const f of spec().fields) {
+    const v = $('f_' + f.key).value;
+    if (f.type === 'pairs') {
+      const each = parseFloat($('f_' + f.key + '_each').value) || 2.5;
+      // punch lands right after the white line finishes typing (original edit 0.6-1.0 s)
+      out[f.key] = v.split(/?
+/).map(x => x.trim()).filter(Boolean).map((l, i) => {
+        const [lead, punch = ''] = l.split('/').map(x => x.trim());
+        return [i * each, (i + 1) * each, lead, punch, f.delay ?? 0.8];
+      });
+    } else out[f.key] = f.type === 'number' ? parseFloat(v) || f.default : v.trim();
+  }
+  return out;
 }
 function fitFrame() { $('live').style.transform = `scale(${$('pv').clientWidth / 1080})`; }
 window.addEventListener('resize', fitFrame);
@@ -90,8 +88,6 @@ let timer = 0;
 function refresh() {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    $('f-hook').hidden = $('tpl').value !== 'hook-title';
-    $('f-pair').hidden = $('tpl').value === 'hook-title';
     const p = params(), q = new URLSearchParams();
     for (const [k, v] of Object.entries(p)) q.set(k, typeof v === 'object' ? JSON.stringify(v) : v);
     const f = $('live');
@@ -103,7 +99,8 @@ function refresh() {
     fitFrame();
   }, 300);
 }
-['tpl', 'key', 'sub', 'style', 'duration', 'pairs', 'each', 'speed'].forEach(id => $(id).addEventListener('input', refresh));
+$('speed').addEventListener('input', refresh);
+$('tpl').addEventListener('input', () => { drawFields(); refresh(); });
 $('go').onclick = async () => {
   const b = $('go'); b.disabled = true; $('msg').className = 'msg'; $('msg').textContent = 'กำลังทำไฟล์… (ประมาณ 20–40 วินาที)';
   try {
@@ -115,8 +112,12 @@ $('go').onclick = async () => {
   } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + e.message; }
   b.disabled = false;
 };
-refresh();
+fetch('/api/kit/motion-templates').then(r => r.json()).then(j => {
+  SPECS = j.templates;
+  $('tpl').innerHTML = Object.entries(SPECS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+  drawFields(); refresh();
+}).catch(e => { $('msg').className = 'msg bad'; $('msg').textContent = '❌ โหลดรายชื่อเอฟเฟกต์ไม่ได้: ' + e.message; });
 </script>
-<script src="/shell.js?v=2"></script>
+<script src="/shell.js?v=3"></script>
 </body>
 </html>

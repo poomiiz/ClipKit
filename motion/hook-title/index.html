@@ -23,6 +23,16 @@
   .sub { color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.6), 0 4px 10px rgba(0,0,0,.6); }
   .cur { display: inline-block; width: 5px; margin-left: 6px; background: #fff; vertical-align: -0.12em; height: 0.9em; }
 </style>
+<!-- ClipKit motion page reads this: label, the form fields, and how the clip length is found
+     ("duration" field, or "pairs" = end of the last pair). Copy this block into a new template. -->
+<script type="application/json" id="clipkit-motion">
+{"label": "หัวคลิป · คำเด่น + คำรอง (3–5 วินาทีแรก)", "length": "duration",
+   "fields": [{"key": "key", "label": "คำเด่น", "type": "text", "default": "Burn out"},
+              {"key": "sub", "label": "คำรอง", "type": "text", "default": "เพราะพลาดเรื่องนี้"},
+              {"key": "style", "label": "สไตล์", "type": "select", "default": "nina",
+               "options": [["nina", "Nina · แดงเอียง ไฟนีออน"], ["bps", "คุณตั้น · ขาวบน แดงล่าง"]]},
+              {"key": "duration", "label": "ยาว (วินาที)", "type": "number", "default": 5.5}]}
+</script>
 </head>
 <body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="5.5" data-width="1080" data-height="1920">

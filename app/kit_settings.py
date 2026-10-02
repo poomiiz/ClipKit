@@ -257,7 +257,27 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     return {"file": str(target)}
 
 
-MOTION_TEMPLATES = {"hook-title", "bps-sentence-pair"}   # transparent overlays with window.KIT params
+def motion_templates() -> dict[str, dict[str, Any]]:
+    """Every motion/<name>/index.html that carries a <script id="clipkit-motion"> spec (label, fields, length).
+    A new effect pushed to GitHub shows up on the motion page after 'update', with no code change."""
+    import re
+    out = {}
+    for page in sorted((KIT / "motion").glob("*/index.html")):
+        m = re.search(r'<script type="application/json" id="clipkit-motion">(.*?)</script>',
+                      page.read_text(encoding="utf-8"), re.S)
+        if not m:
+            continue   # covers and work-in-progress templates
+        try:
+            spec = json.loads(m.group(1))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(500, f"motion/{page.parent.name}: bad clipkit-motion JSON: {exc}")
+        out[page.parent.name] = spec
+    return out
+
+
+@router.get("/motion-templates")
+def list_motion_templates() -> dict[str, Any]:
+    return {"templates": motion_templates()}
 
 
 class MotionRequest(BaseModel):
@@ -272,7 +292,8 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     import re
     import shutil
     import tempfile
-    if body.template not in MOTION_TEMPLATES:
+    specs = motion_templates()
+    if body.template not in specs:
         raise HTTPException(400, f"unknown motion template: {body.template}")
     npx = shutil.which("npx")
     if not npx:
@@ -292,7 +313,8 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     # the renderer reads the clip length from the HTML attributes, not from the script
     try:
         p = body.params
-        length = float(p["duration"]) if body.template == "hook-title" else max(float(x[1]) for x in p["pairs"])
+        how = specs[body.template].get("length", "duration")
+        length = max(float(x[1]) for x in p["pairs"]) if how == "pairs" else float(p[how])
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         raise HTTPException(400, f"missing or bad length in params: {exc}")
     if not 0.5 <= length <= 120:
