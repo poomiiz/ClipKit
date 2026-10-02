@@ -43,6 +43,8 @@ Everyone signs in with the one company account on their own machine. To keep the
 | `skills/style-nina` | Nina look: cards, colours, animations, storytelling |
 | `skills/style-bps` | BPS คุณตั้น look: sentence-pair pop text, red hook, film-effect inserts |
 | `templates/EDIT_LOG.md` | Per-client edit log to copy into the client folder |
+| `scripts/make_clip.py` | One story -> transcribe, jump cuts, subtitles, CapCut draft (prints JSON) |
+| `scripts/log_clip.py` | Log a finished clip: always to `<output>/logs/clips_log.jsonl`, plus central log on the office machine; `import` loads team files |
 | `scripts/clipkit.py` | Transcribe (Thai), pause-cut plan, ffmpeg render |
 | `scripts/capcut/` | Edit CapCut `draft_content.json`: cards, B-roll, SFX, trims, preview |
 | `scripts/bps/` | BPS3 episode pipeline (analyze, build, verify) |
