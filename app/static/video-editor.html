@@ -1460,6 +1460,42 @@ async function loadDrafts() {
   }
 }
 
+// Guided order for one project. "done" = the draft shows it (subtitles) or the editor ticked it on this machine.
+const GUIDE = [
+  {key: 'subs',  label: 'ถอดเสียงใส่ซับ',        run: () => draftTranscribe(), auto: d => d.subtitles > 0},
+  {key: 'trim',  label: 'ตัดช่วงเงียบ',           run: () => { openAllTools(); jump('c-trim'); }},
+  {key: 'check', label: 'ตรวจแก้คำผิดในซับ',      run: () => openSubs()},
+  {key: 'style', label: 'ปรับสไตล์ซับ',           run: () => { openAllTools(); jump('c-style'); }},
+  {key: 'broll', label: 'หาภาพประกอบ (Envato)',   run: () => openStock()},
+  {key: 'music', label: 'ใส่เพลง / เสียงประกอบ',  run: () => { openAllTools(); jump('c-music'); }},
+];
+function guideKey(d) { return 'ck-guide:' + d.path; }
+function guideDone(d) { try { return JSON.parse(localStorage.getItem(guideKey(d)) || '{}'); } catch { return {}; } }
+function openAllTools() { const t = document.getElementById('allTools'); if (t) t.open = true; }
+function renderGuide(d) {
+  const box = document.getElementById('guide');
+  if (!box) return;
+  const ticks = guideDone(d);
+  const isDone = g => !!ticks[g.key] || (g.auto && g.auto(d));
+  const next = GUIDE.find(g => !isDone(g));
+  box.innerHTML = '<div style="font-weight:700;margin-bottom:8px">ทำตามลำดับนี้</div>' + GUIDE.map((g, i) => {
+    const done = isDone(g), cur = g === next;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin:5px 0;border-radius:12px;
+              background:${cur ? 'var(--acc-glow)' : 'var(--card2)'};border:1px solid ${cur ? 'var(--acc)' : 'var(--line)'}">
+      <span style="width:24px;text-align:center">${done ? '✅' : i + 1}</span>
+      <span style="flex:1;${done ? 'color:var(--mut)' : ''}">${g.label}</span>
+      <button class="small ${cur ? 'primary' : ''}" data-run="${g.key}">${done ? 'ทำอีกครั้ง' : cur ? 'ทำขั้นนี้' : 'ทำ'}</button>
+      <button class="small" data-tick="${g.key}" title="ทำเสร็จแล้ว">${ticks[g.key] ? '↺' : '✓'}</button>
+    </div>`;
+  }).join('') + (next ? '' : '<div class="hint" style="margin-top:8px">🎉 ครบทุกขั้น เปิดใน CapCut เพื่อเกลาและส่งออกได้เลย</div>');
+  box.querySelectorAll('[data-run]').forEach(b => b.onclick = () => GUIDE.find(g => g.key === b.dataset.run).run());
+  box.querySelectorAll('[data-tick]').forEach(b => b.onclick = () => {
+    const t = guideDone(d); t[b.dataset.tick] = !t[b.dataset.tick];
+    try { localStorage.setItem(guideKey(d), JSON.stringify(t)); } catch {}
+    renderGuide(d);
+  });
+}
+
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
 async function makeDraft() {
   const main = document.getElementById('mainAction');
@@ -1509,13 +1545,14 @@ function openDraft(i) {
 
   // Set Metrics Pills
   const durEl = document.getElementById('mDuration');
-  if (durEl) durEl.textContent = d.duration + 's';
+  if (durEl) durEl.textContent = d.duration;
   const segEl = document.getElementById('mSegments');
   if (segEl) segEl.textContent = d.segments;
   const subEl = document.getElementById('mSubtitles');
   if (subEl) subEl.textContent = d.subtitles;
   const gradePill = document.getElementById('mGradePill');
-  if (gradePill) gradePill.style.display = d.has_grade ? 'inline-flex' : 'none';
+  if (gradePill) gradePill.style.display = d.has_grade ? 'inline' : 'none';
+  renderGuide(d);
 
   // Backward compatibility for draftInfo
   const infoEl = document.getElementById('draftInfo');
