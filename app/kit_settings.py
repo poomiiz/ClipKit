@@ -134,6 +134,8 @@ def set_workspace(body: Workspace) -> dict[str, Any]:
 class HyperframesRequest(BaseModel):
     file: str
     name: str
+    start: float | None = None  # one story out of a long file
+    end: float | None = None
 
 
 HF_VERSION = "0.8.101"
@@ -158,14 +160,25 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
     slug = re.sub(r"[^A-Za-z0-9_-]+", "-", body.name).strip("-").lower() or "clip"
     root = Path(base) / "hyperframes"
     root.mkdir(parents=True, exist_ok=True)
+    if body.start is not None and body.end is not None:
+        slug = f"{slug}-{int(body.start)}-{int(body.end)}"
     project = root / slug
+    if not project.exists() and body.start is not None and body.end is not None:
+        from video_edit import FFMPEG
+        part = root / f"{slug}-source{src.suffix}"
+        cut = subprocess.run([FFMPEG, "-y", "-ss", str(body.start), "-to", str(body.end), "-i", str(src),
+                              "-c", "copy", str(part)], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if cut.returncode != 0 or not part.is_file():
+            raise HTTPException(500, "cutting the story failed: " + cut.stderr.strip()[-400:])
+        src = part
     env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
     npx = shutil.which("npx")
     if not project.exists():
         p = subprocess.run([npx, "--yes", f"hyperframes@{HF_VERSION}", "init", slug, "--example", "blank",
                             "--video", str(src), "--resolution", "portrait", "--skip-transcribe", "--non-interactive"],
                            cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           env=env, timeout=900)
+                           env=env, timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if p.returncode != 0 or not (project / "index.html").is_file():
             raise HTTPException(500, "hyperframes init failed: " + (p.stderr or p.stdout).strip()[-600:])
     old = _hf_preview.get("proc")
