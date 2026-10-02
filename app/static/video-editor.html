@@ -394,6 +394,7 @@
   }
   @keyframes sp { to { transform: rotate(360deg); } }
 </style>
+<link rel="stylesheet" href="/shell.css?v=1">
 </head>
 <body>
 <div class="app">
@@ -403,17 +404,24 @@
     <button class="back" id="backBtn" onclick="goBack()" style="display:none">‹</button>
     <h1 id="title">ตัดต่อวิดีโอ</h1>
     <span class="chip" id="engine"><span class="chip-dot"></span> …</span>
-    <a class="chip" href="/settings.html" title="ตั้งค่า ClipKit" style="text-decoration:none;color:inherit">⚙️ ตั้งค่า</a>
   </div>
   <!-- Step progress: where the editor is in the raw file -> finished clip flow -->
   <div id="stepper" style="display:none;gap:6px;padding:10px 18px 0;flex-wrap:wrap;font-size:13px"></div>
 
   <!-- Screen 1: Home -->
   <div class="screen on" id="s-home">
-    <button class="primary wide" style="padding:18px;font-size:18px" onclick="startNew()">🎬 เริ่มคลิปใหม่</button>
-    <button class="wide" style="padding:14px;font-size:16px" onclick="location.href='/cover.html'">🖼️ ทำปก</button>
-    <button class="wide" style="padding:14px;font-size:16px" onclick="location.href='/motion.html'">✨ ตัวหนังสือเคลื่อนไหว</button>
-    <button class="wide" style="padding:14px;font-size:16px" onclick="loadDrafts()">🎞️ ทำต่อโปรเจกต์เดิม</button>
+    <div class="dash-head"><h2>วันนี้ทำอะไรดี</h2><p>เริ่มจากคลิปดิบ หรือหยิบเครื่องมือที่ต้องการ</p></div>
+    <div class="dash">
+      <button class="tile hero" onclick="location.hash='new'"><span class="ic" data-ic="clip"></span>
+        <div><b>เริ่มคลิปใหม่</b><br><span>เลือกฟุตเทจ ถอดเสียง ตัดช่วงเงียบ ใส่ซับ แล้วส่งเป็นโปรเจกต์ CapCut</span></div>
+        <span class="go">เริ่ม →</span></button>
+      <button class="tile" onclick="location.hash='drafts'"><span class="ic" data-ic="drafts" style="background:#1f6feb"></span>
+        <b>ทำต่อโปรเจกต์เดิม</b><span>เปิดโปรเจกต์ CapCut ที่มีอยู่ ใส่ซับ ตัดเงียบ เปลี่ยนสไตล์</span></button>
+      <button class="tile" onclick="location.href='/cover.html'"><span class="ic" data-ic="cover" style="background:#d9480f"></span>
+        <b>ทำปก</b><span>เลือกภาพจากคลิป ใส่หัวข้อ เลือกสี เห็นตัวอย่างสด</span></button>
+      <button class="tile" onclick="location.href='/motion.html'"><span class="ic" data-ic="motion" style="background:#0f9d76"></span>
+        <b>ตัวหนังสือเคลื่อนไหว</b><span>หัวคลิปและคำโปรย ทำเป็นไฟล์พื้นใสไปวางใน CapCut</span></button>
+    </div>
     <div id="recentWrap" class="recent-list"></div>
   </div>
 
@@ -1760,6 +1768,16 @@ async function draftGrade() {
   }
 }
 
+</script>
+<script src="/shell.js?v=1"></script>
+<script>
+  document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
+  function route() {
+    if (location.hash === '#new') startNew();
+    else if (location.hash === '#drafts') loadDrafts();
+  }
+  window.addEventListener('hashchange', route);
+  route();
 </script>
 </body>
 </html>

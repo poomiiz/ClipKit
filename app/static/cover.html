@@ -30,10 +30,11 @@ button:disabled{opacity:.5;cursor:wait}
 .sw{display:flex;align-items:center;gap:6px;margin:0}
 .sw input{width:44px;height:32px;padding:2px;border-radius:8px}
 </style>
+<link rel="stylesheet" href="/shell.css?v=1">
 </head>
 <body>
 <main>
-  <div class="top"><h1>🖼️ ทำปก</h1><a href="/video-editor.html">← กลับหน้าแรก</a></div>
+  <div class="top"><h1>ทำปก</h1></div>
   <div class="card">
     <label>ภาพพื้นหลัง (เลือกคลิปวิดีโอ หรือรูป)</label>
     <div class="row"><input id="src" placeholder="D:\...\clip.mov"><button class="ghost" id="pick">เลือกไฟล์</button></div>
@@ -127,5 +128,6 @@ const q = new URLSearchParams(location.search);   // filled from the clip flow: 
 for (const k of ['src', 'l1', 'l2']) if (q.get(k)) $(k).value = q.get(k);
 refresh();
 </script>
+<script src="/shell.js?v=1"></script>
 </body>
 </html>
