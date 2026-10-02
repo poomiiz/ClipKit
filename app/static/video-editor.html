@@ -417,10 +417,6 @@
         <span class="go">เริ่ม →</span></button>
       <button class="tile" onclick="location.hash='drafts'"><span class="ic" data-ic="drafts" style="background:#1f6feb"></span>
         <b>ทำต่อโปรเจกต์เดิม</b><span>เปิดโปรเจกต์ CapCut ที่มีอยู่ ใส่ซับ ตัดเงียบ เปลี่ยนสไตล์</span></button>
-      <button class="tile" onclick="location.href='/cover.html'"><span class="ic" data-ic="cover" style="background:#d9480f"></span>
-        <b>ทำปก</b><span>เลือกภาพจากคลิป ใส่หัวข้อ เลือกสี เห็นตัวอย่างสด</span></button>
-      <button class="tile" onclick="location.href='/motion.html'"><span class="ic" data-ic="motion" style="background:#0f9d76"></span>
-        <b>ตัวหนังสือเคลื่อนไหว</b><span>หัวคลิปและคำโปรย ทำเป็นไฟล์พื้นใสไปวางใน CapCut</span></button>
     </div>
     <div id="recentWrap" class="recent-list"></div>
   </div>
@@ -540,6 +536,10 @@
               <span class="btn-ico">✨</span>
               <span class="btn-text">อนิเมชัน + Pop</span>
             </div>
+            <div class="act-btn" onclick="jump('c-motion')" title="หัวคลิปและคำโปรยแบบเคลื่อนไหว">
+              <span class="btn-ico">🔤</span>
+              <span class="btn-text">ตัวหนังสือเคลื่อนไหว</span>
+            </div>
             <div class="act-btn" onclick="jump('c-music')" title="เลือกเพลงจากคลังและปรับระดับเสียง">
               <span class="btn-ico">🎵</span>
               <span class="btn-text">เพลง BGM</span>
@@ -600,6 +600,11 @@
             <button class="small primary grow" onclick="draftStyle()">💾 ใช้สไตล์นี้กับคลิป</button>
             <button class="small ghost" onclick="go('s-style')">📂 สไตล์ที่เคยทำ</button>
           </div>
+        </div>
+
+        <!-- Motion text: the standalone page, embedded so titles are tuned while editing the clip -->
+        <div class="tool-card" id="c-motion">
+          <iframe src="/motion.html" title="ตัวหนังสือเคลื่อนไหว" style="width:100%;height:760px;border:0;border-radius:12px"></iframe>
         </div>
 
         <!-- Animation Card -->
@@ -1480,8 +1485,12 @@ const GUIDE = [
   {key: 'trim',  label: 'ตัดช่วงเงียบ',           run: () => { openAllTools(); jump('c-trim'); }},
   {key: 'check', label: 'ตรวจแก้คำผิดในซับ',      run: () => openSubs()},
   {key: 'style', label: 'ปรับสไตล์ซับ',           run: () => { openAllTools(); jump('c-style'); }},
+  {key: 'motion', label: 'หัวคลิป / คำโปรยเคลื่อนไหว', run: () => { openAllTools(); jump('c-motion'); }},
   {key: 'broll', label: 'หาภาพประกอบ (Envato)',   run: () => openStock()},
   {key: 'music', label: 'ใส่เพลง / เสียงประกอบ',  run: () => { openAllTools(); jump('c-music'); }},
+  // last: the cover needs the finished clip and its title
+  {key: 'cover', label: 'ทำปก (ขั้นสุดท้าย)',      run: () => { const d = state.draft;
+    location.href = '/cover.html?' + new URLSearchParams({src: (d.sources || [])[0] || '', l1: d.name}); }},
 ];
 function guideKey(d) { return 'ck-guide:' + d.path; }
 function guideDone(d) { try { return JSON.parse(localStorage.getItem(guideKey(d)) || '{}'); } catch { return {}; } }
@@ -1779,7 +1788,7 @@ async function draftGrade() {
 }
 
 </script>
-<script src="/shell.js?v=1"></script>
+<script src="/shell.js?v=2"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {
