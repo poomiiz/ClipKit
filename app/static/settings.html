@@ -31,32 +31,43 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 .msg{font-size:14px;margin-left:6px}
 .msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
 .ver{color:var(--mut);font-size:13px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 6px;overflow-x:auto}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--mut);padding:10px 16px;font-weight:600;white-space:nowrap}
+.tabs button:hover{color:var(--txt)}
+.tabs button.on{color:var(--txt);border-bottom-color:var(--acc)}
+.card[data-tab]{display:none}.card[data-tab].show{display:block}
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
 <body>
 <main>
   <div class="top">
-    <h1>⚙️ ตั้งค่า ClipKit</h1>
-    
+    <h1>ตั้งค่า</h1>
+  </div>
+  <div class="tabs" id="tabs">
+    <button data-go="machine">เครื่อง</button>
+    <button data-go="folders">โฟลเดอร์งาน</button>
+    <button data-go="options">ตัวเลือก</button>
+    <button data-go="envato">Envato</button>
+    <button data-go="update">อัปเดต</button>
   </div>
 
-  <div class="card">
-    <h2>1. ตรวจเครื่อง</h2>
+  <div class="card" data-tab="machine">
+    <h2>ตรวจเครื่อง</h2>
     <p class="sub">เช็กว่าเครื่องพร้อมใช้ทุกอย่าง · เขียว = พร้อม · เหลือง = เตือน (ใช้งานได้) · แดง = ต้องแก้</p>
     <div class="row"><button id="bDoctor">ตรวจเครื่อง</button><button class="ghost" id="bDoctorAsr">ตรวจ + ทดสอบถอดเสียง</button><span class="msg" id="mDoctor"></span></div>
     <div class="checks" id="checks"></div>
   </div>
 
-  <div class="card">
-    <h2>2. ติดตั้ง / ลงโปรแกรมที่ขาด</h2>
+  <div class="card" data-tab="machine">
+    <h2>ติดตั้ง / ลงโปรแกรมที่ขาด</h2>
     <p class="sub">ลง Python, ffmpeg, Chrome และโปรแกรมเสริมทั้งหมดให้อัตโนมัติ · กดซ้ำได้ ไม่เสียหาย · ครั้งแรกอาจใช้ 5–15 นาที</p>
     <div class="row"><button id="bSetup">ติดตั้ง</button><span class="msg" id="mSetup"></span></div>
     <pre id="logSetup"></pre>
   </div>
 
-  <div class="card">
-    <h2>3. โฟลเดอร์งาน</h2>
+  <div class="card" data-tab="folders">
+    <h2>โฟลเดอร์งาน</h2>
     <p class="sub">เลือกโฟลเดอร์ทำงานครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยมาตรฐานให้เอง (ทุกเครื่องในทีมจะเหมือนกัน)</p>
     <div class="row"><label>โฟลเดอร์ทำงาน</label><input id="ws" placeholder="เช่น D:\ClipKit"><button class="ghost" id="bWsPick">เลือก</button></div>
     <div class="row"><button id="bWs">ใช้โฟลเดอร์นี้</button><span class="msg" id="mWs"></span></div>
@@ -64,27 +75,39 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <details id="adv" style="margin-top:14px"><summary style="cursor:pointer;color:var(--sub)">▸ ตั้งค่าขั้นสูง — เปลี่ยนแต่ละโฟลเดอร์เอง (เช่น ใช้โฟลเดอร์เดิมที่มีอยู่แล้ว)</summary>
       <div id="folders" style="margin-top:8px"></div>
     </details>
-    <h2 style="margin-top:16px">ตัวเลือก</h2>
+  </div>
+
+  <div class="card" data-tab="options">
+    <h2>ตัวเลือก</h2>
+    <p class="sub">วิธีหาภาพ ตัวถอดเสียง และฟอนต์ของภาพตัวอย่าง</p>
     <div class="row"><label>หาภาพ Envato ผ่าน</label><select id="o_envato_backend"><option value="local">Chrome ของเครื่องนี้</option><option value="bot">บอทกลาง (เครื่องหลัก)</option></select></div>
     <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ NVIDIA (เร็ว)</option><option value="cpu">CPU (ช้า)</option></select></div>
     <div class="row"><label>ฟอนต์ภาพตัวอย่าง (ไม่บังคับ)</label><input id="o_card_font" placeholder="ชื่อฟอนต์ที่ลงในเครื่อง เช่น DB Heavent Bd v3.2.1"></div>
     <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
   </div>
 
-  <div class="card">
-    <h2>4. ล็อกอิน Envato</h2>
+  <div class="card" data-tab="envato">
+    <h2>ล็อกอิน Envato</h2>
     <p class="sub">เปิด Chrome ให้ล็อกอินบัญชีบริษัทครั้งเดียว แล้วปิดหน้าต่าง · ทุกครั้งที่โหลดภาพ = ใช้สิทธิ์ 1 ครั้ง</p>
     <div class="row"><button id="bLogin">เปิดหน้าล็อกอิน Envato</button><span class="msg" id="mLogin"></span></div>
   </div>
 
-  <div class="card">
-    <h2>5. อัปเดต ClipKit</h2>
+  <div class="card" data-tab="update">
+    <h2>อัปเดต ClipKit</h2>
     <p class="sub">ดึงเวอร์ชันล่าสุดจาก GitHub (สกิล เครื่องมือ สต๊อกโมชัน) · <span class="ver" id="ver"></span></p>
     <div class="row"><button id="bUpdate">อัปเดต</button><span class="msg" id="mUpdate"></span></div>
     <pre id="logUpdate"></pre>
   </div>
 </main>
 <script>
+// tabs: one group of settings at a time; the open tab stays in the URL (#folders) so a reload keeps it
+function showTab(t) {
+  if (!document.querySelector(`.card[data-tab="${t}"]`)) t = 'machine';
+  document.querySelectorAll('.card[data-tab]').forEach(c => c.classList.toggle('show', c.dataset.tab === t));
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.go === t));
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { history.replaceState(null, '', '#' + b.dataset.go); showTab(b.dataset.go); });
+showTab(location.hash.slice(1));
 const FOLDER_LABELS = {work_root:'ฟุตเทจดิบ', stock_video:'วิดีโอจาก Envato', stock_music:'เพลง', sfx:'เสียงประกอบ (SFX)', output_dir:'คลิปที่ส่งออก', capcut_drafts:'โปรเจกต์ CapCut (CapCut Drafts)'};
 function renderTree(folders) {
   $('wsTree').innerHTML = Object.keys(FOLDER_LABELS).map(k => {
