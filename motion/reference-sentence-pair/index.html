@@ -21,12 +21,13 @@
   .lead, .punch { position: absolute; white-space: nowrap; font-family: "Sukhumvit Set", "DB Heavent", sans-serif; font-weight: 700; }
   .lead {
     left: 92px; top: 1250px; font-size: 70px; color: #fff;
-    text-shadow: 0 0 2px #000, 0 2px 6px rgba(0,0,0,.65);
+    text-shadow: 0 0 2px #000, 0 4px 10px rgba(0,0,0,.75);
   }
   .lead .cur { display: inline-block; width: 5px; height: 62px; margin-left: 6px; background: #fff; vertical-align: -6px; box-shadow: 8px 0 0 #fff; }
   .punch {
     left: 50%; top: 1340px; font-size: 150px; color: rgb(5,17,146);
     -webkit-text-stroke: 9px #fff; paint-order: stroke fill;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,.55));
   }
 </style>
 </head>
@@ -68,8 +69,8 @@
     tl.set(cur, { opacity: 0 }, start + TYPE + 0.15);
     // punch: smear in from the left, squash back to normal
     gsap.set(pu, { xPercent: -50 });
-    tl.fromTo(pu, { opacity: 0, x: -160, scaleX: 1.9, filter: "blur(10px)" },
-                  { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px)", duration: SMEAR, ease: "power2.out" }, start + delay);
+    tl.fromTo(pu, { opacity: 0, x: -160, scaleX: 1.9, filter: "blur(10px) drop-shadow(0 6px 10px rgba(0,0,0,0))" },
+                  { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.55))", duration: SMEAR, ease: "power2.out" }, start + delay);
     tl.set(p, { opacity: 0 }, end);
   });
 
