@@ -19,7 +19,7 @@ from video_edit import VideoEditError
 
 router = APIRouter(prefix="/api/video", tags=["video-editor"])
 _transcribe_jobs: dict[str, subprocess.Popen[str]] = {}
-_KB_DIR = Path(__file__).resolve().parent.parent
+_APP_DIR = Path(__file__).resolve().parent
 
 
 class ScanRequest(BaseModel):
@@ -209,8 +209,8 @@ def start_project_transcription(req: ScanRequest) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=True)
     log = (output / "bot.log").open("a", encoding="utf-8")
     process = subprocess.Popen(
-        [sys.executable, str(_KB_DIR / "tools" / "transcribe_bps.py"), str(folder)],
-        cwd=str(_KB_DIR), stdout=log, stderr=subprocess.STDOUT, text=True,
+        [sys.executable, str(_APP_DIR / "transcribe_folder.py"), str(folder)],
+        cwd=str(_APP_DIR), stdout=log, stderr=subprocess.STDOUT, text=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     _transcribe_jobs[key] = process
