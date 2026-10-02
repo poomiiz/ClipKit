@@ -131,6 +131,62 @@ def set_workspace(body: Workspace) -> dict[str, Any]:
     return {"saved": True, "paths": paths, "capcut_drafts": cfg.get("capcut_drafts", "")}
 
 
+class HyperframesRequest(BaseModel):
+    file: str
+    name: str
+
+
+HF_VERSION = "0.8.101"
+HF_PORT = 3002
+_hf_preview: dict[str, Any] = {}
+
+
+@router.post("/hyperframes")
+def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
+    """Create a HyperFrames project from a raw clip under <output_dir>/hyperframes and open its Studio."""
+    import re
+    import shutil
+    src = Path(body.file)
+    if not src.is_file():
+        raise HTTPException(400, f"file not found: {src}")
+    if not shutil.which("npx"):
+        raise HTTPException(400, "Node.js (npx) is not installed - run setup or install Node.js 22+")
+    cfg = _read_config()
+    base = cfg.get("output_dir") or cfg.get("work_root")
+    if not base or not Path(base).is_dir():
+        raise HTTPException(400, "set the workspace folder in Settings first")
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", body.name).strip("-").lower() or "clip"
+    root = Path(base) / "hyperframes"
+    root.mkdir(parents=True, exist_ok=True)
+    project = root / slug
+    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
+    npx = shutil.which("npx")
+    if not project.exists():
+        p = subprocess.run([npx, "--yes", f"hyperframes@{HF_VERSION}", "init", slug, "--example", "blank",
+                            "--video", str(src), "--resolution", "portrait", "--skip-transcribe", "--non-interactive"],
+                           cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=env, timeout=900)
+        if p.returncode != 0 or not (project / "index.html").is_file():
+            raise HTTPException(500, "hyperframes init failed: " + (p.stderr or p.stdout).strip()[-600:])
+    old = _hf_preview.get("proc")
+    if old and old.poll() is None:
+        old.terminate()
+    _hf_preview["proc"] = subprocess.Popen(
+        [npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT), "--no-open"],
+        cwd=str(project), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    import urllib.request
+    for _ in range(60):  # wait until the studio answers
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{HF_PORT}/", timeout=1)
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        raise HTTPException(500, f"HyperFrames studio did not start on port {HF_PORT}")
+    return {"project": str(project), "url": f"http://localhost:{HF_PORT}/#project/{slug}"}
+
+
 @router.get("/capcut-detect")
 def capcut_detect() -> dict[str, str]:
     return {"path": capcut_default_drafts()}
