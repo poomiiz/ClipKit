@@ -39,7 +39,8 @@ body.shell { padding-left: var(--sb-w); font-family: "Segoe UI", "Leelawadee UI"
 .dash-head p { margin: 4px 0 0; color: #828ca4; font-size: 14px; }
 .dash { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
 .tile {
-  text-align: left; display: flex; flex-direction: column; gap: 10px; padding: 18px;
+  text-align: left !important; align-items: flex-start !important; justify-content: flex-start !important;
+  display: flex; flex-direction: column; gap: 10px; padding: 18px; width: auto; min-height: 0;
   background: #141824; border: 1px solid #262d40; border-radius: 14px; color: inherit;
   cursor: pointer; font: inherit; transition: border-color .15s, transform .15s, background .15s;
 }
@@ -48,7 +49,7 @@ body.shell { padding-left: var(--sb-w); font-family: "Segoe UI", "Leelawadee UI"
 .tile .ic svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tile b { font-size: 16px; }
 .tile span { color: #828ca4; font-size: 13.5px; line-height: 1.45; }
-.tile.hero { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 16px;
+.tile.hero { grid-column: 1 / -1; flex-direction: row; align-items: center !important; gap: 16px;
   background: linear-gradient(120deg, #2a1f63, #1a2a4a); border-color: #3b3480; }
 .tile.hero .ic { width: 52px; height: 52px; background: rgba(255,255,255,.12); }
 .tile.hero b { font-size: 19px; }
