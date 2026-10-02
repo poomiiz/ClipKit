@@ -42,9 +42,13 @@
     [2.5, 5.0, "เรื่องงานที่ต้องเสร็จ", "ตามกำหนดเวลา", 0.6],
     [5.0, 8.0, "เพื่อตอบสนอง", "โจทย์ผู้บริโภค", 1.0],
   ];
-  const TYPE = 0.5, SMEAR = 0.17;
+  const Q = new URLSearchParams(location.search);
+  // SPEED 2 = typing, punch delay and smear twice as fast as the original CapCut edit; ?speed= overrides.
+  // Pair start/end stay as written (they follow the speech).
+  const SPEED = parseFloat(Q.get("speed")) || 2;
+  const TYPE = 0.5 / SPEED, SMEAR = 0.17 / SPEED;
 
-  const bg = new URLSearchParams(location.search).get("bg");
+  const bg = Q.get("bg");
   if (bg) { const im = document.getElementById("bg"); im.src = bg; im.style.display = "block"; }
 
   const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);
@@ -66,11 +70,11 @@
     const spans = p.querySelectorAll(".ch");
     tl.set(spans, { display: "none" }, 0);
     spans.forEach((s, k) => tl.set(s, { display: "inline" }, start + TYPE * (k + 1) / spans.length));
-    tl.set(cur, { opacity: 0 }, start + TYPE + 0.15);
+    tl.set(cur, { opacity: 0 }, start + TYPE + 0.15 / SPEED);
     // punch: smear in from the left, squash back to normal
     gsap.set(pu, { xPercent: -50 });
     tl.fromTo(pu, { opacity: 0, x: -160, scaleX: 1.9, filter: "blur(10px) drop-shadow(0 6px 10px rgba(0,0,0,0))" },
-                  { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.55))", duration: SMEAR, ease: "power2.out" }, start + delay);
+                  { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.55))", duration: SMEAR, ease: "power2.out" }, start + delay / SPEED);
     tl.set(p, { opacity: 0 }, end);
   });
 
