@@ -410,32 +410,20 @@
 
   <!-- Screen 1: Home -->
   <div class="screen on" id="s-home">
-    <div class="list-grid">
-      <div class="tile" onclick="openPicker()">
-        <div class="ico">📂</div>
-        <div class="body">
-          <div class="t1">เลือกโฟลเดอร์วิดีโอใหม่</div>
-          <div class="t2">ไล่หาไฟล์วิดีโอจากไดรฟ์ในเครื่อง</div>
-        </div>
-        <div class="go">›</div>
-      </div>
-      <div class="tile" onclick="loadDrafts()">
-        <div class="ico">🎞️</div>
-        <div class="body">
-          <div class="t1">โปรเจกต์ CapCut ที่มีอยู่</div>
-          <div class="t2">ใส่ซับ · ตัดเงียบ · เปลี่ยนสไตล์ · ก๊อปสี</div>
-        </div>
-        <div class="go">›</div>
-      </div>
-    </div>
+    <button class="primary wide" style="padding:18px;font-size:18px" onclick="startNew()">🎬 เริ่มคลิปใหม่</button>
+    <button class="wide" style="padding:14px;font-size:16px" onclick="loadDrafts()">🎞️ ทำต่อโปรเจกต์เดิม</button>
     <div id="recentWrap" class="recent-list"></div>
-    <div class="hint">เริ่มงานใหม่จากไฟล์วิดีโอ หรือทำงานต่อกับโปรเจกต์ CapCut ที่มีอยู่</div>
   </div>
 
   <!-- Screen 2: Files in Folder -->
   <div class="screen" id="s-files">
+    <div style="font-weight:700;font-size:16px">แตะคลิปที่จะทำ</div>
     <div class="hint" id="folderLabel"></div>
     <div id="fileList" class="list-grid"></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <button class="small" onclick="openPicker()">📂 เปลี่ยนโฟลเดอร์</button>
+      <button class="small" id="planBtn">🤖 งานหลายกล้อง: ให้บอทจับคู่ Take</button>
+    </div>
   </div>
 
   <!-- Screen 3: New Project From Clip -->
@@ -891,6 +879,16 @@ async function applyStyle(i) {
 
 let pickerPath = '';
 
+// Home "start new clip": go straight to the workspace footage folder from Settings; ask only if none is set
+async function startNew() {
+  try {
+    const c = await fetch('/api/kit/config').then(r => r.json());
+    const footage = (c.folders || {}).work_root;
+    if (footage) { scanFolder(localStorage.getItem('ve_last') || footage); return; }
+  } catch (e) { /* settings unreachable: fall through to the folder picker */ }
+  openPicker();
+}
+
 function openPicker() {
   document.getElementById('sheet').classList.add('on');
   loadPicker(localStorage.getItem('ve_last') || '');
@@ -980,21 +978,18 @@ async function scanFolder(path) {
     const data = await api('scan', {path});
     remember(path);
     box.innerHTML = '';
-    if (!data.files.length) { box.innerHTML = '<div class="hint">ไม่พบไฟล์วิดีโอในโฟลเดอร์นี้</div>'; return; }
-    const plan = document.createElement('div');
-    plan.className = 'project-plan';
-    plan.innerHTML = '<span>🤖 ให้บอทคัดเป็นโปรเจกต์จากชุดนี้</span><button class="small primary" type="button">คัดโปรเจกต์</button>';
-    plan.querySelector('button').onclick = () => planProjects(path, box);
-    box.appendChild(plan);
+    document.getElementById('planBtn').onclick = () => planProjects(path, box);
+    if (!data.files.length) { box.innerHTML = '<div class="hint">ยังไม่มีไฟล์วิดีโอในโฟลเดอร์นี้ — ก๊อปไฟล์ดิบมาวางในโฟลเดอร์นี้ แล้วกดเปิดใหม่ หรือกด “เปลี่ยนโฟลเดอร์”</div>'; return; }
     data.files.forEach(f => {
       const div = document.createElement('div');
       div.className = 'tile';
       const mins = f.duration ? Math.floor(f.duration / 60) + ':' +
         String(Math.round(f.duration % 60)).padStart(2, '0') : '-';
+      const shape = f.height > f.width ? 'แนวตั้ง' : 'แนวนอน';
       div.innerHTML = '<div class="ico">🎬</div><div class="body"><div class="t1">' + f.name +
-        '</div><div class="t2">' + (f.folder ? f.folder + ' · ' : '') + (f.error ? '⚠ ' + f.error :
-        mins + ' · ' + f.width + '×' + f.height + ' · ' + f.size_mb + ' MB') +
+        '</div><div class="t2">' + (f.error ? '⚠ เปิดไม่ได้: ' + f.error : mins + ' นาที · ' + shape) +
         '</div></div><div class="go">›</div>';
+      div.title = (f.folder ? f.folder + ' · ' : '') + (f.width ? f.width + '×' + f.height + ' · ' + f.size_mb + ' MB' : '');
       if (!f.error) div.onclick = () => pickFile(f);
       box.appendChild(div);
     });
