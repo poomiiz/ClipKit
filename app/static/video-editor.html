@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>🎬 ตัดต่อวิดีโอ → CapCut</title>
+<style>
+  :root {
+    --bg: #0c0f17;
+    --card: #141824;
+    --card2: #1b2030;
+    --card-hover: #22283c;
+    --line: #262d40;
+    --line-light: rgba(255, 255, 255, 0.08);
+    --txt: #f1f4fb;
+    --txt-sub: #c5cde0;
+    --mut: #828ca4;
+    --acc: #7c5cff;
+    --acc-hover: #9073ff;
+    --acc-glow: rgba(124, 92, 255, 0.25);
+    --acc2: #38bdf8;
+    --ok: #10b981;
+    --ok-bg: rgba(16, 185, 129, 0.12);
+    --warn: #f59e0b;
+    --warn-bg: rgba(245, 158, 11, 0.12);
+    --danger: #ef4444;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt);
+    font-family: "Segoe UI", -apple-system, Tahoma, sans-serif; font-size: 15px;
+    line-height: 1.5;
+  }
+  .app {
+    max-width: 1240px; margin: 0 auto; min-height: 100vh; display: flex;
+    flex-direction: column; padding-bottom: 96px;
+  }
+
+  /* Top App Bar */
+  .top {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(12, 15, 23, 0.94); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 18px; display: flex; align-items: center; gap: 12px;
+  }
+  .top h1 { font-size: 17px; margin: 0; font-weight: 700; flex: 1; letter-spacing: -0.2px; }
+  .back {
+    background: var(--card2); border: 1px solid var(--line); color: var(--txt);
+    font-size: 20px; width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    min-height: auto; padding: 0; transition: all .15s ease;
+  }
+  .back:hover { background: var(--card-hover); border-color: var(--acc); }
+  .chip {
+    font-size: 11.5px; color: var(--txt-sub); background: var(--card2);
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 500;
+  }
+  .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+
+  /* Screens */
+  .screen { display: none; padding: 18px; gap: 16px; flex-direction: column; }
+  .screen.on { display: flex; }
+  #s-clip.on, #s-stock.on, #s-style.on { max-width: 760px; width: 100%; margin: 0 auto; }
+
+  /* Generic Card */
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+  .card.hit {
+    border-color: var(--acc);
+    box-shadow: 0 0 0 2px var(--acc-glow), 0 8px 28px rgba(124, 92, 255, 0.2);
+    transition: all 0.3s ease;
+  }
+
+  /* Typography & Forms */
+  .card h2 { font-size: 13.5px; color: var(--mut); margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card h3 { font-size: 16px; margin: 0; font-weight: 700; color: var(--txt); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .hint { font-size: 13px; color: var(--mut); line-height: 1.6; }
+  .busy { font-size: 13px; color: var(--warn); font-weight: 500; }
+  .text-center { text-align: center; }
+
+  button {
+    font-family: inherit; font-size: 14.5px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--txt); padding: 11px 16px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-weight: 600; min-height: 44px; transition: all .15s ease;
+  }
+  button:hover { background: var(--card-hover); border-color: rgba(255,255,255,0.15); }
+  button:active { transform: scale(0.985); }
+  button.primary {
+    background: linear-gradient(135deg, var(--acc), #6366f1);
+    border: 1px solid rgba(255,255,255,0.2); color: #fff;
+    box-shadow: 0 4px 14px var(--acc-glow);
+  }
+  button.primary:hover { background: linear-gradient(135deg, var(--acc-hover), #4f46e5); box-shadow: 0 6px 18px var(--acc-glow); }
+  button.ghost { background: transparent; border-color: transparent; }
+  button.ghost:hover { background: var(--card2); border-color: var(--line); }
+  button.small { min-height: 38px; padding: 7px 13px; font-size: 13.5px; border-radius: 10px; }
+  button.wide { width: 100%; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  input, select, textarea {
+    font-family: inherit; font-size: 14.5px; color: var(--txt); background: var(--card2);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+    transition: border-color .15s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--acc); box-shadow: 0 0 0 2px var(--acc-glow);
+  }
+  textarea { width: 100%; resize: vertical; line-height: 1.5; }
+  label { font-size: 13px; color: var(--txt-sub); font-weight: 500; }
+
+  /* Tile Lists */
+  .list-grid { display: grid; gap: 12px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .recent-list { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+  .recent-list .recent-label { color: var(--mut); font-size: 13px; }
+  .recent-list .recent-item { min-height: auto; padding: 2px 0; border: 0; background: transparent; color: var(--txt-sub); font-size: 13px; font-weight: 500; }
+  .recent-list .recent-item:hover { color: var(--txt); background: transparent; border: 0; }
+  .project-plan { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid var(--acc); border-radius:12px; background:rgba(124,92,255,.09); }
+  .tile {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; display: flex; align-items: center; gap: 14px; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .tile:hover { background: var(--card-hover); border-color: var(--acc); transform: translateY(-1px); }
+  .tile .ico { font-size: 24px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--card2); }
+  .tile .body { flex: 1; min-width: 0; }
+  .tile .t1 { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--txt); }
+  .tile .t2 { font-size: 12px; color: var(--mut); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile .go { color: var(--mut); font-size: 18px; font-weight: bold; }
+  .draft-thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; background: #000; }
+
+  /* ======================================================== */
+  /* WORKSPACE / PROJECT HERO CARD                            */
+  /* ======================================================== */
+  .hero-card {
+    background: linear-gradient(180deg, rgba(23, 27, 40, 0.95), var(--card));
+    border: 1px solid rgba(124, 92, 255, 0.2);
+    border-radius: var(--radius); padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+  .hero-top-row {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .hero-badge-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .capcut-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(124, 92, 255, 0.15); color: #c4b5fd;
+    border: 1px solid rgba(124, 92, 255, 0.3); border-radius: 6px;
+    padding: 3px 9px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .hero-title {
+    font-size: 20px; font-weight: 700; margin: 0; color: #fff; letter-spacing: -0.3px;
+    word-break: break-word;
+  }
+
+  /* Metrics Pills Bar */
+  .metrics-bar {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  }
+  .m-pill {
+    background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 7px 14px; display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--txt-sub);
+  }
+  .m-pill b { color: #fff; font-size: 14.5px; font-weight: 700; }
+  .m-pill .m-lbl { font-size: 11.5px; color: var(--mut); }
+  .m-pill.success { background: var(--ok-bg); border-color: rgba(16, 185, 129, 0.3); color: #a7f3d0; }
+  .m-pill.success b { color: #34d399; }
+
+  /* Amber Safety Callout Banner */
+  .warn-banner {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 10px; padding: 9px 14px; font-size: 13px; color: #fde68a;
+  }
+  .warn-banner .w-ico { font-size: 16px; flex-shrink: 0; }
+  .warn-banner b { color: #fbbf24; }
+
+  /* ======================================================== */
+  /* COMPACT UNIFIED WORKFLOW DECK (ประหยัดพื้นที่ กวาดตาง่าย) */
+  /* ======================================================== */
+  .workflow-deck {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px 16px;
+    display: grid; grid-template-columns: 1.25fr 1px 0.95fr 1px 1.2fr;
+    gap: 16px; align-items: stretch;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+  .deck-divider { background: var(--line); }
+
+  .deck-group {
+    display: flex; flex-direction: column; gap: 10px; justify-content: space-between;
+  }
+  .deck-head {
+    display: flex; align-items: center; gap: 7px; font-size: 11.5px;
+    font-weight: 700; color: var(--txt-sub); text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .deck-head .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot.purple { background: #a855f7; box-shadow: 0 0 6px rgba(168, 85, 247, 0.6); }
+  .dot.rose { background: #f43f5e; box-shadow: 0 0 6px rgba(244, 63, 94, 0.6); }
+  .dot.cyan { background: #06b6d4; box-shadow: 0 0 6px rgba(6, 182, 212, 0.6); }
+
+  .deck-btns {
+    display: grid; gap: 8px; flex: 1;
+  }
+  .deck-btns.grid-2x2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .deck-btns.grid-stacked {
+    grid-template-columns: 1fr;
+  }
+  .deck-btns.grid-fx {
+    grid-template-columns: 1fr 1fr;
+  }
+  .deck-btns.grid-fx .span-2 {
+    grid-column: span 2;
+  }
+
+  .act-btn {
+    background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 0 12px; display: flex; align-items: center; gap: 9px;
+    text-align: left; cursor: pointer; height: 42px; min-height: 42px;
+    transition: all .15s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .act-btn:hover {
+    background: var(--card-hover); border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .act-btn:active { transform: translateY(0); }
+
+  /* Primary highlighted action (ถอดเสียงใส่ซับ) */
+  .act-btn.featured {
+    background: linear-gradient(135deg, rgba(124, 92, 255, 0.22), rgba(79, 140, 255, 0.12));
+    border-color: rgba(124, 92, 255, 0.5);
+  }
+  .act-btn.featured:hover {
+    background: linear-gradient(135deg, rgba(124, 92, 255, 0.35), rgba(79, 140, 255, 0.22));
+    border-color: var(--acc); box-shadow: 0 0 14px var(--acc-glow);
+  }
+
+  .act-btn .btn-ico {
+    font-size: 17px; line-height: 1; flex-shrink: 0;
+  }
+  .act-btn .btn-text {
+    font-size: 13px; font-weight: 600; color: #fff; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  @media (max-width: 960px) {
+    .workflow-deck {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .deck-divider {
+      width: 100%; height: 1px;
+    }
+  }
+
+  /* ======================================================== */
+  /* TIMELINE FILMSTRIP CARD                                  */
+  /* ======================================================== */
+  .filmstrip-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .advanced-tools { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+  .advanced-tools summary { cursor: pointer; padding: 14px 18px; font-weight: 700; color: var(--txt-sub); }
+  .advanced-tools > .advanced-body { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 16px; }
+  .filmstrip-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .filmstrip-title {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--txt);
+  }
+  .strip {
+    display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 10px;
+    scroll-behavior: smooth;
+  }
+  .strip::-webkit-scrollbar { height: 6px; }
+  .strip::-webkit-scrollbar-track { background: var(--card2); border-radius: 999px; }
+  .strip::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+  .strip::-webkit-scrollbar-thumb:hover { background: var(--mut); }
+
+  .strip .f {
+    flex: 0 0 auto; width: 78px; border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--line); background: #000; position: relative;
+    cursor: pointer; transition: all .15s ease;
+  }
+  .strip .f:hover { border-color: var(--acc); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .strip .f img { width: 100%; height: 138px; object-fit: cover; display: block; }
+  .strip .f span {
+    position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; font-weight: 600;
+    background: rgba(0, 0, 0, 0.75); color: #fff; text-align: center; padding: 3px 0;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ======================================================== */
+  /* TOOLS WORKSPACE (2-COLUMN RESPONSIVE GRID)               */
+  /* ======================================================== */
+  .tools-workspace {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px; align-items: start;
+  }
+  .tool-column { display: flex; flex-direction: column; gap: 16px; }
+
+  .tool-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .tc-head {
+    display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line-light);
+    padding-bottom: 12px;
+  }
+  .tc-head .icon {
+    width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center;
+    justify-content: center; font-size: 18px; background: var(--card2); border: 1px solid var(--line);
+  }
+  .tc-head .titles { flex: 1; min-width: 0; }
+  .tc-head h3 { font-size: 15px; margin: 0; font-weight: 700; color: #fff; }
+  .tc-head p { font-size: 12px; margin: 2px 0 0; color: var(--mut); }
+
+  .form-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .form-row label { flex: 1; font-size: 13px; color: var(--txt-sub); }
+  .form-row input[type=number], .form-row input[type=text], .form-row select {
+    width: 110px; padding: 7px 10px; font-size: 13.5px;
+  }
+  .checkbox-row {
+    display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--txt-sub);
+    padding: 4px 0;
+  }
+  .checkbox-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--acc); cursor: pointer; }
+
+  /* 9:16 Video Preview Mockup */
+  .preview {
+    position: relative; width: 100%; max-width: 250px; aspect-ratio: 9/16; margin: 0 auto;
+    border-radius: 14px; overflow: hidden; background: #000; border: 2px solid var(--line);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  }
+  .preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .preview .cap {
+    position: absolute; left: 6%; right: 6%; text-align: center; line-height: 1.25;
+    font-family: "DB Heavent Bd", "DB Heavent", "Segoe UI", Tahoma, sans-serif;
+    font-weight: 700; color: #fff; white-space: pre-line; pointer-events: none;
+  }
+
+  /* Subtitle Editor Screen */
+  .sub {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .sub .time { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--mut); }
+  .sub .time input[type=number] { width: 88px; padding: 8px; font-size: 14px; }
+  .sub textarea { min-height: 56px; }
+
+  /* Bottom Sticky Bar */
+  .bar {
+    position: fixed; bottom: 0; left: 0; right: 0; background: rgba(12, 15, 23, 0.96);
+    backdrop-filter: blur(12px); border-top: 1px solid var(--line);
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+    display: flex; justify-content: center; z-index: 30;
+  }
+  .bar .inner { max-width: 1240px; width: 100%; display: flex; gap: 10px; }
+
+  /* Bottom Sheet */
+  .sheet { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px); z-index: 40; display: none; align-items: center; padding: 16px; }
+  .sheet.on { display: flex; }
+  .sheet .panel {
+    background: var(--card); width: 100%; max-height: calc(100vh - 32px); border-radius: 22px;
+    display: flex; flex-direction: column; max-width: 580px; margin: 0 auto;
+    border: 1px solid var(--line); box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
+  }
+  .sheet .head { padding: 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .sheet .list { overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .sheet .foot { padding: 14px 16px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
+
+  /* Messages & Badges */
+  .msg { border-radius: 12px; padding: 12px 16px; font-size: 13.5px; display: none; line-height: 1.55; }
+  .msg.on { display: block; }
+  .msg.ok { background: var(--ok-bg); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.35); }
+  .msg.err { background: rgba(239, 68, 68, 0.12); color: #fecaca; border: 1px solid rgba(239, 68, 68, 0.35); }
+  .spin {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid var(--warn);
+    border-top-color: transparent; border-radius: 50%; animation: sp .8s linear infinite; vertical-align: -2px;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top Sticky Navigation -->
+  <div class="top">
+    <button class="back" id="backBtn" onclick="goBack()" style="display:none">‹</button>
+    <h1 id="title">ตัดต่อวิดีโอ</h1>
+    <span class="chip" id="engine"><span class="chip-dot"></span> …</span>
+  </div>
+
+  <!-- Screen 1: Home -->
+  <div class="screen on" id="s-home">
+    <div class="list-grid">
+      <div class="tile" onclick="openPicker()">
+        <div class="ico">📂</div>
+        <div class="body">
+          <div class="t1">เลือกโฟลเดอร์วิดีโอใหม่</div>
+          <div class="t2">ไล่หาไฟล์วิดีโอจากไดรฟ์ในเครื่อง</div>
+        </div>
+        <div class="go">›</div>
+      </div>
+      <div class="tile" onclick="loadDrafts()">
+        <div class="ico">🎞️</div>
+        <div class="body">
+          <div class="t1">โปรเจกต์ CapCut ที่มีอยู่</div>
+          <div class="t2">ใส่ซับ · ตัดเงียบ · เปลี่ยนสไตล์ · ก๊อปสี</div>
+        </div>
+        <div class="go">›</div>
+      </div>
+    </div>
+    <div id="recentWrap" class="recent-list"></div>
+    <div class="hint">เริ่มงานใหม่จากไฟล์วิดีโอ หรือทำงานต่อกับโปรเจกต์ CapCut ที่มีอยู่</div>
+  </div>
+
+  <!-- Screen 2: Files in Folder -->
+  <div class="screen" id="s-files">
+    <div class="hint" id="folderLabel"></div>
+    <div id="fileList" class="list-grid"></div>
+  </div>
+
+  <!-- Screen 3: New Project From Clip -->
+  <div class="screen" id="s-clip">
+    <div class="card">
+      <h2>คลิปที่เลือก</h2>
+      <div id="clipInfo" class="hint"></div>
+      <label>ตั้งชื่อโปรเจกต์</label>
+      <input id="pname">
+      <div class="hint">สร้างโปรเจกต์ก่อน แล้วค่อยถอดเสียง ตัดช่วงเงียบ ใส่สไตล์ ทุกอย่างจะถูกบันทึกลงโปรเจกต์ทันที</div>
+    </div>
+    <div class="msg" id="result"></div>
+  </div>
+
+  <!-- Screen 4: Drafts List -->
+  <div class="screen" id="s-drafts">
+    <div class="hint" id="draftsHint">โปรเจกต์ใน CapCut · ใหม่สุดอยู่บน</div>
+    <div id="draftList" class="list-grid"></div>
+  </div>
+
+  <!-- Screen 5: Project Workbench (S-DRAFT) -->
+  <div class="screen" id="s-draft">
+    
+    <!-- Hero Project Header & Quick Launcher -->
+    <div class="hero-card">
+      <div class="hero-top-row">
+        <div class="p-title-box">
+          <div class="hero-badge-row">
+            <span class="capcut-badge">CapCut Draft</span>
+            <span class="chip" id="draftStatusChip"><span class="chip-dot"></span> พร้อมแก้ไข</span>
+          </div>
+          <h2 id="draftProjectTitle" class="hero-title">โปรเจกต์</h2>
+        </div>
+      </div>
+      
+      <!-- Metrics Pills -->
+      <div class="metrics-bar" id="draftMetricsBar">
+        <div class="m-pill"><span class="m-ico">⏱️</span> <b id="mDuration">-</b> <span class="m-lbl">ความยาว</span></div>
+        <div class="m-pill"><span class="m-ico">🎬</span> <b id="mSegments">-</b> <span class="m-lbl">ท่อนวิดีโอ</span></div>
+        <div class="m-pill"><span class="m-ico">💬</span> <b id="mSubtitles">-</b> <span class="m-lbl">บรรทัดซับ</span></div>
+        <div class="m-pill success" id="mGradePill" style="display:none"><span class="m-ico">🎨</span> <b>เกรดสีแล้ว</b></div>
+      </div>
+
+      <!-- Safety Callout Banner -->
+      <div class="warn-banner">
+        <span class="w-ico">⚠️</span>
+        <div><b>ข้อควรระวัง:</b> กรุณาปิดโปรแกรม CapCut ก่อนกดแก้ไขทุกครั้ง เพื่อป้องกันไฟล์เซฟทับ</div>
+      </div>
+
+      <!-- Compact Unified Workflow Deck -->
+      <div class="workflow-deck">
+        
+        <!-- Column 1: Subtitles -->
+        <div class="deck-group">
+          <div class="deck-head"><span class="dot purple"></span> 💬 ซับไตเติล</div>
+          <div class="deck-btns grid-2x2">
+            <div class="act-btn featured" onclick="draftTranscribe()" title="ถอดเสียงอัตโนมัติด้วย Whisper GPU">
+              <span class="btn-ico">🎙️</span>
+              <span class="btn-text">ถอดเสียงใส่ซับ</span>
+            </div>
+            <div class="act-btn" onclick="fillSubsAction()" title="ตรวจและถอดเฉพาะคลิปที่เพิ่งตัดเพิ่มใหม่">
+              <span class="btn-ico">🩹</span>
+              <span class="btn-text">เติมซับที่ขาด</span>
+            </div>
+            <div class="act-btn" onclick="openSubs()" title="แก้คำผิด / ไฮไลต์ประโยคสำคัญ">
+              <span class="btn-ico">✍️</span>
+              <span class="btn-text">ตรวจแก้ซับ</span>
+            </div>
+            <div class="act-btn" onclick="jump('c-style')" title="ขนาด, ฟอนต์, ขอบดำ, สี, ตำแหน่ง">
+              <span class="btn-ico">🅰️</span>
+              <span class="btn-text">ปรับสไตล์ซับ</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="deck-divider"></div>
+
+        <!-- Column 2: Cut & Color -->
+        <div class="deck-group">
+          <div class="deck-head"><span class="dot rose"></span> ✂️ ตัดต่อ & ปรับภาพ</div>
+          <div class="deck-btns grid-stacked">
+            <div class="act-btn" onclick="jump('c-trim')" title="ตรวจหา Dead Air และตัดรวดเดียว">
+              <span class="btn-ico">✂️</span>
+              <span class="btn-text">ตัดช่วงเงียบอัตโนมัติ</span>
+            </div>
+            <div class="act-btn" onclick="jump('c-grade')" title="ดึง Color Preset จากคลิปที่ทำแล้ว">
+              <span class="btn-ico">🎨</span>
+              <span class="btn-text">ก๊อปเกรดสี</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="deck-divider"></div>
+
+        <!-- Column 3: Audio & FX -->
+        <div class="deck-group">
+          <div class="deck-head"><span class="dot cyan"></span> ✨ เสียง & ลูกเล่น</div>
+          <div class="deck-btns grid-fx">
+            <div class="act-btn" onclick="jump('c-anim')" title="เพิ่มโมชันขยับและ Sound FX">
+              <span class="btn-ico">✨</span>
+              <span class="btn-text">อนิเมชัน + Pop</span>
+            </div>
+            <div class="act-btn" onclick="jump('c-music')" title="เลือกเพลงจากคลังและปรับระดับเสียง">
+              <span class="btn-ico">🎵</span>
+              <span class="btn-text">เพลง BGM</span>
+            </div>
+            <div class="act-btn span-2" onclick="openStock()" title="บอทช่วยค้นหาคลิปเสริมจากคลัง Envato">
+              <span class="btn-ico">🔍</span>
+              <span class="btn-text">หาฟุตเทจ Envato</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="busy" id="dtBusy"></div>
+      <div class="hint" id="subsSummary"></div>
+      <div class="hint" id="draftInfo" style="display:none"></div>
+    </div>
+
+    <details class="advanced-tools" id="advancedTools">
+      <summary>⚙️ ปรับละเอียด / ดูไทม์ไลน์</summary>
+      <div class="advanced-body">
+    <!-- Timeline Filmstrip -->
+    <div class="filmstrip-card">
+      <div class="filmstrip-head">
+        <span class="filmstrip-title">🎬 ท่อนในไทม์ไลน์ (Timeline Cuts)</span>
+        <span class="chip" id="stripNote">กำลังอ่านข้อมูล…</span>
+      </div>
+      <div class="strip" id="filmstrip"><div class="hint">กำลังโหลดภาพ…</div></div>
+    </div>
+
+    <!-- Responsive 2-Column Tools Workspace -->
+    <div class="tools-workspace">
+      
+      <!-- Column 1: Subtitles & Visuals -->
+      <div class="tool-column">
+        
+        <!-- Style Card with 9:16 Mockup -->
+        <div class="tool-card" id="c-style">
+          <div class="tc-head">
+            <div class="icon">🅰️</div>
+            <div class="titles">
+              <h3>สไตล์ซับไตเติลทั้งคลิป</h3>
+              <p>ปรับขนาด สี ขอบ และตำแหน่งพร้อมพรีวิวแบบ 9:16</p>
+            </div>
+          </div>
+          <div class="preview" id="preview">
+            <img id="previewImg" alt="">
+            <div class="cap" id="previewCap">ตัวอย่างข้อความซับ
+ขนาดนี้บนจอจริง</div>
+          </div>
+          <div class="hint text-center">พรีวิวบนเฟรมจริงของคลิปนี้ · อัปเดตทันทีที่ปรับ</div>
+          <div class="form-row"><label>ขนาดตัวอักษร</label><input id="dSize" type="number" value="18"></div>
+          <div class="form-row"><label>ตำแหน่งแนวตั้ง (-1 ล่างสุด, 0 กลาง)</label><input id="dY" type="number" step="0.05" value="-0.6"></div>
+          <div class="form-row"><label>ความหนาขอบดำ</label><input id="dStroke" type="number" step="0.01" value="0.05"></div>
+          <div class="form-row"><label>สีตัวอักษร</label><input id="dColor" type="color" value="#ffffff" style="padding:4px;cursor:pointer"></div>
+          <div class="row">
+            <button class="small primary grow" onclick="draftStyle()">💾 ใช้สไตล์นี้กับคลิป</button>
+            <button class="small ghost" onclick="go('s-style')">📂 สไตล์ที่เคยทำ</button>
+          </div>
+        </div>
+
+        <!-- Animation Card -->
+        <div class="tool-card" id="c-anim">
+          <div class="tc-head">
+            <div class="icon">✨</div>
+            <div class="titles">
+              <h3>อนิเมชัน & เสียง Pop</h3>
+              <p>ใส่ลูกเล่นการเคลื่อนไหวให้ข้อความหรือภาพ</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>เป้าหมายที่จะใส่</label>
+            <div class="row grow">
+              <button class="small grow primary" id="an-text" onclick="setAnimTarget('text')">ข้อความซับ</button>
+              <button class="small grow" id="an-video" onclick="setAnimTarget('video')">ภาพวิดีโอ</button>
+            </div>
+          </div>
+          <div class="form-row"><label>เลือกอนิเมชัน</label><select id="animName" class="grow"></select></div>
+          <div class="form-row"><label>ความยาว (วินาที)</label><input id="animDur" type="number" step="0.1" value="0.5"></div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="animSound" checked>
+            <label for="animSound">ใส่เสียง Pop ตามจังหวะซับด้วย</label>
+          </div>
+          <div class="row">
+            <button class="primary small grow" onclick="applyAnimation()">ใส่อนิเมชัน</button>
+            <button class="small ghost" onclick="clearAnimation()">เอาออก</button>
+            <button class="small ghost" onclick="clearSounds()">ลบเสียง</button>
+          </div>
+          <div class="busy" id="anBusy"></div>
+        </div>
+
+      </div>
+
+      <!-- Column 2: Edit, Fill & Media -->
+      <div class="tool-column">
+        
+        <!-- Fill Gaps Card -->
+        <div class="tool-card" id="c-fill">
+          <div class="tc-head">
+            <div class="icon">🩹</div>
+            <div class="titles">
+              <h3>เติมซับเฉพาะช่วงที่ยังไม่มี</h3>
+              <p>ถอดเสียงเฉพาะท่อนที่เพิ่มฟุตเทจทีหลัง โดยไม่แตะซับเดิม</p>
+            </div>
+          </div>
+          <div class="form-row"><label>ช่วงว่างขั้นต่ำที่นับ (วินาที)</label><input id="fillGap" type="number" step="0.5" value="1"></div>
+          <div class="row">
+            <button class="small grow" onclick="fillGaps(false)">🔍 สแกนดูก่อน</button>
+            <button class="small grow primary" onclick="fillGaps(true)">⚡ เติมซับเลย</button>
+          </div>
+          <div class="busy" id="fgBusy"></div>
+          <div class="hint" id="fgList"></div>
+        </div>
+
+        <!-- Trim Silence Card -->
+        <div class="tool-card" id="c-trim">
+          <div class="tc-head">
+            <div class="icon">✂️</div>
+            <div class="titles">
+              <h3>ตัดช่วงเงียบในโปรเจกต์ (Smart Cut)</h3>
+              <p>ตัดเสียงเงียบ Dead air อัตโนมัติ ซับไตเติลจะเลื่อนตามให้</p>
+            </div>
+          </div>
+          <div class="row">
+            <button class="small grow" onclick="draftTrim(false)">🔍 ดูก่อนว่าจะตัดจุดไหน</button>
+            <button class="small grow primary" onclick="draftTrim(true)">✂️ ตัดช่วงเงียบเลย</button>
+          </div>
+          <div class="busy" id="dcBusy"></div>
+        </div>
+
+        <!-- Background Music Card -->
+        <div class="tool-card" id="c-music">
+          <div class="tc-head">
+            <div class="icon">🎵</div>
+            <div class="titles">
+              <h3>เพลงประกอบ (BGM)</h3>
+              <p>เลือกเพลงคลอจากคลังและควบคุมระดับเสียง</p>
+            </div>
+          </div>
+          <div class="form-row"><label>เลือกเพลง</label><select id="musicPick" class="grow"></select></div>
+          <div class="form-row"><label>ความดังเพลง (%)</label><input id="musicVol" type="number" step="1" value="10"></div>
+          <div class="row">
+            <button class="small grow" onclick="previewMusic()">▶️ ฟังตัวอย่าง</button>
+            <button class="primary small grow" onclick="applyMusic()">🎵 ใส่เพลงลงคลิป</button>
+          </div>
+          <audio id="musicPlayer" controls style="width:100%;display:none;margin-top:6px"></audio>
+          <div class="busy" id="muBusy"></div>
+        </div>
+
+        <!-- Color Grade Card -->
+        <div class="tool-card" id="c-grade">
+          <div class="tc-head">
+            <div class="icon">🎨</div>
+            <div class="titles">
+              <h3>ก๊อปเกรดสีจากโปรเจกต์อื่น</h3>
+              <p>ดึงโทนสีและ Color Grading จากคลิปที่แต่งแล้ว</p>
+            </div>
+          </div>
+          <div class="form-row"><label>เลือกโปรเจกต์ต้นทาง</label><select id="gradeFrom" class="grow"></select></div>
+          <button class="small wide primary" onclick="draftGrade()">🎨 ก๊อปสีมาใส่คลิปนี้</button>
+        </div>
+
+      </div>
+
+    </div>
+
+      </div>
+    </details>
+    <div class="msg" id="draftMsg"></div>
+  </div>
+
+  <!-- Screen 6: Edit Subtitles -->
+  <div class="screen" id="s-subs">
+    <div class="card">
+      <h2>สไตล์บรรทัดเน้น</h2>
+      <div class="form-row"><label>ขนาด</label><input id="emSize" type="number" value="24"></div>
+      <div class="form-row"><label>ตำแหน่งแนวตั้ง</label><input id="emY" type="number" step="0.05" value="-0.45"></div>
+      <div class="form-row"><label>สี</label><input id="emColor" type="color" value="#ffd84d" style="padding:4px"></div>
+      <div class="hint">บรรทัดธรรมดาใช้สไตล์หลักของโปรเจกต์ · บรรทัดเน้นใช้ค่านี้</div>
+    </div>
+    <div class="row">
+      <button class="small grow" onclick="loadSubs(true)">ให้ระบบเลือกใหม่</button>
+      <button class="small grow" onclick="markAll(false)">ล้างการเน้น</button>
+    </div>
+    <div class="busy" id="subsBusy"></div>
+    <div id="subsList" class="list-grid"></div>
+  </div>
+
+  <!-- Screen 7: Stock Footage -->
+  <div class="screen" id="s-stock">
+    <div class="card">
+      <h2>คำค้น</h2>
+      <input id="stockQuery" placeholder="เช่น construction site inspection">
+      <div class="row">
+        <button class="small grow" onclick="suggestTerms()">แปลจากซับให้</button>
+        <button class="primary grow" onclick="runStockSearch()">ค้นใน Envato</button>
+      </div>
+      <div class="busy" id="stBusy"></div>
+      <div class="hint">บอทจะค้นในหน้าต่าง Chrome ที่พี่ล็อกอินไว้ แล้วส่งภาพผลลัพธ์กลับมา · การกดโหลดยังต้องเป็นพี่กดเอง เพราะผูกกับใบอนุญาตของบัญชี</div>
+    </div>
+    <div id="stockTerms" class="list-grid"></div>
+    <div id="stockResult"></div>
+  </div>
+
+  <!-- Screen 8: Preset Styles -->
+  <div class="screen" id="s-style">
+    <div class="card">
+      <h2>สไตล์ซับจากงานที่เคยทำ</h2>
+      <div class="hint">เลือกแล้วจะใช้กับโปรเจกต์ที่เปิดอยู่</div>
+      <div id="styleList" class="list-grid"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom Sticky Action Bar -->
+<div class="bar" id="bar" style="display:none">
+  <div class="inner">
+    <button class="primary wide" id="mainAction" onclick="makeDraft()">🚀 สร้างโปรเจกต์ แล้วไปต่อ</button>
+  </div>
+</div>
+
+<!-- Picker Bottom Sheet -->
+<div class="sheet" id="sheet">
+  <div class="panel">
+    <div class="head">
+      <b class="grow">เลือกโฟลเดอร์</b>
+      <button class="small ghost" onclick="closePicker()">ปิด</button>
+    </div>
+    <div class="row" style="padding:10px 14px 0;gap:6px" id="drives"></div>
+    <div class="list" id="pickerList"></div>
+    <div class="foot">
+      <div class="hint grow" id="pickerHere"></div>
+      <button class="primary small" onclick="usePicked()">ใช้ที่นี่</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {file: null, styles: [], stack: [], mode: 'normal'};
+
+async function api(path, body) {
+  const res = await fetch('/api/video/' + path, {
+    method: body !== undefined ? 'POST' : 'GET',
+    headers: {'Content-Type': 'application/json'},
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({detail: 'ตอบกลับไม่ถูกต้อง'}));
+  if (!res.ok) throw new Error(data.detail || res.status);
+  return data;
+}
+
+const TITLES = {
+  's-home': 'ตัดต่อวิดีโอ', 's-files': 'เลือกคลิป', 's-clip': 'คลิปนี้',
+  's-style': 'สไตล์ตัวอักษร', 's-subs': 'แก้ซับ', 's-stock': 'หาฟุตประกอบ',
+  's-drafts': 'โปรเจกต์ CapCut', 's-draft': 'โปรเจกต์นี้'
+};
+
+function go(id, push) {
+  if (push !== false) {
+    const now = document.querySelector('.screen.on');
+    if (now && now.id !== id) state.stack.push(now.id);
+  }
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+  const target = document.getElementById(id);
+  if (target) target.classList.add('on');
+  document.getElementById('title').textContent = TITLES[id] || 'ตัดต่อวิดีโอ';
+  document.getElementById('backBtn').style.display = state.stack.length ? 'flex' : 'none';
+  const bar = document.getElementById('bar');
+  const main = document.getElementById('mainAction');
+  if (id === 's-clip' && state.file) {
+    bar.style.display = 'flex';
+    main.textContent = '🚀 สร้างโปรเจกต์ แล้วไปต่อ';
+    main.onclick = makeDraft;
+  } else if (id === 's-subs' && state.draft) {
+    bar.style.display = 'flex';
+    main.textContent = '💾 บันทึกลงโปรเจกต์ CapCut';
+    main.onclick = saveSubs;
+  } else {
+    bar.style.display = 'none';
+  }
+  window.scrollTo(0, 0);
+}
+
+function goBack() {
+  const prev = state.stack.pop();
+  if (prev) go(prev, false);
+}
+
+api('config').then(c => {
+  const engineEl = document.getElementById('engine');
+  if (engineEl) {
+    engineEl.innerHTML = '<span class="chip-dot"></span> ' + (c.gpu ? 'GPU · large-v3' : 'CPU · medium');
+  }
+}).catch(() => { 
+  const engineEl = document.getElementById('engine');
+  if (engineEl) engineEl.innerHTML = '<span class="chip-dot" style="background:#ef4444"></span> ต่อไม่ได้';
+});
+
+api('presets').then(p => {
+  state.styles = p.styles || [];
+  const box = document.getElementById('styleList');
+  if (!box) return;
+  box.innerHTML = '';
+  state.styles.forEach((st, i) => {
+    const div = document.createElement('div');
+    div.className = 'tile';
+    div.innerHTML = '<div class="ico">🅰️</div><div class="body"><div class="t1">' + st.series +
+      '</div><div class="t2">ขนาด ' + st.sub_size + ' · ขอบ ' + st.sub_stroke +
+      ' · ใช้ใน ' + st.projects + ' โปรเจกต์</div></div><div class="go">›</div>';
+    div.onclick = () => applyStyle(i);
+    box.appendChild(div);
+  });
+}).catch(() => {});
+
+async function applyStyle(i) {
+  const st = state.styles[i];
+  if (!st) return;
+  document.getElementById('dSize').value = st.sub_size;
+  document.getElementById('dY').value = st.sub_y;
+  document.getElementById('dStroke').value = st.sub_stroke;
+  if (String(st.sub_color).startsWith('#')) document.getElementById('dColor').value = st.sub_color;
+  goBack();
+  if (state.draft) await draftStyle();
+}
+
+let pickerPath = '';
+
+function openPicker() {
+  document.getElementById('sheet').classList.add('on');
+  loadPicker(localStorage.getItem('ve_last') || '');
+}
+function closePicker() { document.getElementById('sheet').classList.remove('on'); }
+
+async function loadPicker(path) {
+  const list = document.getElementById('pickerList');
+  list.innerHTML = '<div class="hint">กำลังอ่าน…</div>';
+  try {
+    const d = await api('browse', {path: path || null});
+    pickerPath = d.path;
+    document.getElementById('pickerHere').textContent =
+      d.path ? d.path + (d.videos ? ' · วิดีโอ ' + d.videos : '') : 'เลือกไดรฟ์';
+    const drives = document.getElementById('drives');
+    drives.innerHTML = '';
+    d.drives.forEach(dr => {
+      const b = document.createElement('button');
+      b.className = 'small';
+      b.textContent = dr.name;
+      b.onclick = () => loadPicker(dr.path);
+      drives.appendChild(b);
+    });
+    if (d.parent) {
+      const up = document.createElement('button');
+      up.className = 'small';
+      up.textContent = '⬆';
+      up.onclick = () => loadPicker(d.parent);
+      drives.appendChild(up);
+    }
+    list.innerHTML = '';
+    if (!d.folders.length) list.innerHTML = '<div class="hint">ไม่มีโฟลเดอร์ย่อย</div>';
+    d.folders.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'tile';
+      div.innerHTML = '<div class="ico">📁</div><div class="body"><div class="t1">' + f.name +
+        '</div><div class="t2">' + (f.videos < 0 ? 'เปิดไม่ได้' : 'วิดีโอ ' + f.videos + ' ไฟล์') +
+        '</div></div><div class="go">›</div>';
+      div.onclick = () => loadPicker(f.path);
+      list.appendChild(div);
+    });
+  } catch (e) {
+    list.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+  }
+}
+
+function usePicked() {
+  if (!pickerPath) return;
+  closePicker();
+  scanFolder(pickerPath);
+}
+
+function remember(path) {
+  localStorage.setItem('ve_last', path);
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('ve_recent') || '[]'); } catch (e) {}
+  list = [path].concat(list.filter(p => p !== path)).slice(0, 5);
+  try { localStorage.setItem('ve_recent', JSON.stringify(list)); } catch (e) {}
+  renderRecent();
+}
+
+function renderRecent() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('ve_recent') || '[]'); } catch (e) {}
+  const wrap = document.getElementById('recentWrap');
+  if (!wrap) return;
+  wrap.innerHTML = list.length ? '<span class="recent-label">เปิดล่าสุด</span>' : '';
+  list.forEach(p => {
+    const div = document.createElement('button');
+    div.type = 'button';
+    div.className = 'recent-item';
+    const name = p.split(/[\\/]/).filter(Boolean).pop() || p;
+    div.textContent = '· ' + name;
+    div.title = p;
+    div.onclick = () => scanFolder(p);
+    wrap.appendChild(div);
+  });
+}
+renderRecent();
+
+async function scanFolder(path) {
+  const box = document.getElementById('fileList');
+  document.getElementById('folderLabel').textContent = path;
+  box.innerHTML = '<div class="hint">กำลังสแกน…</div>';
+  go('s-files');
+  try {
+    const data = await api('scan', {path});
+    remember(path);
+    box.innerHTML = '';
+    if (!data.files.length) { box.innerHTML = '<div class="hint">ไม่พบไฟล์วิดีโอในโฟลเดอร์นี้</div>'; return; }
+    const plan = document.createElement('div');
+    plan.className = 'project-plan';
+    plan.innerHTML = '<span>🤖 ให้บอทคัดเป็นโปรเจกต์จากชุดนี้</span><button class="small primary" type="button">คัดโปรเจกต์</button>';
+    plan.querySelector('button').onclick = () => planProjects(path, box);
+    box.appendChild(plan);
+    data.files.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'tile';
+      const mins = f.duration ? Math.floor(f.duration / 60) + ':' +
+        String(Math.round(f.duration % 60)).padStart(2, '0') : '-';
+      div.innerHTML = '<div class="ico">🎬</div><div class="body"><div class="t1">' + f.name +
+        '</div><div class="t2">' + (f.folder ? f.folder + ' · ' : '') + (f.error ? '⚠ ' + f.error :
+        mins + ' · ' + f.width + '×' + f.height + ' · ' + f.size_mb + ' MB') +
+        '</div></div><div class="go">›</div>';
+      if (!f.error) div.onclick = () => pickFile(f);
+      box.appendChild(div);
+    });
+  } catch (e) {
+    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+  }
+}
+
+async function planProjects(path, box) {
+  box.innerHTML = '<div class="hint">🤖 กำลังจับคู่ Take กล้องหลักและกล้องเสริม…</div>';
+  try {
+    const data = await api('projects/plan', {path});
+    document.getElementById('folderLabel').textContent = 'บอทจัดได้ ' + data.count + ' กลุ่มโปรเจกต์ · กดเลือกกลุ่มเพื่อสร้างต่อ';
+    box.innerHTML = '';
+    const controls = document.createElement('div');
+    controls.className = 'project-plan';
+    controls.innerHTML = '<span id="transcribeStatus">Fast Pass · ทุกไฟล์ ' + data.count + ' ไฟล์</span><button class="small primary" type="button">🤖 ถอด + สรุปหัวข้อ</button>';
+    controls.querySelector('button').onclick = () => startTranscription(path, controls.querySelector('button'));
+    box.appendChild(controls);
+    data.plans.forEach(plan => {
+      const div = document.createElement('div');
+      div.className = 'tile';
+      const secondary = plan.secondary.map(file => file.name).join(' + ') || 'ไม่มีไฟล์กล้องเสริมที่แมตช์';
+      const sync = plan.sync === 'needs_audio_check'
+        ? 'ต่าง ' + Math.abs(plan.offset) + ' วิ · รอตรวจซิงก์เสียง' : 'กล้องเดี่ยว';
+      div.innerHTML = '<div class="ico">🎬</div><div class="body"><div class="t1">กลุ่ม ' + plan.take + ' · ' + plan.camera_count + ' กล้อง · ' + plan.file_count + ' ไฟล์</div>' +
+        '<div class="t2">หลัก: ' + plan.main.name + ' · เสริม: ' + secondary + ' · ' + sync + '</div></div><div class="go">›</div>';
+      div.onclick = () => pickFile(plan.main);
+      box.appendChild(div);
+    });
+  } catch (e) {
+    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+  }
+}
+
+async function startTranscription(path, button) {
+  button.disabled = true;
+  try {
+    await api('projects/transcribe', {path});
+    document.getElementById('transcribeStatus').textContent = '🤖 Fast Pass กำลังถอดและสรุป…';
+    window.clearInterval(state.transcribePoll);
+    state.transcribePoll = window.setInterval(() => refreshTranscription(path), 3000);
+    refreshTranscription(path);
+  } catch (e) {
+    button.disabled = false;
+    document.getElementById('transcribeStatus').textContent = '❌ ' + e.message;
+  }
+}
+
+async function refreshTranscription(path) {
+  try {
+    const status = await api('projects/transcribe/status?path=' + encodeURIComponent(path));
+    const label = document.getElementById('transcribeStatus');
+    if (!label) return;
+    label.textContent = status.status === 'running'
+      ? '🤖 Fast Pass ' + status.completed + '/' + status.takes + ' Take'
+      : 'Fast Pass เสร็จ ' + status.completed + '/' + status.takes + ' ไฟล์ · พร้อมเคาะหัวข้อ';
+    if (status.status !== 'running') { window.clearInterval(state.transcribePoll); showTranscriptResults(path); }
+  } catch (_) {}
+}
+
+async function showTranscriptResults(path) {
+  const data = await api('projects/transcribe/results?path=' + encodeURIComponent(path));
+  const box = document.getElementById('fileList');
+  data.results.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'tile';
+    const review = item.review || {};
+    div.innerHTML = '<div class="ico">📝</div><div class="body"><div class="t1">' + (review.title || item.file) + '</div><div class="t2">' + (review.hook || review.summary || 'กดอ่านบทถอดเสียง') + '</div></div><div class="go">อ่าน ›</div>';
+    div.onclick = () => { const text = document.createElement('pre'); text.className = 'hint'; text.style.whiteSpace = 'pre-wrap'; text.textContent = item.markdown; div.replaceWith(text); };
+    box.appendChild(div);
+  });
+}
+
+function pickFile(f) {
+  state.file = f;
+  document.getElementById('pname').value = f.name.replace(/\.[^.]+$/, '');
+  document.getElementById('clipInfo').textContent =
+    f.name + ' · ' + f.duration + ' วินาที · ' + (f.vertical ? 'แนวตั้ง' : 'แนวนอน');
+  document.getElementById('result').className = 'msg';
+  go('s-clip');
+}
+
+['dSize', 'dY', 'dStroke', 'dColor'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', drawPreview);
+});
+
+/* ── subtitle editor ──────────────────────────────── */
+function openSubs() {
+  go('s-subs');
+  loadSubs(true);
+}
+
+function subRow(sub, emphasis) {
+  const div = document.createElement('div');
+  div.className = 'sub';
+  div.dataset.start = sub.start;
+  div.dataset.end = sub.end;
+
+  const head = document.createElement('div');
+  head.className = 'time';
+  head.innerHTML = '<span>' + sub.start.toFixed(2) + ' → ' + sub.end.toFixed(2) + '</span><span class="grow"></span>';
+  const mark = document.createElement('button');
+  mark.className = 'small' + (emphasis ? ' primary' : '');
+  mark.textContent = emphasis ? 'เน้น' : 'ธรรมดา';
+  mark.dataset.on = emphasis ? '1' : '';
+  mark.onclick = () => {
+    const on = !mark.dataset.on;
+    mark.dataset.on = on ? '1' : '';
+    mark.className = 'small' + (on ? ' primary' : '');
+    mark.textContent = on ? 'เน้น' : 'ธรรมดา';
+    countEmphasis();
+  };
+  head.appendChild(mark);
+
+  const area = document.createElement('textarea');
+  area.className = 't';
+  area.value = sub.text || '';
+
+  div.appendChild(head);
+  div.appendChild(area);
+  return div;
+}
+
+function countEmphasis() {
+  const rows = document.querySelectorAll('#subsList .sub');
+  const on = [...rows].filter(r => r.querySelector('button').dataset.on).length;
+  document.getElementById('subsSummary').textContent =
+    rows.length + ' บรรทัด · เน้น ' + on + ' บรรทัด';
+}
+
+function markAll(on) {
+  document.querySelectorAll('#subsList .sub button').forEach(b => {
+    b.dataset.on = on ? '1' : '';
+    b.className = 'small' + (on ? ' primary' : '');
+    b.textContent = on ? 'เน้น' : 'ธรรมดา';
+  });
+  countEmphasis();
+}
+
+async function loadSubs(suggest) {
+  if (!state.draft) return;
+  const busy = document.getElementById('subsBusy');
+  const box = document.getElementById('subsList');
+  busy.innerHTML = '<span class="spin"></span> กำลังอ่านซับ…';
+  box.innerHTML = '';
+  try {
+    const d = await api('draft', {path: state.draft.path});
+    const subs = d.subtitles || [];
+    if (!subs.length) { busy.textContent = 'โปรเจกต์นี้ยังไม่มีซับ — ถอดเสียงก่อน'; return; }
+    let flags = subs.map(() => false);
+    if (suggest) {
+      const e = await api('emphasis', {lines: subs.map(x => x.text.replace(/\n/g, ' '))});
+      flags = e.lines.map(x => x.emphasis);
+    }
+    subs.forEach((sub, i) => box.appendChild(subRow(sub, flags[i])));
+    countEmphasis();
+    busy.textContent = 'แก้ข้อความได้เลย · กดปุ่มขวาเพื่อสลับธรรมดา/เน้น';
+  } catch (e) {
+    busy.textContent = '❌ ' + e.message;
+  }
+}
+
+async function saveSubs() {
+  if (!state.draft) return;
+  const btn = document.getElementById('mainAction');
+  const busy = document.getElementById('subsBusy');
+  const emphasis = {
+    size: parseFloat(document.getElementById('emSize').value),
+    y: parseFloat(document.getElementById('emY').value),
+    color: document.getElementById('emColor').value
+  };
+  const subs = [...document.querySelectorAll('#subsList .sub')].map(row => {
+    const on = !!row.querySelector('button').dataset.on;
+    const item = {
+      start: parseFloat(row.dataset.start),
+      end: parseFloat(row.dataset.end),
+      text: row.querySelector('.t').value.trim()
+    };
+    if (on) item.style = emphasis;
+    return item;
+  }).filter(x => x.text);
+
+  btn.disabled = true;
+  busy.innerHTML = '<span class="spin"></span> กำลังบันทึกลงโปรเจกต์…';
+  try {
+    const d = await api('draft/subs', {path: state.draft.path, subs: subs});
+    state.draft.subtitles = d.subtitles;
+    busy.textContent = '✅ บันทึกแล้ว ' + d.added + ' บรรทัด — เปิด CapCut ดูได้เลย';
+  } catch (e) {
+    busy.textContent = '❌ ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+/* ── stock footage search ─────────────────────────── */
+function openStock() {
+  go('s-stock');
+  document.getElementById('stockTerms').innerHTML = '';
+  document.getElementById('stockResult').innerHTML = '';
+  document.getElementById('stBusy').textContent = '';
+}
+
+async function suggestTerms() {
+  if (!state.draft) return;
+  const busy = document.getElementById('stBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังอ่านซับแล้วแปลเป็นคำค้น…';
+  try {
+    const d = await api('draft', {path: state.draft.path});
+    const lines = (d.subtitles || []).map(x => x.text.replace(/\n/g, ' ')).slice(0, 12);
+    if (!lines.length) { busy.textContent = 'โปรเจกต์นี้ยังไม่มีซับ — ถอดเสียงก่อน'; return; }
+    const t = await api('terms', {lines: lines, per_line: 2});
+    const box = document.getElementById('stockTerms');
+    box.innerHTML = '';
+    t.terms.forEach(row => {
+      if (!row.terms.length) return;
+      const div = document.createElement('div');
+      div.className = 'sub';
+      div.innerHTML = '<div class="hint">' + row.line.slice(0, 60) + '</div>';
+      const wrap = document.createElement('div');
+      wrap.className = 'row';
+      row.terms.forEach(term => {
+        const b = document.createElement('button');
+        b.className = 'small';
+        b.textContent = term;
+        b.onclick = () => { document.getElementById('stockQuery').value = term; runStockSearch(); };
+        wrap.appendChild(b);
+      });
+      div.appendChild(wrap);
+      box.appendChild(div);
+    });
+    busy.textContent = 'กดคำค้นที่อยากใช้ได้เลย';
+  } catch (e) {
+    busy.textContent = '❌ ' + e.message;
+  }
+}
+
+async function runStockSearch() {
+  const query = document.getElementById('stockQuery').value.trim();
+  if (!query) return;
+  const busy = document.getElementById('stBusy');
+  const out = document.getElementById('stockResult');
+  busy.innerHTML = '<span class="spin"></span> ส่งงานให้บอท…';
+  out.innerHTML = '';
+  try {
+    const job = await api('stock/search', {query: query, count: 4});
+    busy.innerHTML = '<span class="spin"></span> บอทกำลังค้น "' + query + '" …';
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const r = await api('stock/result/' + job.job_id);
+      if (r.status === 'done' || r.status === 'failed' || r.status === 'needs_human') {
+        busy.textContent = r.status === 'done' ? 'เจอ ' + r.items.length + ' คลิป'
+                                               : '⚠ ' + (r.error || r.status);
+        renderStock(r);
+        return;
+      }
+    }
+    busy.textContent = 'บอทยังไม่ตอบ — เช็คว่าตัวบอทเปิดอยู่ไหม';
+  } catch (e) {
+    busy.textContent = '❌ ' + e.message;
+  }
+}
+
+function renderStock(r) {
+  const out = document.getElementById('stockResult');
+  out.innerHTML = '';
+  if (r.screenshot) {
+    const img = document.createElement('img');
+    img.src = r.screenshot;
+    img.style.cssText = 'width:100%;border-radius:14px;border:1px solid var(--line);margin-bottom:10px';
+    out.appendChild(img);
+  }
+  (r.items || []).forEach(it => {
+    const a = document.createElement('a');
+    a.className = 'tile';
+    a.href = it.url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.style.cssText = 'text-decoration:none;color:inherit';
+    a.innerHTML = '<div class="ico">🎞️</div><div class="body"><div class="t1">' +
+      it.title + '</div><div class="t2">เปิดหน้านี้เพื่อกดโหลดเอง</div></div><div class="go">›</div>';
+    out.appendChild(a);
+  });
+  if (r.search_url) {
+    const a = document.createElement('a');
+    a.className = 'hint';
+    a.href = r.search_url;
+    a.target = '_blank';
+    a.textContent = 'เปิดหน้าค้นหาเต็มใน Envato';
+    out.appendChild(a);
+  }
+}
+
+/* ── background music ─────────────────────────────── */
+let musicLib = [];
+
+api('music').then(d => {
+  musicLib = d.music || [];
+  const sel = document.getElementById('musicPick');
+  if (!sel) return;
+  sel.innerHTML = '';
+  musicLib.forEach((m, i) => {
+    const o = document.createElement('option');
+    o.value = i;
+    const mins = Math.floor(m.duration / 60) + ':' +
+      String(Math.round(m.duration % 60)).padStart(2, '0');
+    o.textContent = m.name.replace(/\.[^.]+$/, '') + ' · ' + mins +
+      (m.moods.length ? ' · ' + m.moods.join(' ') : '');
+    sel.appendChild(o);
+  });
+}).catch(() => {});
+
+function previewMusic() {
+  const m = musicLib[document.getElementById('musicPick').value];
+  if (!m) return;
+  const player = document.getElementById('musicPlayer');
+  player.src = '/api/video/file?path=' + encodeURIComponent(m.path);
+  player.style.display = 'block';
+  player.play().catch(() => {});
+}
+
+async function applyMusic() {
+  const m = musicLib[document.getElementById('musicPick').value];
+  if (!state.draft || !m) return;
+  const busy = document.getElementById('muBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังใส่เพลง…';
+  try {
+    const d = await api('draft/music', {
+      path: state.draft.path, music: m.path,
+      volume: (parseFloat(document.getElementById('musicVol').value) || 10) / 100
+    });
+    busy.textContent = '';
+    draftSays('🎵 ใส่เพลง <b>' + d.music + '</b> คลุม ' + d.covers + ' วินาที · ดัง ' +
+      Math.round(d.volume * 100) + '%' +
+      (d.looped ? '<br>⚠ เพลงสั้นกว่าคลิป ช่วงท้ายจะเงียบ' : ''), 'ok');
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+let animations = [];
+state.animTarget = 'text';
+
+function setAnimTarget(target) {
+  state.animTarget = target;
+  ['text', 'video'].forEach(t => {
+    document.getElementById('an-' + t).className = 'small grow' + (t === target ? ' primary' : '');
+  });
+  renderAnimations();
+}
+
+function renderAnimations() {
+  const sel = document.getElementById('animName');
+  if (!sel) return;
+  const usable = animations.filter(a => a.target === state.animTarget && a.available);
+  sel.innerHTML = '';
+  if (!usable.length) {
+    sel.innerHTML = '<option value="">— ยังไม่มีอนิเมชันสำหรับ' +
+      (state.animTarget === 'text' ? 'ซับ' : 'ฟุตเทจ') + ' —</option>';
+    return;
+  }
+  usable.forEach(a => {
+    const o = document.createElement('option');
+    o.value = a.name;
+    o.textContent = a.name + ' · ' + a.kind + ' · เคยใช้ ' + a.used + ' ครั้ง';
+    sel.appendChild(o);
+  });
+  document.getElementById('animDur').value = usable[0].duration;
+}
+
+api('animations').then(d => {
+  animations = d.animations || [];
+  setAnimTarget('text');
+}).catch(() => {});
+
+async function applyAnimation() {
+  const name = document.getElementById('animName').value;
+  if (!state.draft || !name) return;
+  const busy = document.getElementById('anBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังใส่…';
+  try {
+    const d = await api('draft/animation', {
+      path: state.draft.path, name: name, target: state.animTarget,
+      duration: parseFloat(document.getElementById('animDur').value)
+    });
+    let note = '✅ ใส่ "' + d.animation + '" ให้' +
+      (d.target === 'text' ? 'ซับ ' : 'ฟุตเทจ ') + d.applied + ' ท่อน · ยาว ' +
+      d.duration + ' วินาที';
+    if (state.animTarget === 'text' && document.getElementById('animSound').checked) {
+      busy.innerHTML = '<span class="spin"></span> กำลังใส่เสียง pop…';
+      const snd = await api('draft/sound', {path: state.draft.path, sound: 'sfx_pop', volume: 0.35});
+      note += '<br>🔊 ใส่เสียง pop ' + snd.added + ' จุด';
+    }
+    busy.textContent = '';
+    draftSays(note, 'ok');
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+async function clearSounds() {
+  if (!state.draft) return;
+  const busy = document.getElementById('anBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังลบเสียง…';
+  try {
+    const d = await api('draft/sound/clear', {path: state.draft.path});
+    busy.textContent = '';
+    draftSays('ลบแทร็กเสียงที่ใส่ไว้แล้ว ' + d.removed_tracks + ' แทร็ก', 'ok');
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+async function clearAnimation() {
+  if (!state.draft) return;
+  const busy = document.getElementById('anBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังเอาออก…';
+  try {
+    const d = await api('draft/animation/clear', {path: state.draft.path, target: state.animTarget});
+    busy.textContent = '';
+    draftSays('เอาอนิเมชันออกแล้ว ' + d.removed + ' จุด', 'ok');
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+/* ── existing CapCut projects ─────────────────────── */
+let drafts = [];
+
+async function loadDrafts() {
+  const box = document.getElementById('draftList');
+  box.innerHTML = '<div class="hint">กำลังอ่านโปรเจกต์…</div>';
+  go('s-drafts');
+  try {
+    const data = await api('drafts');
+    drafts = data.drafts;
+    box.innerHTML = '';
+    drafts.forEach((d, i) => {
+      const div = document.createElement('div');
+      div.className = 'tile';
+      const source = (d.sources || [])[0];
+      const thumb = source
+        ? '<img class="draft-thumb" loading="lazy" alt="" src="/api/video/frame?path=' +
+          encodeURIComponent(source) + '&t=1&width=160">'
+        : '<div class="ico">🎞️</div>';
+      div.innerHTML = thumb + '<div class="body"><div class="t1">' + d.name +
+        '</div><div class="t2">' + d.duration + ' วินาที · ' + d.segments + ' ท่อน · ซับ ' +
+        d.subtitles + (d.has_grade ? ' · มีสี' : '') + '</div></div><div class="go">›</div>';
+      div.onclick = () => openDraft(i);
+      box.appendChild(div);
+    });
+    document.getElementById('draftsHint').textContent =
+      'พบ ' + drafts.length + ' โปรเจกต์ · ใหม่สุดอยู่บน';
+  } catch (e) {
+    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+  }
+}
+
+function openDraft(i) {
+  state.draft = drafts[i];
+  const d = state.draft;
+
+  // Set Project Name
+  const titleEl = document.getElementById('draftProjectTitle');
+  if (titleEl) titleEl.textContent = d.name;
+
+  // Set Metrics Pills
+  const durEl = document.getElementById('mDuration');
+  if (durEl) durEl.textContent = d.duration + 's';
+  const segEl = document.getElementById('mSegments');
+  if (segEl) segEl.textContent = d.segments;
+  const subEl = document.getElementById('mSubtitles');
+  if (subEl) subEl.textContent = d.subtitles;
+  const gradePill = document.getElementById('mGradePill');
+  if (gradePill) gradePill.style.display = d.has_grade ? 'inline-flex' : 'none';
+
+  // Backward compatibility for draftInfo
+  const infoEl = document.getElementById('draftInfo');
+  if (infoEl) {
+    infoEl.textContent = d.name + ' · ' + d.duration + ' วินาที · ' +
+      d.segments + ' ท่อน · ซับ ' + d.subtitles + ' บรรทัด';
+  }
+
+  const sel = document.getElementById('gradeFrom');
+  sel.innerHTML = '';
+  drafts.filter(dr => dr.has_grade && dr.path !== d.path).forEach(dr => {
+    const o = document.createElement('option');
+    o.value = dr.path;
+    o.textContent = dr.name;
+    sel.appendChild(o);
+  });
+  document.getElementById('draftMsg').className = 'msg';
+  document.getElementById('dtBusy').textContent = '';
+  document.getElementById('dcBusy').textContent = '';
+  go('s-draft');
+  loadPreviewFrame();
+  drawPreview();
+  loadFilmstrip();
+}
+
+const CAPCUT_PX = 5.2;
+
+function drawPreview() {
+  const box = document.getElementById('preview');
+  const cap = document.getElementById('previewCap');
+  if (!box || !cap) return;
+  const size = parseFloat(document.getElementById('dSize').value) || 18;
+  const y = parseFloat(document.getElementById('dY').value) || -0.6;
+  const stroke = parseFloat(document.getElementById('dStroke').value) || 0;
+  const color = document.getElementById('dColor').value;
+  const px = size * CAPCUT_PX * (box.clientWidth / 1080);
+  cap.style.fontSize = px.toFixed(1) + 'px';
+  cap.style.color = color;
+  const edge = Math.max(px * stroke * 2, 1).toFixed(1) + 'px';
+  cap.style.textShadow = '0 0 ' + edge + ' #000, ' + edge + ' 0 0 #000, -' + edge +
+    ' 0 0 #000, 0 ' + edge + ' 0 #000, 0 -' + edge + ' 0 #000';
+  cap.style.top = (50 - y * 50) + '%';
+  cap.style.transform = 'translateY(-50%)';
+}
+
+function loadPreviewFrame() {
+  const img = document.getElementById('previewImg');
+  if (!img || !state.draft || !state.draft.sources || !state.draft.sources.length) return;
+  const at = Math.max(1, Math.min(5, (state.draft.duration || 10) / 3));
+  img.src = '/api/video/frame?path=' + encodeURIComponent(state.draft.sources[0]) +
+            '&t=' + at.toFixed(2) + '&width=360';
+  img.onload = drawPreview;
+}
+
+function jump(id) {
+  const advanced = document.getElementById('advancedTools');
+  if (advanced) advanced.open = true;
+  const card = document.getElementById(id);
+  if (!card) return;
+  card.scrollIntoView({behavior: 'smooth', block: 'center'});
+  card.classList.add('hit');
+  setTimeout(() => card.classList.remove('hit'), 1500);
+}
+
+async function fillSubsAction() {
+  jump('c-fill');
+  await fillGaps(false);
+}
+
+async function fillGaps(apply) {
+  if (!state.draft) return;
+  const busy = document.getElementById('fgBusy');
+  const list = document.getElementById('fgList');
+  const minGap = parseFloat(document.getElementById('fillGap').value) || 1;
+  busy.innerHTML = '<span class="spin"></span> ' +
+    (apply ? 'กำลังถอดเสียงช่วงที่ขาดและใส่ซับ…' : 'กำลังตรวจหาช่วงที่ยังไม่มีซับ (ช่องว่าง > ' + minGap + 's)…');
+  list.textContent = '';
+  try {
+    const d = await api('draft/subs/fill', {
+      path: state.draft.path,
+      min_gap: minGap,
+      preview: !apply
+    });
+    busy.textContent = '';
+    if (!d.gaps || !d.gaps.length) {
+      list.innerHTML = '<div style="color:var(--ok);font-weight:600;padding:6px 0">✓ ซับคลุมครบทั้งคลิปแล้ว ไม่พบช่องว่างเกิน ' + minGap + ' วินาที</div>';
+      draftSays('✅ ตรวจสอบแล้ว: ซับคลุมครบทั้งไทม์ไลน์แล้ว (ไม่พบช่วงว่างเกิน ' + minGap + ' วิ)', 'ok');
+      return;
+    }
+    const totalSec = d.gaps.reduce((acc, g) => acc + g.duration, 0).toFixed(1);
+    list.innerHTML = '<b>พบช่วงที่ยังไม่มีซับ ' + d.gaps.length + ' ช่วง (รวม ' + totalSec + ' วิ):</b><br>' +
+      d.gaps.map(g => '· ' + g.start + 's → ' + g.end + 's (ยาว ' + g.duration + 's)').join('<br>');
+    if (apply) {
+      draftSays('✅ เติมซับใหม่ ' + d.added + ' บรรทัด · รวมเป็น ' + d.subtitles +
+        ' บรรทัด — ซับเดิมไม่ถูกแตะ', 'ok');
+      const pill = document.getElementById('mSubs');
+      if (pill) pill.innerHTML = '<b>' + d.subtitles + '</b> <span class="m-lbl">บรรทัด</span>';
+      loadFilmstrip();
+    } else {
+      draftSays('🩹 ตรวจพบช่วงว่าง ' + d.gaps.length + ' จุด (ถอดเสียงได้ ' + d.found + ' บรรทัด) · กดปุ่ม "⚡ เติมซับเลย" เพื่อใส่จริง', 'ok');
+    }
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+async function loadFilmstrip() {
+  const box = document.getElementById('filmstrip');
+  const note = document.getElementById('stripNote');
+  if (!state.draft) return;
+  box.innerHTML = '<div class="hint">กำลังโหลดภาพ…</div>';
+  try {
+    const d = await api('draft', {path: state.draft.path});
+    const source = d.source;
+    const clips = d.clips || [];
+    box.innerHTML = '';
+    if (!source || !clips.length) { box.innerHTML = '<div class="hint">ไม่มีท่อนวิดีโอ</div>'; return; }
+    const step = Math.max(1, Math.ceil(clips.length / 14));
+    for (let i = 0; i < clips.length; i += step) {
+      const c = clips[i];
+      const f = document.createElement('div');
+      f.className = 'f';
+      const at = c.source_start + Math.min(0.6, c.duration / 2);
+      f.innerHTML = '<img loading="lazy" src="/api/video/frame?path=' +
+        encodeURIComponent(source) + '&t=' + at.toFixed(2) + '&width=160">' +
+        '<span>' + c.timeline_start.toFixed(1) + 's</span>';
+      f.onclick = () => {
+        const img = document.getElementById('previewImg');
+        if (img) img.src = '/api/video/frame?path=' + encodeURIComponent(source) +
+          '&t=' + at.toFixed(2) + '&width=360';
+      };
+      box.appendChild(f);
+    }
+    note.textContent = clips.length + ' ท่อน · ซับ ' + (d.subtitles || []).length +
+      ' บรรทัด · ' + d.duration + ' วินาที';
+  } catch (e) {
+    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+  }
+}
+
+function draftSays(text, kind) {
+  const msg = document.getElementById('draftMsg');
+  msg.className = 'msg on ' + kind;
+  msg.innerHTML = text;
+}
+
+async function draftTranscribe() {
+  if (!state.draft) return;
+  const busy = document.getElementById('dtBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังถอดเสียง… ราว ' +
+    Math.round(state.draft.duration) + ' วินาที';
+  try {
+    const got = await api('draft/transcribe', {path: state.draft.path});
+    busy.innerHTML = '<span class="spin"></span> ได้ ' + got.count + ' บรรทัด กำลังใส่ลงโปรเจกต์…';
+    const done = await api('draft/subs', {path: state.draft.path, subs: got.subtitles});
+    busy.textContent = '';
+    state.draft.subtitles = done.subtitles;
+    draftSays('✅ ใส่ซับแล้ว ' + done.added + ' บรรทัด ใน <b>' + done.name +
+      '</b><br>เปิด CapCut ดูได้เลย คำไหนผิดแก้ในโปรแกรมได้', 'ok');
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+async function draftTrim(apply) {
+  if (!state.draft) return;
+  const busy = document.getElementById('dcBusy');
+  busy.innerHTML = '<span class="spin"></span> กำลังฟังหาช่วงเงียบ…';
+  try {
+    const d = await api('draft/trim', {path: state.draft.path, apply: apply});
+    busy.textContent = '';
+    if (!d.cuts.length) { draftSays('ไม่มีช่วงเงียบที่ควรตัดในโปรเจกต์นี้', 'ok'); return; }
+    draftSays((apply ? '✅ ตัดแล้ว ' : 'ดูก่อน ตัดได้ ') + d.cuts.length + ' จุด · ' +
+      d.length + ' วินาที → ' + d.result_length + ' วินาที (สั้นลง ' + d.removed + ')' +
+      (apply ? '<br>ซับเลื่อนตามให้แล้ว' : '<br>กด "ตัดเลย" ถ้าโอเค'), 'ok');
+  } catch (e) {
+    busy.textContent = '';
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+async function draftStyle() {
+  if (!state.draft) return;
+  try {
+    const d = await api('draft/style', {
+      path: state.draft.path,
+      size: parseFloat(document.getElementById('dSize').value),
+      y: parseFloat(document.getElementById('dY').value),
+      stroke: parseFloat(document.getElementById('dStroke').value),
+      color: document.getElementById('dColor').value
+    });
+    draftSays('✅ เปลี่ยนสไตล์ซับแล้ว ' + d.restyled + ' บรรทัด', 'ok');
+  } catch (e) {
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+async function draftGrade() {
+  const from = document.getElementById('gradeFrom').value;
+  if (!state.draft || !from) return;
+  try {
+    const d = await api('draft/grade', {source: from, target: state.draft.path});
+    draftSays('✅ ก๊อปสีจาก <b>' + d.from + '</b> มาใส่ครบ ' + d.clips + ' ท่อน', 'ok');
+  } catch (e) {
+    draftSays('❌ ' + e.message, 'err');
+  }
+}
+
+</script>
+</body>
+</html>
