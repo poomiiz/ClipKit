@@ -20,9 +20,9 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 
 ## Machine setup (once)
 1. `git clone https://github.com/poomiiz/ClipKit` (scripts run from the clone).
-2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` - installs packages, creates `config.json`.
+2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` - installs Python, ffmpeg, Chrome (via winget) and all packages, creates `config.json` and the desktop icon.
 3. Edit `config.json` (your folders), then `python scripts\doctor.py --asr` must show all OK.
-   The card font must be installed by hand (licensed font).
+   Fonts are each editor's choice (not bundled); `card_font` is optional and only used for quick previews.
 4. `python scripts\envato.py login` - sign in to the **company** Envato account once in the Chrome window that opens.
 5. Open the app from the desktop icon **ClipKit - Video to CapCut**.
 
