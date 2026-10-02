@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import video_edit as _ve  # noqa: F401  (puts scripts/capcut on sys.path)
 import kitconfig
 from video_edit import (CAPCUT_DRAFTS_ROOT, US, VideoEditError,
                                  detect_pauses, suggest_cuts)
