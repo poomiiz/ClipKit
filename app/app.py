@@ -42,5 +42,7 @@ app.mount("/motion", StaticFiles(directory=str(HERE.parent / "motion"), html=Tru
 app.mount("/", StaticFiles(directory=str(HERE / "static"), html=True), name="static")
 
 if __name__ == "__main__":
-    print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    if sys.stdout:  # pythonw (autostart) has no console
+        print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
+    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info",
+                log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG)
