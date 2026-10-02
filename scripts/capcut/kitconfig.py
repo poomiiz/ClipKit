@@ -15,7 +15,8 @@ _CANDIDATES = [os.environ.get("CLIP_KIT_CONFIG"), _KIT / "config.json", Path.hom
 def _load():
     for c in _CANDIDATES:
         if c and Path(c).is_file():
-            return json.loads(Path(c).read_text(encoding="utf-8"))
+            # utf-8-sig: Notepad and PowerShell save JSON with a BOM
+            return json.loads(Path(c).read_text(encoding="utf-8-sig"))
     raise RuntimeError(f"clip-kit config.json not found; copy {_KIT / 'config.example.json'} to {_KIT / 'config.json'} and set your paths")
 
 
