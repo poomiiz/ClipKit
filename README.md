@@ -36,6 +36,7 @@ Everyone signs in with the one company account on their own machine. To keep the
 ## What is inside
 | Path | What |
 |---|---|
+| `skills/make-clip` | Entry point: "ทำคลิปนี้" - runs every step below in order, pilot first |
 | `skills/clip-workflow` | Client-neutral steps from raw footage to finished clip |
 | `skills/broll-finder` | Transcript -> Envato keywords -> HTML picker -> download ticked items only |
 | `skills/clip-qc` | Checklist before a clip is called done |
