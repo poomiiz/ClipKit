@@ -192,7 +192,10 @@ class CoverRequest(BaseModel):
     at: float = 1.0
     l1: str
     l2: str = ""
-    style: str = "nina"
+    c1: str = "#ff7d00"
+    s1: str = "#ffffff"
+    c2: str = "#ffffff"
+    s2: str = "#111111"
     layout: str = "cover-a"
 
 
@@ -230,7 +233,11 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     if p.returncode != 0 or not bg.is_file():
         raise HTTPException(500, "could not read the background: " + p.stderr.strip()[-300:])
     page = (work / "index.html").read_text(encoding="utf-8")
-    cover = json.dumps({"l1": body.l1, "l2": body.l2, "bg": "preview-bg.jpg", "style": body.style}, ensure_ascii=False)
+    bad = [v for v in (body.c1, body.s1, body.c2, body.s2) if not re.fullmatch(r"#[0-9a-fA-F]{6}", v)]
+    if bad:
+        raise HTTPException(400, f"colour must look like #ff7d00: {bad}")
+    cover = json.dumps({"l1": body.l1, "l2": body.l2, "bg": "preview-bg.jpg",
+                        "c1": body.c1, "s1": body.s1, "c2": body.c2, "s2": body.s2}, ensure_ascii=False)
     page, n = re.subn(r"const COVER = \{.*?\};", lambda _: f"const COVER = {cover};", page, count=1)
     if not n:
         raise HTTPException(500, "template has no COVER line")
@@ -310,6 +317,22 @@ def cover_frames(body: FramesRequest) -> dict[str, Any]:
         cv2.imwrite(str(f), img)
         out.append({"at": round(t, 2), "thumb": f"/api/kit/cover-frame/{f.name}"})
     return {"frames": out}
+
+
+@router.get("/frame")
+def frame(source: str, at: float = 0.0):
+    """One 1080x1920 JPEG from a video (or the image itself) for the live cover preview."""
+    from fastapi.responses import Response
+    src = Path(source)
+    if not src.is_file():
+        raise HTTPException(404, "file not found")
+    seek = [] if src.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp") else ["-ss", str(max(at, 0))]
+    p = subprocess.run(["ffmpeg", "-v", "error", *seek, "-i", str(src), "-frames:v", "1",
+                        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+                        "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "pipe:1"], capture_output=True, timeout=60)
+    if p.returncode != 0 or not p.stdout:
+        raise HTTPException(500, "could not read a frame: " + p.stderr.decode(errors="replace")[-200:])
+    return Response(p.stdout, media_type="image/jpeg")
 
 
 @router.get("/cover-frame/{name}")
