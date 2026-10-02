@@ -12,3 +12,4 @@ No client footage or frames in this repo.
 |---|---|---|
 | reference-sentence-pair | white lead types in, blue punch smears in, both end together | REF3 07 (P'Ohm's edit) |
 | hook-title | level 0 hook: Sample neon-flicker red keyword + typed sub-line (`?style=REF` for REF) | Sample 09 (P'Ohm's edit) |
+| cover-a | cover: bold headline (orange / blue) + white sub-line, renders a 1080x1920 PNG | Sample 01 cover |
