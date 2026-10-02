@@ -442,6 +442,12 @@
       <div class="hint">สร้างโปรเจกต์ก่อน แล้วค่อยถอดเสียง ตัดช่วงเงียบ ใส่สไตล์ ทุกอย่างจะถูกบันทึกลงโปรเจกต์ทันที</div>
     </div>
     <div class="card">
+      <h2>ดูเนื้อหาก่อน</h2>
+      <div class="hint">ถอดเสียงทั้งไฟล์ แบ่งเป็นเรื่อง แล้วบอกว่าได้กี่เรื่อง เรื่องละกี่นาที ก่อนเลือกว่าจะทำด้วย CapCut หรือ HyperFrames</div>
+      <button class="primary" style="margin-top:10px" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเนื้อหาและแบ่งเรื่อง</button>
+      <div id="storyPlan" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
       <h2>สร้างเป็นอะไร?</h2>
       <div class="hint">🎞️ <b>CapCut</b> — กดปุ่มม่วงด้านล่าง แล้วไปถอดเสียง ตัด ใส่ซับ ต่อในโปรเจกต์ · คนเกลาต่อใน CapCut ได้</div>
       <div class="hint" style="margin-top:6px">✨ <b>HyperFrames</b> — ตัวหนังสือเคลื่อนไหว ส่งออกเป็น MP4 ไม่ต้องใช้ CapCut</div>
@@ -1529,7 +1535,7 @@ async function makeDraft() {
   main.disabled = true;
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
-    const r = await api('capcut', {file: state.file.path, name: name});
+    const r = await api('capcut', {file: state.file.path, name: name, ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
     await loadDrafts();
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
@@ -1542,6 +1548,54 @@ async function makeDraft() {
   }
 }
 
+// Before choosing CapCut or HyperFrames: transcribe the whole file and split it into stories.
+const mmss = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0');
+let storyList = [];
+async function planStories() {
+  const box = document.getElementById('storyPlan');
+  if (!state.file) { box.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
+  const file = state.file.path;
+  document.getElementById('planStoriesBtn').disabled = true;
+  try {
+    let job = await api('story-plan', {file});
+    while (job.status === 'running') {
+      box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
+      await new Promise(r => setTimeout(r, 3000));
+      job = await api('story-plan?file=' + encodeURIComponent(file));
+    }
+    if (job.status === 'error') throw new Error(job.error);
+    storyList = job.stories;
+    box.innerHTML = `<div style="font-weight:700;margin-bottom:6px">ได้ ${storyList.length} เรื่อง · ไฟล์ยาว ${mmss(job.duration)} · มีเสียงพูดรวม ${mmss(job.speech)}</div>`;
+    storyList.forEach((st, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:10px 12px;margin:6px 0;border-radius:12px;background:var(--card2);border:1px solid var(--line)';
+      row.innerHTML = `<b></b><div class="hint"></div>
+        <div class="hint">ช่วง ${mmss(st.start)}–${mmss(st.end)} · ตัดเงียบแล้วราว ${mmss(st.speech)} นาที</div>
+        <div class="row" style="gap:8px;margin-top:6px">
+          <button class="small primary" data-cc="${i}">🎞️ ทำด้วย CapCut</button>
+          <button class="small" data-hf="${i}">✨ ทำด้วย HyperFrames</button></div>`;
+      row.querySelector('b').textContent = (i + 1) + '. ' + st.title;
+      row.querySelector('.hint').textContent = st.summary;
+      box.appendChild(row);
+    });
+    box.querySelectorAll('[data-cc]').forEach(b => b.onclick = () => makeStory(+b.dataset.cc, 'capcut'));
+    box.querySelectorAll('[data-hf]').forEach(b => b.onclick = () => makeStory(+b.dataset.hf, 'hyperframes'));
+  } catch (e) {
+    box.textContent = '❌ ' + e.message;
+  } finally {
+    document.getElementById('planStoriesBtn').disabled = false;
+  }
+}
+
+async function makeStory(i, kind) {
+  const st = storyList[i];
+  const base = document.getElementById('pname').value.trim() || state.file.name.replace(/\.[^.]+$/, '');
+  document.getElementById('pname').value = base + ' - ' + (i + 1) + ' ' + st.title;
+  state.range = {start: st.start, end: st.end};
+  try { return await (kind === 'capcut' ? makeDraft() : makeHyperframes()); }
+  finally { state.range = null; }
+}
+
 // Alternative to CapCut: open the raw file as a HyperFrames project (motion graphics, renders to MP4)
 async function makeHyperframes() {
   const out = document.getElementById('result');
@@ -1550,7 +1604,7 @@ async function makeHyperframes() {
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ HyperFrames และเปิด Studio… (ครั้งแรกอาจใช้ 1–2 นาที)';
   try {
     const r = await fetch('/api/kit/hyperframes', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                                   body: JSON.stringify({file: state.file.path, name: name})});
+                                                   body: JSON.stringify({file: state.file.path, name: name, ...(state.range || {})})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.status);
     out.innerHTML = '✅ เปิด Studio แล้ว: <a href="' + j.url + '" target="_blank">' + j.url + '</a> · โฟลเดอร์ ' + j.project;

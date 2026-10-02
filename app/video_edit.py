@@ -603,6 +603,55 @@ def summarize_transcript(lines: list[str], source_name: str) -> dict[str, str]:
         return {"title": source_name, "hook": "", "summary": f"สรุป Qwen ไม่สำเร็จ: {exc}"}
 
 
+def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[str, Any]]:
+    """Split one long transcript into stand-alone stories with the local LLM.
+
+    Lengths count speech only (sum of phrase times), which is roughly what is
+    left after the silent gaps are cut.
+    """
+    import urllib.request
+
+    if not phrases:
+        raise VideoEditError("no speech found in this file")
+    numbered = "\n".join(f"[{i}] {p['text']}" for i, p in enumerate(phrases))
+    prompt = (
+        "นี่คือข้อความถอดเสียงภาษาไทยจากวิดีโอยาวหนึ่งไฟล์ แต่ละบรรทัดมีเลขลำดับ [n]. "
+        "แบ่งเป็นเรื่องที่ตัดเป็นคลิปสั้นแยกกันได้ (เรื่องละประเด็นเดียว ต่อเนื่องกัน ไม่ข้ามไปมา). "
+        "ตอบ JSON เท่านั้น เป็น array ของ {\"title\", \"summary\", \"first\", \"last\"} "
+        "title หัวข้อสั้นภาษาไทย, summary สรุป 1 ประโยค, first/last คือเลขบรรทัดแรกและบรรทัดสุดท้ายของเรื่อง.\n\n"
+        f"ไฟล์: {source_name}\n\n{numbered}"
+    )
+    payload = json.dumps({"model": LOCAL_LLM_MODEL,
+                          "messages": [{"role": "user", "content": prompt}],
+                          "temperature": 0.2, "max_tokens": 2000}).encode("utf-8")
+    request = urllib.request.Request(f"{LOCAL_LLM_URL}/chat/completions", data=payload,
+                                     headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            content = json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"]
+    except Exception as exc:
+        raise VideoEditError(f"local LLM ({LOCAL_LLM_URL}) failed: {exc}") from exc
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
+    match = re.search(r"\[.*\]", content, re.S)
+    try:
+        raw = json.loads(match.group(0) if match else content)
+    except json.JSONDecodeError as exc:
+        raise VideoEditError(f"local LLM did not return a story list: {content[:300]}") from exc
+    stories = []
+    for item in raw:
+        first = max(0, min(int(item["first"]), len(phrases) - 1))
+        last = max(first, min(int(item["last"]), len(phrases) - 1))
+        part = phrases[first:last + 1]
+        stories.append({
+            "title": str(item.get("title", "")).strip(),
+            "summary": str(item.get("summary", "")).strip(),
+            "start": part[0]["start"], "end": part[-1]["end"],
+            "speech": round(sum(p["end"] - p["start"] for p in part), 1),
+            "lines": len(part),
+        })
+    return stories
+
+
 def extract_presets(drafts_root: str | None = None) -> dict[str, Any]:
     """Read every CapCut draft in the folder and report the colour grade and
     subtitle styling actually in use, most-used first."""

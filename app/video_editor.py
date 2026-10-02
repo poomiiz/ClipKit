@@ -275,6 +275,49 @@ def transcribe(req: TranscribeRequest) -> dict[str, Any]:
     return {"count": len(phrases), "phrases": phrases}
 
 
+class StoryPlanRequest(BaseModel):
+    file: str
+
+
+_story_jobs: dict[str, dict[str, Any]] = {}
+
+
+def _run_story_plan(file: str) -> None:
+    job = _story_jobs[file]
+    try:
+        duration = video_edit.probe(file)["duration"]
+        job["step"] = "ถอดเสียง"
+        phrases = video_edit.transcribe(file, 0, duration, "th", "large-v3-turbo")
+        video_edit._model = None  # free VRAM for the local LLM (8GB card)
+        job["step"] = "แบ่งเรื่อง"
+        stories = video_edit.plan_stories(phrases, Path(file).name)
+        job.update(status="done", duration=round(duration, 1), stories=stories,
+                   speech=round(sum(p["end"] - p["start"] for p in phrases), 1))
+    except Exception as exc:  # surface every failure to the page
+        job.update(status="error", error=str(exc))
+
+
+@router.post("/story-plan")
+def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
+    """Transcribe a whole file and split it into stories before choosing CapCut or HyperFrames."""
+    import threading
+    if not Path(req.file).is_file():
+        raise HTTPException(status_code=400, detail="file not found")
+    job = _story_jobs.get(req.file)
+    if not job or job["status"] == "error":
+        _story_jobs[req.file] = {"status": "running", "step": "เริ่ม"}
+        threading.Thread(target=_run_story_plan, args=(req.file,), daemon=True).start()
+    return _story_jobs[req.file]
+
+
+@router.get("/story-plan")
+def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
+    job = _story_jobs.get(file)
+    if not job:
+        raise HTTPException(status_code=404, detail="no plan started for this file")
+    return job
+
+
 @router.post("/capcut")
 def capcut(req: DraftRequest) -> dict[str, Any]:
     try:
