@@ -14,12 +14,14 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.responses import RedirectResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+import kit_settings  # noqa: E402
 import video_editor  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
 
 app = FastAPI(title="Video to CapCut", version="1.0.0")
 app.include_router(video_editor.router)
+app.include_router(kit_settings.router)
 
 
 @app.middleware("http")
