@@ -18,14 +18,14 @@ from typing import Any
 
 import video_edit as _ve  # noqa: F401  (puts scripts/capcut on sys.path)
 import kitconfig
-from video_edit import (CAPCUT_DRAFTS_ROOT, US, VideoEditError,
+from video_edit import (capcut_drafts_root, US, VideoEditError,
                                  detect_pauses, suggest_cuts)
 
 GRADE_KEYS = ("effects", "hsl", "color_curves")
 
 
 def _drafts_root(root: str | None = None) -> Path:
-    path = Path(root or CAPCUT_DRAFTS_ROOT)
+    path = Path(root or capcut_drafts_root())
     if not path.is_dir():
         raise VideoEditError(f"CapCut drafts folder not found: {path}")
     return path
@@ -735,7 +735,9 @@ def clear_sounds(path: str) -> dict[str, Any]:
 
 # ── background music library ─────────────────────────────────────────
 
-MUSIC_DIRS = [d for d in os.environ.get("MUSIC_DIRS", "").split(";") if d] or [kitconfig.need("stock_music")]
+def music_dirs() -> list[str]:
+    """Music library folders; read on use so the app starts before Settings sets stock_music."""
+    return [d for d in os.environ.get("MUSIC_DIRS", "").split(";") if d] or [kitconfig.need("stock_music")]
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".aac", ".flac"}
 _MOODS = {
     "epic": "อลังการ", "cinematic": "ภาพยนตร์", "uplifting": "ฮึกเหิม", "inspiring": "สร้างแรงบันดาลใจ",
@@ -770,7 +772,7 @@ def _music_meta(path: Path) -> dict[str, Any]:
 def list_music(dirs: list[str] | None = None) -> list[dict[str, Any]]:
     """Every music file in the known folders, with a rough mood read off the name."""
     found: list[dict[str, Any]] = []
-    for base in (dirs or MUSIC_DIRS):
+    for base in (dirs or music_dirs()):
         root = Path(base)
         if not root.is_dir():
             continue

@@ -24,19 +24,21 @@ CFG = _load()
 
 
 def need(key):
+    # re-read: the Settings page may have just filled this in, no restart needed
+    CFG.clear()
+    CFG.update(_load())
     v = CFG.get(key)
     if not v:
         raise RuntimeError(f"config.json is missing '{key}'")
     return v
 
 
-DRAFTS = need("capcut_drafts")
+# folder paths are read when a tool asks for them (module __getattr__ below), so the app can start
+# on a new machine before the Settings page has filled them in; a tool that needs an unset one still raises
 # CapCut's project registry; default location for the current Windows user
 ROOT_META = CFG.get("capcut_root_meta") or str(
     Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft" / "root_meta_info.json")
 FONT_NAME = CFG.get("card_font")  # optional: editors pick fonts themselves; only previews need one
-STOCK = need("stock_video")
-OLD_BUILDS = CFG.get("capcut_old_builds") or str(Path(DRAFTS).parent / "_old_builds")
 FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
 
 
@@ -61,3 +63,13 @@ def font_file():
         for f in d.glob(FONT_NAME + ".*"):
             return str(f)
     raise RuntimeError(f"font '{FONT_NAME}' is not installed")
+
+
+def __getattr__(name):
+    if name == "DRAFTS":
+        return need("capcut_drafts")
+    if name == "STOCK":
+        return need("stock_video")
+    if name == "OLD_BUILDS":
+        return CFG.get("capcut_old_builds") or str(Path(need("capcut_drafts")).parent / "_old_builds")
+    raise AttributeError(name)

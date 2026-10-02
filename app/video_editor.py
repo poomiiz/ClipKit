@@ -527,7 +527,7 @@ def file(path: str = Query(...)) -> FileResponse:
     if not target.is_file() or target.suffix.lower() not in capcut_edit.AUDIO_SUFFIXES:
         raise HTTPException(status_code=400, detail=f"not an audio file: {path}")
     known = any(str(target).lower().startswith(str(_Path(d)).lower())
-                for d in capcut_edit.MUSIC_DIRS)
+                for d in capcut_edit.music_dirs())
     if not known:
         raise HTTPException(status_code=403, detail="file is outside the music folders")
     return FileResponse(str(target))
@@ -582,7 +582,7 @@ def draft_sound_clear(req: DraftPath) -> dict[str, Any]:
 @router.get("/config")
 def config() -> dict[str, Any]:
     return {
-        "drafts_root": video_edit.CAPCUT_DRAFTS_ROOT,
+        "drafts_root": video_edit.kitconfig.CFG.get("capcut_drafts", ""),
         "template_draft": video_edit.CAPCUT_TEMPLATE_DRAFT or "(newest draft in folder)",
         "whisper_model": video_edit.WHISPER_MODEL,
         "whisper_cpu_fallback": video_edit.WHISPER_CPU_FALLBACK,

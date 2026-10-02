@@ -30,7 +30,9 @@ FFMPEG = os.environ.get("FFMPEG_BIN") or kitconfig.FFMPEG
 FFPROBE = os.environ.get("FFPROBE_BIN", "ffprobe")
 # pythonw has no console: without this each ffprobe/ffmpeg spawn opens its own console window.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-CAPCUT_DRAFTS_ROOT = kitconfig.DRAFTS
+def capcut_drafts_root() -> str:
+    """CapCut drafts folder from config; raises until it is set in Settings (never falls back to the cwd)."""
+    return kitconfig.DRAFTS
 CAPCUT_TEMPLATE_DRAFT = os.environ.get("CAPCUT_TEMPLATE_DRAFT", "")
 
 # Measured on this machine over 41s of Thai speech (RTX 3070 Ti):
@@ -358,7 +360,7 @@ def _template_dir() -> Path:
         if not (path / "draft_content.json").is_file():
             raise VideoEditError(f"CAPCUT_TEMPLATE_DRAFT has no draft_content.json: {path}")
         return path
-    root = Path(CAPCUT_DRAFTS_ROOT)
+    root = Path(capcut_drafts_root())
     if not root.is_dir():
         raise VideoEditError(f"CapCut drafts folder not found: {root}")
 
@@ -399,7 +401,7 @@ def create_capcut_draft(video_path: str, project_name: str,
     if clip_out <= clip_in:
         raise VideoEditError("clip_out must be greater than clip_in")
 
-    root = Path(drafts_root or CAPCUT_DRAFTS_ROOT)
+    root = Path(drafts_root or capcut_drafts_root())
     safe_name = re.sub(r'[\\/:*?"<>|]', " ", project_name).strip() or "Untitled"
     target = root / safe_name
     if target.exists():
@@ -657,7 +659,7 @@ def extract_presets(drafts_root: str | None = None) -> dict[str, Any]:
     subtitle styling actually in use, most-used first."""
     from collections import Counter, defaultdict
 
-    root = Path(drafts_root or CAPCUT_DRAFTS_ROOT)
+    root = Path(drafts_root or capcut_drafts_root())
     if not root.is_dir():
         raise VideoEditError(f"CapCut drafts folder not found: {root}")
 
