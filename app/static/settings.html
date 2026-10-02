@@ -21,7 +21,8 @@ button:disabled{opacity:.5;cursor:wait}
 .row{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
 .row label{width:190px;color:var(--sub);font-size:14px}
 .row input,.row select{flex:1;min-width:200px;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:8px 10px;font:inherit}
-.checks{display:grid;gap:6px;margin-top:10px}
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px;margin-top:10px}
+.chk b{width:auto!important;min-width:110px}
 .chk{display:flex;gap:10px;align-items:flex-start;background:var(--card2);border-radius:9px;padding:8px 12px;font-size:14px}
 .dot{width:11px;height:11px;border-radius:50%;margin-top:6px;flex:none}
 .OK{background:var(--ok)}.WARN{background:var(--warn)}.FAIL{background:var(--bad)}
@@ -55,16 +56,11 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   <div class="card" data-tab="machine">
     <h2>ตรวจเครื่อง</h2>
     <p class="sub">เช็กว่าเครื่องพร้อมใช้ทุกอย่าง · เขียว = พร้อม · เหลือง = เตือน (ใช้งานได้) · แดง = ต้องแก้</p>
-    <div class="row"><button id="bDoctor">ตรวจเครื่อง</button><button class="ghost" id="bDoctorAsr">ตรวจ + ทดสอบถอดเสียง</button><span class="msg" id="mDoctor"></span></div>
+    <div class="row"><button id="bDoctor">ตรวจเครื่อง</button><button class="ghost" id="bDoctorAsr">ตรวจ + ทดสอบถอดเสียง</button><button class="ghost" id="bSetup" title="ลง Python, ffmpeg, Chrome และโปรแกรมเสริมที่ขาด · กดซ้ำได้ · ครั้งแรก 5–15 นาที">ติดตั้งโปรแกรมที่ขาด</button><span class="msg" id="mDoctor"></span><span class="msg" id="mSetup"></span></div>
     <div class="checks" id="checks"></div>
-  </div>
-
-  <div class="card" data-tab="machine">
-    <h2>ติดตั้ง / ลงโปรแกรมที่ขาด</h2>
-    <p class="sub">ลง Python, ffmpeg, Chrome และโปรแกรมเสริมทั้งหมดให้อัตโนมัติ · กดซ้ำได้ ไม่เสียหาย · ครั้งแรกอาจใช้ 5–15 นาที</p>
-    <div class="row"><button id="bSetup">ติดตั้ง</button><span class="msg" id="mSetup"></span></div>
     <pre id="logSetup"></pre>
   </div>
+
 
   <div class="card" data-tab="folders">
     <h2>โฟลเดอร์งาน</h2>
@@ -72,9 +68,6 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="row"><label>โฟลเดอร์ทำงาน</label><input id="ws" placeholder="เช่น D:\ClipKit"><button class="ghost" id="bWsPick">เลือก</button></div>
     <div class="row"><button id="bWs">ใช้โฟลเดอร์นี้</button><span class="msg" id="mWs"></span></div>
     <div class="checks" id="wsTree"></div>
-    <details id="adv" style="margin-top:14px"><summary style="cursor:pointer;color:var(--sub)">▸ ตั้งค่าขั้นสูง — เปลี่ยนแต่ละโฟลเดอร์เอง (เช่น ใช้โฟลเดอร์เดิมที่มีอยู่แล้ว)</summary>
-      <div id="folders" style="margin-top:8px"></div>
-    </details>
   </div>
 
   <div class="card" data-tab="options">
@@ -112,8 +105,18 @@ const FOLDER_LABELS = {work_root:'ฟุตเทจดิบ', stock_video:'ว
 function renderTree(folders) {
   $('wsTree').innerHTML = Object.keys(FOLDER_LABELS).map(k => {
     const v = folders[k] || '';
-    return `<div class="chk"><i class="dot ${v ? 'OK' : 'WARN'}"></i><b>${FOLDER_LABELS[k]}</b><span>${v || 'ยังไม่ได้ตั้ง'}</span></div>`;
+    return `<div class="chk" style="align-items:center"><i class="dot ${v ? 'OK' : 'WARN'}" style="margin-top:0"></i><b>${FOLDER_LABELS[k]}</b>
+      <span style="flex:1">${v || 'ยังไม่ได้ตั้ง'}</span><button class="ghost" style="padding:4px 12px;font-size:13px" data-edit="${k}">แก้ไข</button></div>`;
   }).join('');
+  // แก้ไข = pick another folder for just this row and save it straight away
+  $('wsTree').querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => {
+    const k = b.dataset.edit; b.disabled = true; b.textContent = 'เลือก…';
+    try {
+      const r = await api('browse?start=' + encodeURIComponent(folders[k] || ''), {method:'POST'});
+      if (r.path) { await api('config', {method:'POST', body:{values:{[k]: r.path}}}); say('mWs', '✅ เปลี่ยน' + FOLDER_LABELS[k] + 'แล้ว', true); await loadConfig(); return; }
+    } catch (e) { say('mWs', '❌ ' + e.message, false); }
+    b.disabled = false; b.textContent = 'แก้ไข';
+  });
 }
 const $ = id => document.getElementById(id);
 async function api(path, opt={}) {
@@ -157,13 +160,6 @@ async function startJob(path, btn, msgId, logId, busyText) {
 
 async function loadConfig() {
   const c = await api('config');
-  $('folders').innerHTML = Object.keys(FOLDER_LABELS).map(k =>
-    `<div class="row"><label>${FOLDER_LABELS[k]}</label><input id="f_${k}" value="${(c.folders[k] || '').replace(/"/g,'&quot;')}"><button class="ghost" data-k="${k}">เลือก</button></div>`).join('');
-  document.querySelectorAll('#folders button').forEach(b => b.onclick = async () => {
-    b.disabled = true;
-    try { const r = await api('browse?start=' + encodeURIComponent($('f_' + b.dataset.k).value), {method:'POST'}); if (r.path) $('f_' + b.dataset.k).value = r.path; }
-    finally { b.disabled = false; }
-  });
   for (const k of ['envato_backend', 'whisper_device', 'card_font']) if (c.options[k]) $('o_' + k).value = c.options[k];
   $('ws').value = c.options.workspace || '';
   renderTree(c.folders);
@@ -171,7 +167,6 @@ async function loadConfig() {
 }
 async function saveConfig() {
   const values = {};
-  Object.keys(FOLDER_LABELS).forEach(k => values[k] = $('f_' + k).value.trim());
   ['envato_backend', 'whisper_device', 'card_font'].forEach(k => values[k] = $('o_' + k).value.trim());
   try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
   catch (e) { say('mSave', '❌ ' + e.message, false); }
@@ -184,7 +179,7 @@ $('bWsPick').onclick = async () => {
 $('bWs').onclick = async () => {
   try {
     const r = await api('workspace', {method:'POST', body:{root: $('ws').value.trim()}});
-    say('mWs', '✅ สร้างโฟลเดอร์และบันทึกแล้ว' + (r.capcut_drafts ? '' : ' · ยังหาโฟลเดอร์ CapCut ไม่เจอ ตั้งเองในขั้นสูง'), true);
+    say('mWs', '✅ สร้างโฟลเดอร์และบันทึกแล้ว' + (r.capcut_drafts ? '' : ' · ยังหาโฟลเดอร์ CapCut ไม่เจอ กดแก้ไขที่แถว CapCut'), true);
     await loadConfig();
   } catch (e) { say('mWs', '❌ ' + e.message, false); }
 };
