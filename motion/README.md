@@ -13,3 +13,11 @@ No client footage or frames in this repo.
 | bps-sentence-pair | white lead types in, blue punch smears in, both end together | BPS3 07 (P'Ohm's edit) |
 | hook-title | level 0 hook: Nina neon-flicker red keyword + typed sub-line (`?style=bps` for BPS) | Nina 09 (P'Ohm's edit) |
 | cover-a | cover: bold headline (orange / blue) + white sub-line, renders a 1080x1920 PNG | Nina 01 cover |
+
+## Adding a new effect
+1. Copy a folder (e.g. `hook-title`) to `motion/<new-name>/` and change the animation.
+2. Edit its `<script type="application/json" id="clipkit-motion">` block: `label` (shown in the menu),
+   `fields` (`text`, `number`, `select` with `options`, or `pairs`), and `length` (`"duration"` or `"pairs"`).
+   The template reads the values from `window.KIT` (render) or the URL (preview).
+3. Push to GitHub. Teammates press **อัปเดต** in Settings; the effect appears on the motion page with no code change.
+A folder without that block (covers, work in progress) is not listed.

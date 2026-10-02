@@ -72,8 +72,7 @@ function params() {
     if (f.type === 'pairs') {
       const each = parseFloat($('f_' + f.key + '_each').value) || 2.5;
       // punch lands right after the white line finishes typing (original edit 0.6-1.0 s)
-      out[f.key] = v.split(/?
-/).map(x => x.trim()).filter(Boolean).map((l, i) => {
+      out[f.key] = v.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map((l, i) => {
         const [lead, punch = ''] = l.split('/').map(x => x.trim());
         return [i * each, (i + 1) * each, lead, punch, f.delay ?? 0.8];
       });
