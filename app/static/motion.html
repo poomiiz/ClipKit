@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ทำตัวหนังสือเคลื่อนไหว</title>
+<style>
+:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 16px 60px;display:grid;grid-template-columns:1fr 340px;gap:20px}
+@media (max-width:760px){main{grid-template-columns:1fr}}
+.top{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:24px;margin:0}
+a{color:var(--acc2);text-decoration:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+label{display:block;color:var(--sub);font-size:14px;margin:12px 0 4px}
+.hint{color:var(--mut);font-size:13px}
+input,select,textarea{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 11px;font:inherit}
+textarea{min-height:120px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:var(--card2);color:var(--sub);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:wait}
+.big{width:100%;margin-top:16px;padding:14px;font-size:16px}
+.msg{margin-top:10px;font-size:14px;word-break:break-all}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.preview{position:sticky;top:16px;aspect-ratio:9/16;border-radius:14px;border:1px solid var(--line);overflow:hidden;
+  background:repeating-conic-gradient(#2a3042 0 25%,#1f2433 0 50%) 0 0/24px 24px}
+.preview iframe{position:absolute;left:0;top:0;width:1080px;height:1920px;border:0;transform-origin:0 0;pointer-events:none}
+.preview .tag{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:3px 8px;border-radius:99px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><h1>✨ ตัวหนังสือเคลื่อนไหว</h1><a href="/video-editor.html">← กลับหน้าแรก</a></div>
+  <div class="card">
+    <label>แบบ</label>
+    <select id="tpl">
+      <option value="hook-title">หัวคลิป · คำเด่น + คำรอง (3–5 วินาทีแรก)</option>
+      <option value="bps-sentence-pair">คำโปรย · ประโยคขาว + คำเน้นน้ำเงิน</option>
+    </select>
+
+    <div id="f-hook">
+      <label>คำเด่น</label><input id="key" value="Burn out">
+      <label>คำรอง</label><input id="sub" value="เพราะพลาดเรื่องนี้">
+      <div class="row">
+        <div><label>สไตล์</label><select id="style"><option value="nina">Nina · แดงเอียง ไฟนีออน</option><option value="bps">คุณตั้น · ขาวบน แดงล่าง</option></select></div>
+        <div><label>ยาว (วินาที)</label><input id="duration" type="number" min="1" step="0.5" value="5.5"></div>
+      </div>
+    </div>
+
+    <div id="f-pair" hidden>
+      <label>ประโยค (บรรทัดละคู่: ตัวขาว / คำเน้น)</label>
+      <textarea id="pairs">ผู้รับเหมาก็จะ / ถูกกดดัน
+เรื่องงานที่ต้องเสร็จ / ตามกำหนดเวลา
+เพื่อตอบสนอง / โจทย์ผู้บริโภค</textarea>
+      <label>แต่ละคู่โชว์กี่วินาที</label><input id="each" type="number" min="1" step="0.5" value="2.5">
+    </div>
+
+    <label>ความเร็ว <span class="hint">(2 = เร็วกว่าต้นฉบับ CapCut เท่าตัว · 1 = เท่าต้นฉบับ)</span></label>
+    <input id="speed" type="number" min="0.5" max="5" step="0.5" value="2">
+    <label>ชื่อไฟล์</label><input id="name" placeholder="เช่น ep07_hook">
+    <button class="big" id="go">ทำไฟล์พื้นใส (.mov) ไปวางใน CapCut</button>
+    <div class="msg" id="msg"></div>
+  </div>
+  <div class="preview" id="pv"><iframe id="live" title="ตัวอย่าง"></iframe><span class="tag" id="pvTag">ตัวอย่างสด · เล่นวนซ้ำ</span></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function params() {
+  const sp = parseFloat($('speed').value) || 2;
+  if ($('tpl').value === 'hook-title')
+    return {key: $('key').value.trim(), sub: $('sub').value.trim(), style: $('style').value,
+            duration: parseFloat($('duration').value) || 5.5, speed: sp};
+  const each = parseFloat($('each').value) || 2.5;
+  const lines = $('pairs').value.split('\n').map(s => s.trim()).filter(Boolean);
+  // punch lands right after the white line finishes typing (original edit: 0.6-1.0 s, here 0.8 s at speed 1)
+  return {speed: sp, pairs: lines.map((l, i) => {
+    const [lead, punch = ''] = l.split('/').map(s => s.trim());
+    return [i * each, (i + 1) * each, lead, punch, 0.8];
+  })};
+}
+function fitFrame() { $('live').style.transform = `scale(${$('pv').clientWidth / 1080})`; }
+window.addEventListener('resize', fitFrame);
+// preview: load the real template, then play its timeline on a loop (the template itself stays paused for the renderer)
+let timer = 0;
+function refresh() {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    $('f-hook').hidden = $('tpl').value !== 'hook-title';
+    $('f-pair').hidden = $('tpl').value === 'hook-title';
+    const p = params(), q = new URLSearchParams();
+    for (const [k, v] of Object.entries(p)) q.set(k, typeof v === 'object' ? JSON.stringify(v) : v);
+    const f = $('live');
+    f.onload = () => {
+      const tl = f.contentWindow.__timelines && f.contentWindow.__timelines.main;
+      if (tl) tl.repeat(-1).repeatDelay(0.6).play(0);
+    };
+    f.src = '/motion/' + $('tpl').value + '/index.html?' + q;
+    fitFrame();
+  }, 300);
+}
+['tpl', 'key', 'sub', 'style', 'duration', 'pairs', 'each', 'speed'].forEach(id => $(id).addEventListener('input', refresh));
+$('go').onclick = async () => {
+  const b = $('go'); b.disabled = true; $('msg').className = 'msg'; $('msg').textContent = 'กำลังทำไฟล์… (ประมาณ 20–40 วินาที)';
+  try {
+    const r = await fetch('/api/kit/motion', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({template: $('tpl').value, name: $('name').value.trim() || $('tpl').value, params: params()})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    $('msg').className = 'msg ok'; $('msg').textContent = '✅ บันทึกแล้ว: ' + j.file;
+  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + e.message; }
+  b.disabled = false;
+};
+refresh();
+</script>
+</body>
+</html>

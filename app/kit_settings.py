@@ -257,6 +257,51 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     return {"file": str(target)}
 
 
+MOTION_TEMPLATES = {"hook-title", "bps-sentence-pair"}   # transparent overlays with window.KIT params
+
+
+class MotionRequest(BaseModel):
+    template: str
+    name: str              # output file name (no extension)
+    params: dict[str, Any]
+
+
+@router.post("/motion")
+def make_motion(body: MotionRequest) -> dict[str, Any]:
+    """Render a motion template with the user's words to a transparent MOV in <output_dir>/motion."""
+    import re
+    import shutil
+    import tempfile
+    if body.template not in MOTION_TEMPLATES:
+        raise HTTPException(400, f"unknown motion template: {body.template}")
+    npx = shutil.which("npx")
+    if not npx:
+        raise HTTPException(400, "Node.js (npx) is not installed - run setup")
+    cfg = _read_config()
+    out_dir = Path(cfg.get("output_dir") or cfg.get("work_root") or "") / "motion"
+    if not out_dir.parent.is_dir():
+        raise HTTPException(400, "set the workspace folder in Settings first")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="clipkit_motion_"))
+    shutil.copytree(KIT / "motion" / body.template, work, dirs_exist_ok=True)
+    page = (work / "index.html").read_text(encoding="utf-8")
+    kit = json.dumps(body.params, ensure_ascii=False).replace("</", "<\\/")
+    page, n = re.subn(r"<head>", lambda _: f"<head>\n<script>window.KIT = {kit};</script>", page, count=1)
+    if not n:
+        raise HTTPException(500, "template has no <head>")
+    (work / "index.html").write_text(page, encoding="utf-8")
+    name = re.sub(r'[\\/:*?"<>|]+', "", body.name).strip()[:40] or body.template
+    target = out_dir / f"{name}.mov"
+    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
+    r = subprocess.run([npx, "--yes", f"hyperframes@{HF_VERSION}", "render", "--format", "mov", "--quiet",
+                        "--workers", "4", "-o", str(target)], cwd=str(work), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env, timeout=900)
+    shutil.rmtree(work, ignore_errors=True)
+    if r.returncode != 0 or not target.is_file():
+        raise HTTPException(500, "motion render failed: " + (r.stderr or r.stdout).strip()[-500:])
+    return {"file": str(target)}
+
+
 class FramesRequest(BaseModel):
     source: str
     count: int = 6

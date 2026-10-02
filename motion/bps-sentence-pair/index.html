@@ -37,18 +37,23 @@
 </div>
 <script>
   // [start, end, white lead, blue punch, punch delay after lead]
-  const PAIRS = [
+  const DEMO = [
     [0.0, 2.5, "ผู้รับเหมาก็จะ", "ถูกกดดัน", 1.0],
     [2.5, 5.0, "เรื่องงานที่ต้องเสร็จ", "ตามกำหนดเวลา", 0.6],
     [5.0, 8.0, "เพื่อตอบสนอง", "โจทย์ผู้บริโภค", 1.0],
   ];
-  const Q = new URLSearchParams(location.search);
+  // values come from ?key=... in the preview URL, or window.KIT injected by the ClipKit app before render
+  const ARGS = { ...Object.fromEntries(new URLSearchParams(location.search)), ...(window.KIT || {}) };
+  // ARGS.pairs = JSON array in the same shape, e.g. [[0,2.5,"ผู้รับเหมาก็จะ","ถูกกดดัน",1]]
+  const PAIRS = ARGS.pairs ? (typeof ARGS.pairs === "string" ? JSON.parse(ARGS.pairs) : ARGS.pairs) : DEMO;
+  const TOTAL = Math.max(...PAIRS.map(p => p[1]));
   // SPEED 2 = typing, punch delay and smear twice as fast as the original CapCut edit; ?speed= overrides.
   // Pair start/end stay as written (they follow the speech).
-  const SPEED = parseFloat(Q.get("speed")) || 2;
+  const SPEED = parseFloat(ARGS.speed) || 2;
   const TYPE = 0.5 / SPEED, SMEAR = 0.17 / SPEED;
 
-  const bg = Q.get("bg");
+  const bg = ARGS.bg;
+  document.getElementById("root").dataset.duration = TOTAL; document.getElementById("bg").dataset.duration = TOTAL;
   if (bg) { const im = document.getElementById("bg"); im.src = bg; im.style.display = "block"; }
 
   const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);

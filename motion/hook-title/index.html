@@ -29,11 +29,13 @@
   <img id="bg" class="clip" data-start="0" data-duration="5.5" data-track-index="0" alt="" style="display:none">
 </div>
 <script>
-  const HOOK = { key: "Burn out", sub: "เพราะพลาดเรื่องนี้", duration: 5.5 };
-  const Q = new URLSearchParams(location.search);
-  const STYLE = Q.get("style") || "nina";
+  // values come from ?key=... in the preview URL, or window.KIT injected by the ClipKit app before render
+  const ARGS = { ...Object.fromEntries(new URLSearchParams(location.search)), ...(window.KIT || {}) };
+  const HOOK = { key: ARGS.key || "Burn out", sub: ARGS.sub ?? "เพราะพลาดเรื่องนี้", duration: parseFloat(ARGS.duration) || 5.5 };
+  const STYLE = ARGS.style || "nina";
+  if (!(STYLE in { nina: 1, bps: 1 })) throw new Error("unknown style: " + STYLE);
   // SPEED 2 = every entrance twice as fast as the original CapCut edit (P'Ohm: original felt slow); ?speed= overrides
-  const SPEED = parseFloat(Q.get("speed")) || 2;
+  const SPEED = parseFloat(ARGS.speed) || 2;
 
   const STYLES = {
     nina: { font: '"DB Heavent", "Sukhumvit Set", sans-serif', tilt: -4.3,
@@ -46,11 +48,12 @@
   const S = STYLES[STYLE];
   const TYPE = 0.5 / SPEED, NEON = 0.5 / SPEED, SUB_DELAY = S.sub.delay / SPEED;
 
-  const bg = Q.get("bg");
+  const bg = ARGS.bg;
+  const root = document.getElementById("root");
+  root.dataset.duration = HOOK.duration; document.getElementById("bg").dataset.duration = HOOK.duration;
   if (bg) { const im = document.getElementById("bg"); im.src = bg; im.style.display = "block"; }
 
   const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);
-  const root = document.getElementById("root");
   const h = document.createElement("div");
   h.className = "hook clip"; h.dataset.start = 0; h.dataset.duration = HOOK.duration; h.dataset.trackIndex = 1;
   h.style.fontFamily = S.font;
