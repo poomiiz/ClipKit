@@ -112,27 +112,33 @@ def cmd_download(a):
             except PWTimeout:
                 raise RuntimeError("no Download button - account not signed in or no download rights")
             picked = (main.inner_text() or "").strip()
-            with page.expect_download(timeout=90000) as dl:
-                if a.kind == "video" and a.quality.lower() not in picked.lower():
-                    box = main.bounding_box()   # resolution menu hangs off the chevron right of the button
-                    page.mouse.click(box["x"] + box["width"] + 15, box["y"] + box["height"] / 2)
-                    page.wait_for_timeout(900)
-                    want = int(re.sub(r"\D", "", a.quality) or 1080)
-                    offers = []
-                    for e in page.get_by_text(re.compile(r"\(\s*\d+\s*x\s*\d+")).all():
-                        m = re.search(r"(\d+)\s*x\s*(\d+)", e.inner_text())
-                        if m and e.is_visible():
-                            offers.append((min(int(m.group(1)), int(m.group(2))), e))
-                    if not offers:
-                        main.click()            # single-resolution item: no menu
+            try:
+                with page.expect_download(timeout=90000) as dl:
+                    if a.kind == "video" and a.quality.lower() not in picked.lower():
+                        box = main.bounding_box()   # resolution menu hangs off the chevron right of the button
+                        page.mouse.click(box["x"] + box["width"] + 15, box["y"] + box["height"] / 2)
+                        page.wait_for_timeout(900)
+                        want = int(re.sub(r"\D", "", a.quality) or 1080)
+                        offers = []
+                        for e in page.get_by_text(re.compile(r"\(\s*\d+\s*x\s*\d+")).all():
+                            m = re.search(r"(\d+)\s*x\s*(\d+)", e.inner_text())
+                            if m and e.is_visible():
+                                offers.append((min(int(m.group(1)), int(m.group(2))), e))
+                        if not offers:
+                            main.click()            # single-resolution item: no menu
+                        else:
+                            exact = [o for o in offers if o[0] == want]
+                            usable = exact or sorted((o for o in offers if o[0] >= 720), key=lambda o: o[0])
+                            option = (usable or sorted(offers, key=lambda o: o[0]))[0][1]
+                            picked = option.inner_text().strip()
+                            option.click()
                     else:
-                        exact = [o for o in offers if o[0] == want]
-                        usable = exact or sorted((o for o in offers if o[0] >= 720), key=lambda o: o[0])
-                        option = (usable or sorted(offers, key=lambda o: o[0]))[0][1]
-                        picked = option.inner_text().strip()
-                        option.click()
-                else:
-                    main.click()
+                        main.click()
+            except PWTimeout:
+                if page.get_by_text("Subscribe to download").count():
+                    raise RuntimeError("Envato says 'Subscribe to download': this Chrome profile is not signed in "
+                                       "to the company account - run: python scripts/envato.py login")
+                raise
             download = dl.value
             target = dest / download.suggested_filename
             if not (target.exists() and target.stat().st_size >= 100_000):
