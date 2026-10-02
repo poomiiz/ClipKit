@@ -56,8 +56,13 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 
   <div class="card">
     <h2>3. โฟลเดอร์งาน</h2>
-    <p class="sub">กด “เลือก” เพื่อเปิดหน้าต่างเลือกโฟลเดอร์ แล้วกดบันทึก</p>
-    <div id="folders"></div>
+    <p class="sub">เลือกโฟลเดอร์ทำงานครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยมาตรฐานให้เอง (ทุกเครื่องในทีมจะเหมือนกัน)</p>
+    <div class="row"><label>โฟลเดอร์ทำงาน</label><input id="ws" placeholder="เช่น D:\ClipKit"><button class="ghost" id="bWsPick">เลือก</button></div>
+    <div class="row"><button id="bWs">ใช้โฟลเดอร์นี้</button><span class="msg" id="mWs"></span></div>
+    <div class="checks" id="wsTree"></div>
+    <details id="adv" style="margin-top:14px"><summary style="cursor:pointer;color:var(--sub)">▸ ตั้งค่าขั้นสูง — เปลี่ยนแต่ละโฟลเดอร์เอง (เช่น ใช้โฟลเดอร์เดิมที่มีอยู่แล้ว)</summary>
+      <div id="folders" style="margin-top:8px"></div>
+    </details>
     <h2 style="margin-top:16px">ตัวเลือก</h2>
     <div class="row"><label>หาภาพ Envato ผ่าน</label><select id="o_envato_backend"><option value="local">Chrome ของเครื่องนี้</option><option value="bot">บอทกลาง (เครื่องหลัก)</option></select></div>
     <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ NVIDIA (เร็ว)</option><option value="cpu">CPU (ช้า)</option></select></div>
@@ -79,7 +84,13 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
 </main>
 <script>
-const FOLDER_LABELS = {work_root:'โฟลเดอร์งานหลัก (ฟุตเทจลูกค้า)', capcut_drafts:'โปรเจกต์ CapCut (CapCut Drafts)', stock_video:'ที่เก็บวิดีโอจาก Envato', stock_music:'ที่เก็บเพลง', sfx:'เสียงประกอบ (SFX)'};
+const FOLDER_LABELS = {work_root:'ฟุตเทจดิบ', stock_video:'วิดีโอจาก Envato', stock_music:'เพลง', sfx:'เสียงประกอบ (SFX)', output_dir:'คลิปที่ส่งออก', capcut_drafts:'โปรเจกต์ CapCut (CapCut Drafts)'};
+function renderTree(folders) {
+  $('wsTree').innerHTML = Object.keys(FOLDER_LABELS).map(k => {
+    const v = folders[k] || '';
+    return `<div class="chk"><i class="dot ${v ? 'OK' : 'WARN'}"></i><b>${FOLDER_LABELS[k]}</b><span>${v || 'ยังไม่ได้ตั้ง'}</span></div>`;
+  }).join('');
+}
 const $ = id => document.getElementById(id);
 async function api(path, opt={}) {
   const r = await fetch('/api/kit/' + path, {method: opt.method || 'GET', headers:{'Content-Type':'application/json'},
@@ -130,6 +141,8 @@ async function loadConfig() {
     finally { b.disabled = false; }
   });
   for (const k of ['envato_backend', 'whisper_device', 'card_font']) if (c.options[k]) $('o_' + k).value = c.options[k];
+  $('ws').value = c.options.workspace || '';
+  renderTree(c.folders);
   if (!c.exists) say('mSave', 'ยังไม่มีไฟล์ตั้งค่า — ตรวจค่าแล้วกดบันทึก', false);
 }
 async function saveConfig() {
@@ -140,6 +153,17 @@ async function saveConfig() {
   catch (e) { say('mSave', '❌ ' + e.message, false); }
 }
 
+$('bWsPick').onclick = async () => {
+  const r = await api('browse?start=' + encodeURIComponent($('ws').value), {method:'POST'});
+  if (r.path) $('ws').value = r.path;
+};
+$('bWs').onclick = async () => {
+  try {
+    const r = await api('workspace', {method:'POST', body:{root: $('ws').value.trim()}});
+    say('mWs', '✅ สร้างโฟลเดอร์และบันทึกแล้ว' + (r.capcut_drafts ? '' : ' · ยังหาโฟลเดอร์ CapCut ไม่เจอ ตั้งเองในขั้นสูง'), true);
+    await loadConfig();
+  } catch (e) { say('mWs', '❌ ' + e.message, false); }
+};
 $('bDoctor').onclick = () => runDoctor(false);
 $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
