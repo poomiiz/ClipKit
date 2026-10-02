@@ -37,6 +37,8 @@ def home() -> RedirectResponse:
     return RedirectResponse("/video-editor.html")
 
 
+# motion / cover templates, so the cover page can show a live preview of the real template
+app.mount("/motion", StaticFiles(directory=str(HERE.parent / "motion"), html=True), name="motion")
 app.mount("/", StaticFiles(directory=str(HERE / "static"), html=True), name="static")
 
 if __name__ == "__main__":
