@@ -22,6 +22,13 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
 3. Write `<folder>/clipkit_subs_en.json` as a JSON list of strings, exactly one per Thai line, same order.
 4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
+### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
+Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on P'Ohm's machine.
+1. Read `motion/library/README.md` and `motion/library/hyperframes.md`. A new move must not repeat an existing template in `motion/*/` or a registry item with the same role and mood; for the HyperFrames command, start from that item (`npx hyperframes@0.8.101 add <name>` in a scratch project) and rebuild it as our template.
+2. Make `motion/<kebab-name>/index.html`: 1080x1920 transparent, Thai-safe (grapheme splitting with `Intl.Segmenter`, never per code point), lines shrink to fit the frame, `speed` and `font` params, and a `<script type="application/json" id="clipkit-motion">` block with `role`, `mood`, `label`, `fields`, `length` (copy the shape from `motion/hook-title`).
+3. Render one MOV through `POST /api/kit/motion` with Thai words, pull 3 frames with ffmpeg and look at them (pilot first). Fix anything cut off or broken before going on.
+4. Commit and push to ClipKit; teammates get it from the update banner and it appears on the motion page and in the library.
+
 ## 1. Machine ready
 `python scripts/doctor.py` - every line OK (WARN on "preview font" is fine). FAIL = tell the person which line and stop.
 

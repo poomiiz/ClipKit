@@ -289,6 +289,21 @@ def motion_templates() -> dict[str, dict[str, Any]]:
     return out
 
 
+@router.get("/library")
+def library() -> dict[str, Any]:
+    """Everything the motion library page shows: our own templates (ready to use) and the sorted HyperFrames
+    registry (motion/library/hyperframes.json, rebuilt by scripts/catalog_hf.py)."""
+    ours = [{"name": k, "title": v.get("label", k), "role": v.get("role", "ข้อความ"), "mood": v.get("mood", ""),
+             "source": "clipkit"} for k, v in motion_templates().items()]
+    ours += [{"name": d.name, "title": "ปก " + d.name.split("-")[-1].upper(), "role": "ปก", "mood": "", "source": "clipkit"}
+             for d in sorted((KIT / "motion").glob("cover-*")) if (d / "index.html").is_file()]
+    hf_file = KIT / "motion" / "library" / "hyperframes.json"
+    hf = json.loads(hf_file.read_text(encoding="utf-8")) if hf_file.is_file() else []
+    # making new templates is the owner's job: only a machine whose config.json has "creator": true
+    # (set by hand, not from the Settings page) sees the create buttons
+    return {"ours": ours, "hyperframes": hf, "can_create": bool(_read_config().get("creator"))}
+
+
 @router.get("/motion-templates")
 def list_motion_templates() -> dict[str, Any]:
     return {"templates": motion_templates()}
