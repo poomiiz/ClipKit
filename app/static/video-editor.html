@@ -421,7 +421,9 @@
   .proj .th { cursor: pointer; }
   .proj .nm { margin-top: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .proj .mt { font-size: 12px; color: #828ca4; }
-  .clip-layout { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 760px; margin: 0 auto; }
+  .clip-layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; max-width: 1200px; margin: 0 auto; align-items: start; }
+  @media (max-width: 900px) { .clip-layout { grid-template-columns: 1fr; } }
+  .clip-right #storyPlan .story .hint { display: none; }
   .clip-left video { width: 100%; max-height: 46vh; border-radius: 12px; background: #000; display: block; margin-bottom: 4px; }
   .clip-right .card + .card { margin-top: 14px; }
   .make-wrap { max-width: 620px; margin: 22px auto 0; text-align: center; }
@@ -459,11 +461,12 @@
   .ly-row.on { background: var(--acc-glow); }
   .agent-cmd { padding: 12px; border: 1px dashed var(--acc); border-radius: 12px; background: var(--card2); margin: 8px 0; }
   .agent-cmd code { display: block; margin: 8px 0; padding: 8px 10px; background: #080a10; border-radius: 8px; font-size: 13px; word-break: break-all; }
-  .story { display: flex; gap: 10px; align-items: center; padding: 7px 10px; margin: 4px 0; border-radius: 10px; background: var(--card2); border: 1px solid var(--line); cursor: pointer; font-size: 14px; }
+  .story { display: flex; gap: 8px; align-items: center; padding: 6px 10px; margin: 4px 0; border-radius: 10px; background: var(--card2); border: 1px solid var(--line); cursor: pointer; font-size: 14px; }
   .story.on { border-color: #7c5cff; }
   .story .tick { cursor: pointer; }
   .story .st-txt { flex: 1; min-width: 0; }
-  .story .st-txt b, .story .st-txt .hint { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .story .st-txt b { display: block; line-height: 1.35; }
+  .story .st-txt .hint { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .story .st-time { color: var(--mut, #828ca4); font-size: 12.5px; white-space: nowrap; }
   .story .st-done { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: rgba(16,185,129,.15); color: #10b981; white-space: nowrap; }
   #draftList .tile .body { min-width: 0; }
@@ -1709,8 +1712,16 @@ async function planStories() {
 
 async function markMade() {
   if (!storyList.length) return;
-  const [cc, hf] = await Promise.all([api('drafts').catch(() => ({drafts: []})),
-    fetch('/api/kit/hf-projects').then(r => r.json()).catch(() => ({projects: []}))]);
+  // a failed read must not look like "nothing made yet": retry once, then say the check failed
+  const twice = async f => { try { return await f(); } catch { return await f(); } };
+  let cc, hf;
+  try {
+    [cc, hf] = await Promise.all([twice(() => api('drafts')),
+      twice(() => fetch('/api/kit/hf-projects').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }))]);
+  } catch (e) {
+    document.querySelectorAll('#storyPlan .st-done').forEach(t => { t.style.display = ''; t.textContent = '? เช็กไม่ได้'; });
+    return;
+  }
   const norm = t => (t || '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   document.querySelectorAll('#storyPlan .story').forEach((row, i) => {
     const st = storyList[i], tail = norm((i + 1) + ' ' + st.title), range = `-${Math.trunc(st.start)}-${Math.trunc(st.end)}`;
@@ -1719,7 +1730,7 @@ async function markMade() {
     if ((hf.projects || []).some(p => (p.name || '').endsWith(range) && p.name.startsWith(fileSlug))) made.push('HyperFrames');
     const tag = row.querySelector('.st-done');
     tag.style.display = made.length ? '' : 'none';
-    tag.textContent = '✓ ทำแล้ว · ' + made.join(' + ');
+    tag.textContent = '✓ ' + made.map(k => k === 'HyperFrames' ? 'HF' : k).join(' · ');
   });
 }
 const chosenStories = () => [...document.querySelectorAll('#storyPlan .story input:checked')].map(c => +c.dataset.i);
