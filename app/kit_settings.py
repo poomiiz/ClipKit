@@ -572,27 +572,123 @@ def locate(body: LocateRequest) -> dict[str, Any]:
 
 class DraftPath(BaseModel):
     path: str
+    name: str = ""
+
+
+def _project_roots() -> dict[str, Path]:
+    cfg = _read_config()
+    base = cfg.get("output_dir") or cfg.get("work_root") or ""
+    return {"capcut": Path(cfg.get("capcut_drafts") or ""), "hyperframes": Path(base) / "hyperframes" if base else Path("")}
+
+
+def _project(path: str) -> tuple[str, Path]:
+    """Only folders directly inside the CapCut drafts folder or <output>/hyperframes may be opened, renamed or removed."""
+    p = Path(path)
+    for kind, root in _project_roots().items():
+        marker = "draft_content.json" if kind == "capcut" else "index.html"
+        if str(root) not in ("", ".") and root.is_dir() and p.parent.resolve() == root.resolve() and (p / marker).is_file():
+            return kind, p
+    raise HTTPException(400, f"not a ClipKit project folder: {path}")
 
 
 def _draft_dir(path: str) -> Path:
-    """Only folders directly inside the configured CapCut drafts folder may be opened or removed."""
-    root = Path(_read_config().get("capcut_drafts") or "")
-    p = Path(path)
-    if not root.is_dir() or p.parent.resolve() != root.resolve() or not (p / "draft_content.json").is_file():
-        raise HTTPException(400, f"not a CapCut project in the drafts folder: {path}")
-    return p
+    return _project(path)[1]
+
+
+@router.get("/hf-projects")
+def hf_projects() -> dict[str, Any]:
+    root = _project_roots()["hyperframes"]
+    out = []
+    if root.is_dir():
+        for d in root.iterdir():
+            if (d / "index.html").is_file():
+                out.append({"name": d.name, "path": str(d), "modified": int((d / "index.html").stat().st_mtime)})
+    return {"projects": sorted(out, key=lambda x: -x["modified"])}
+
+
+def _capcut_running() -> bool:
+    r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"], capture_output=True, text=True)
+    return "CapCut.exe" in r.stdout
+
+
+@router.post("/draft-rename")
+def draft_rename(body: DraftPath) -> dict[str, str]:
+    """Rename a project folder. CapCut keeps its own project list (root_meta_info.json), so CapCut must be closed
+    and that list is updated too (a .bak copy is kept next to it)."""
+    import re
+    import shutil
+    kind, p = _project(body.path)
+    new = re.sub(r'[\/:*?"<>|]+', " ", body.name).strip()
+    if not new:
+        raise HTTPException(400, "ชื่อว่าง")
+    target = p.parent / new
+    if target.exists():
+        raise HTTPException(409, f"มีโปรเจกต์ชื่อ {new} อยู่แล้ว")
+    if kind == "capcut":
+        if _capcut_running():
+            raise HTTPException(409, "ปิด CapCut ก่อนเปลี่ยนชื่อ (CapCut จะเขียนรายชื่อโปรเจกต์ทับ)")
+        sys.path.insert(0, str(KIT / "scripts" / "capcut"))
+        import kitconfig
+        rm = Path(kitconfig.ROOT_META)
+        p.rename(target)
+        meta = target / "draft_meta_info.json"
+        if meta.is_file():
+            m = json.loads(meta.read_text(encoding="utf-8"))
+            m["draft_name"] = new
+            m["draft_fold_path"] = target.as_posix()
+            meta.write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+        if rm.is_file():
+            shutil.copy2(rm, rm.with_suffix(".json.bak"))
+            r = json.loads(rm.read_text(encoding="utf-8"))
+            old_posix = p.as_posix()
+            for e in r.get("all_draft_store", []):
+                if Path(e.get("draft_fold_path", "")).resolve() == p.resolve():
+                    e["draft_name"] = new
+                    for k in ("draft_fold_path", "draft_json_file", "draft_cover"):
+                        if isinstance(e.get(k), str):
+                            e[k] = e[k].replace(old_posix, target.as_posix()).replace(str(p), str(target))
+            rm.write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
+    else:
+        p.rename(target)
+    return {"path": str(target), "name": new}
 
 
 @router.post("/draft-open")
 def draft_open(body: DraftPath) -> dict[str, str]:
     """Bring up CapCut (it opens on its project list; CapCut has no command line to open one project)."""
     import os
-    _draft_dir(body.path)
+    kind, p = _project(body.path)
+    if kind == "hyperframes":
+        return _open_hf_studio(p)
     exe = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "Apps" / "CapCut.exe"
     if not exe.is_file():
         raise HTTPException(400, f"CapCut not found at {exe}")
     subprocess.Popen([str(exe)])
     return {"opened": "CapCut"}
+
+
+def _open_hf_studio(project: Path) -> dict[str, str]:
+    import shutil
+    import urllib.request
+    npx = shutil.which("npx")
+    if not npx:
+        raise HTTPException(400, "Node.js (npx) is not installed - run setup")
+    old = _hf_preview.get("proc")
+    if old and old.poll() is None:
+        old.terminate()
+    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
+    _hf_preview["proc"] = subprocess.Popen([npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT),
+                                            "--no-open", "--foreground"], cwd=str(project), env=env,
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(60):
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{HF_PORT}/", timeout=1)
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        raise HTTPException(500, f"HyperFrames studio did not start on port {HF_PORT}")
+    return {"opened": "hyperframes", "url": f"http://localhost:{HF_PORT}/#project/{project.name}"}
 
 
 @router.post("/draft-delete")

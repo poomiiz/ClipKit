@@ -58,7 +58,7 @@ def cmd_transcribe(a):
     from faster_whisper import WhisperModel
 
     src = Path(a.input)
-    model = WhisperModel(a.model, device=a.device, compute_type="float16" if a.device == "cuda" else "int8")
+    model = WhisperModel(a.model, device=a.device, compute_type="int8_float16" if a.device == "cuda" else "int8")  # half the VRAM of float16
     segments, info = model.transcribe(str(src), language=a.language, vad_filter=True)
     # Thai: whisper "words" are sub-character byte tokens, so keep segment text (clean) and
     # re-split it on real word boundaries with pythainlp; time each word by its share of characters.

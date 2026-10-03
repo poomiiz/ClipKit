@@ -411,13 +411,14 @@
     display: grid; place-items: center; font-size: 28px; overflow: hidden; transition: border-color .15s; }
   .proj:hover .th { border-color: #7c5cff; }
   .proj .th img { width: 100%; height: 100%; object-fit: cover; }
-  .proj .acts { position: absolute; left: 8px; right: 8px; bottom: 8px; display: none; gap: 6px; }
-  .proj:hover .acts { display: flex; }
-  .proj .acts button { flex: 1; padding: 7px 4px; font-size: 12.5px; border-radius: 8px; border: 0; cursor: pointer;
-    background: rgba(12,15,23,.85); color: #fff; backdrop-filter: blur(4px); }
-  .proj .acts button:hover { background: #7c5cff; }
-  .proj .acts .del { flex: 0 0 52px; }
-  .proj .acts .del:hover { background: #ef4444; }
+  .proj .acts { display: flex; gap: 4px; margin-top: 6px; }
+  .proj .acts button { flex: 1; padding: 5px 2px; font-size: 12px; border-radius: 7px; cursor: pointer;
+    background: #1b2030; color: #c5cde0; border: 1px solid #262d40; }
+  .proj .acts button:hover { border-color: #7c5cff; color: #fff; }
+  .proj .acts .del:hover { border-color: #ef4444; color: #ef4444; }
+  .proj .badge { position: absolute; left: 6px; top: 6px; font-size: 10.5px; padding: 2px 7px; border-radius: 99px;
+    background: #0f9d76; color: #fff; }
+  .proj .th { cursor: pointer; }
   .proj .nm { margin-top: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .proj .mt { font-size: 12px; color: #828ca4; }
   .clip-layout { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 16px; align-items: start; }
@@ -1931,41 +1932,52 @@ async function draftGrade() {
 async function loadHomeDrafts() {
   const box = document.getElementById('homeDrafts');
   try {
-    const data = await api('drafts');
+    const [data, hf] = await Promise.all([api('drafts'), fetch('/api/kit/hf-projects').then(r => r.json()).catch(() => ({projects: []}))]);
     drafts = data.drafts;
-    document.getElementById('projCount').textContent = drafts.length + ' โปรเจกต์';
-    if (!drafts.length) { box.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>'; return; }
+    const all = drafts.map((d, i) => ({...d, kind: 'capcut', i}))
+      .concat((hf.projects || []).map(p => ({...p, kind: 'hyperframes'})))
+      .sort((x, y) => (y.modified || 0) - (x.modified || 0));
+    document.getElementById('projCount').textContent = all.length + ' โปรเจกต์';
+    if (!all.length) { box.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>'; return; }
     box.innerHTML = '';
-    drafts.forEach((d, i) => {
-      const src = (d.sources || [])[0];
-      const el = document.createElement('div');
-      el.className = 'proj';
-      const when = d.modified ? new Date(d.modified * 1000).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'}) : '';
-      el.innerHTML = '<div class="th">' + (src ? '<img loading="lazy" alt="" src="/api/video/frame?path=' +
-        encodeURIComponent(src) + '&t=1&width=240">' : '🎞️') + '</div><div class="nm"></div><div class="mt">' +
-        when + (d.duration ? ' · ' + Math.round(d.duration) + ' วิ' : '') + '</div>';
-      el.querySelector('.nm').textContent = d.name;
-      el.title = d.name;
-      el.onclick = () => openDraft(i);
-      const acts = document.createElement('div');
-      acts.className = 'acts';
-      acts.innerHTML = '<button title="เปิดใน CapCut">เปิดใน CapCut</button><button class="del" title="ย้ายไปถังขยะ">ลบ</button>';
-      const [bOpen, bDel] = acts.querySelectorAll('button');
-      bOpen.onclick = async ev => { ev.stopPropagation(); await kit('draft-open', d.path); toast('เปิด CapCut แล้ว · เลือกโปรเจกต์ ' + d.name); };
-      bDel.onclick = async ev => {
-        ev.stopPropagation();
-        if (!confirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? กู้คืนได้จากถังขยะของ Windows')) return;
-        if (await kit('draft-delete', d.path)) { toast('ย้าย ' + d.name + ' ไปถังขยะแล้ว'); loadHomeDrafts(); }
-      };
-      el.querySelector('.th').appendChild(acts);
-      box.appendChild(el);
-    });
+    all.forEach(d => box.appendChild(projCard(d)));
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
 }
-async function kit(path, draftPath) {
+function projCard(d) {
+  const src = (d.sources || [])[0];
+  const el = document.createElement('div');
+  el.className = 'proj';
+  const when = d.modified ? new Date(d.modified * 1000).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'}) : '';
+  const badge = d.kind === 'hyperframes' ? '<span class="badge">HyperFrames</span>' : '';
+  el.innerHTML = '<div class="th">' + badge + (src ? '<img loading="lazy" draggable="false" alt="" src="/api/video/frame?path=' +
+    encodeURIComponent(src) + '&t=1&width=240">' : (d.kind === 'hyperframes' ? '✨' : '🎞️')) + '</div>' +
+    '<div class="nm"></div><div class="mt">' + when + (d.duration ? ' · ' + Math.round(d.duration) + ' วิ' : '') + '</div>' +
+    '<div class="acts"><button data-a="open">เปิด</button><button data-a="rename">แก้ชื่อ</button><button data-a="del" class="del">ลบ</button></div>';
+  el.querySelector('.nm').textContent = d.name;
+  el.title = d.name;
+  const open = async () => {
+    if (d.kind === 'capcut') { openDraft(d.i); return; }
+    const r = await kit('draft-open', d.path);
+    if (r && r.url) window.open(r.url, '_blank');
+  };
+  el.querySelector('.th').onclick = open;
+  el.querySelector('[data-a=open]').onclick = open;
+  el.querySelector('[data-a=rename]').onclick = async () => {
+    const name = prompt('ชื่อโปรเจกต์ใหม่', d.name);
+    if (!name || name.trim() === d.name) return;
+    const r = await kit('draft-rename', d.path, {name: name.trim()});
+    if (r) { toast('เปลี่ยนชื่อเป็น ' + r.name + ' แล้ว'); loadHomeDrafts(); }
+  };
+  el.querySelector('[data-a=del]').onclick = async () => {
+    if (!confirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)')) return;
+    if (await kit('draft-delete', d.path)) { toast('ย้าย ' + d.name + ' ไปถังขยะแล้ว'); loadHomeDrafts(); }
+  };
+  return el;
+}
+async function kit(path, draftPath, extra) {
   try {
     const r = await fetch('/api/kit/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: draftPath})});
+      body: JSON.stringify({path: draftPath, ...(extra || {})})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.detail || r.statusText);
     return j;
