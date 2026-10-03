@@ -653,3 +653,71 @@ def config() -> dict[str, Any]:
         "gpu": video_edit._has_cuda(),
         "local_llm": video_edit.LOCAL_LLM_URL,
     }
+
+
+# --- motion on top of the clip: pick a subtitle line, pick a template, it renders and sits at that time ---
+OVERLAYS = "clipkit_overlays.json"
+MOTION_TEMPLATES = {"hook-title": "หัวคลิป", "bps-sentence-pair": "คำเน้น"}
+
+
+def _overlays(path: str) -> list[dict[str, Any]]:
+    f = Path(path) / OVERLAYS
+    return json.loads(f.read_text(encoding="utf-8")) if f.is_file() else []
+
+
+def _split2(text: str) -> tuple[str, str]:
+    """Two halves at the Thai word break that balances them (lead / punch, key / sub)."""
+    from pythainlp.tokenize import word_tokenize
+    w = word_tokenize(text.replace("\n", " "), keep_whitespace=True)
+    if len(w) < 2:
+        return text, ""
+    i = min(range(1, len(w)), key=lambda k: abs(len("".join(w[:k])) - len("".join(w[k:]))))
+    return "".join(w[:i]).strip(), "".join(w[i:]).strip()
+
+
+@router.get("/draft/overlays")
+def draft_overlays(path: str = Query(...)) -> dict[str, Any]:
+    try:
+        d = capcut_edit.read_draft(path)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"subs": [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in d["subtitles"]],
+            "overlays": _overlays(path), "templates": MOTION_TEMPLATES}
+
+
+class OverlayRequest(BaseModel):
+    path: str
+    template: str
+    start: float = Field(ge=0)
+    end: float
+    text: str
+
+
+@router.post("/draft/overlay")
+def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
+    import kit_settings
+    if req.template not in MOTION_TEMPLATES:
+        raise HTTPException(400, f"unknown template: {req.template}")
+    a, b = _split2(req.text)
+    dur = round(min(6.0, max(3.0, req.end - req.start)), 2)
+    params = ({"key": a, "sub": b, "duration": dur} if req.template == "hook-title"
+              else {"pairs": [[0, dur, a, b, 0.8]]})
+    name = f"{Path(req.path).name[:40]} {req.template} {req.start:.1f}"
+    mov = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params))["file"]
+    items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]  # one motion per moment
+    items.append({"file": mov, "start": req.start, "duration": dur, "template": req.template, "text": req.text})
+    (Path(req.path) / OVERLAYS).write_text(json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
+                                                      indent=1), encoding="utf-8")
+    return {"overlays": _overlays(req.path)}
+
+
+class OverlayDelete(BaseModel):
+    path: str
+    start: float
+
+
+@router.post("/draft/overlay-remove")
+def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
+    items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]
+    (Path(req.path) / OVERLAYS).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"overlays": items}
