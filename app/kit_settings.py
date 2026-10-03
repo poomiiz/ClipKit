@@ -467,14 +467,23 @@ def browse_file(start: str = "") -> dict[str, str]:
 
 
 PICK_PS = r"""
+# sharp text on scaled screens (otherwise Windows stretches a 96-dpi bitmap and it looks blurry)
+Add-Type -Namespace W -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+[void][W.U]::SetProcessDPIAware()
 Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
 $d = New-Object System.Windows.Forms.OpenFileDialog
 $d.Title = 'เลือกไฟล์วิดีโอ หรือเข้าไปในโฟลเดอร์แล้วกด Open เพื่อเลือกทั้งโฟลเดอร์'
 $d.Filter = 'วิดีโอ|*.mov;*.mp4;*.mkv;*.m4v;*.avi|ทุกไฟล์|*.*'
 $d.CheckFileExists = $false; $d.ValidateNames = $false
 $d.FileName = 'เลือกโฟลเดอร์นี้'
 if ($args[0]) { $d.InitialDirectory = $args[0] }
-$f = New-Object System.Windows.Forms.Form; $f.TopMost = $true
+# a background process may not take the foreground, so own the dialog with a tiny topmost window that is
+# actually shown: the dialog then opens above the browser instead of behind it
+$f = New-Object System.Windows.Forms.Form
+$f.TopMost = $true; $f.ShowInTaskbar = $false; $f.FormBorderStyle = 'None'; $f.Size = New-Object System.Drawing.Size(1,1)
+$f.StartPosition = 'CenterScreen'; $f.Opacity = 0
+$f.Show(); $f.Activate()
 if ($d.ShowDialog($f) -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $d.FileName }
 """
 
