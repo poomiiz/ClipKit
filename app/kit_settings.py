@@ -136,6 +136,7 @@ class HyperframesRequest(BaseModel):
     name: str
     start: float | None = None  # one story out of a long file
     end: float | None = None
+    resolution: str = "portrait"  # portrait (footage zoomed to fill 9:16), landscape, square
 
 
 HF_VERSION = "0.8.101"
@@ -160,6 +161,10 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
     slug = re.sub(r"[^A-Za-z0-9_-]+", "-", body.name).strip("-").lower() or "clip"
     root = Path(base) / "hyperframes"
     root.mkdir(parents=True, exist_ok=True)
+    if body.resolution not in ("portrait", "landscape", "square"):
+        raise HTTPException(400, f"unknown frame shape: {body.resolution}")
+    if body.resolution != "portrait":  # each shape gets its own folder; the time range stays last
+        slug = f"{slug}-{body.resolution}"
     if body.start is not None and body.end is not None:
         slug = f"{slug}-{int(body.start)}-{int(body.end)}"
     project = root / slug
@@ -176,7 +181,7 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
     npx = shutil.which("npx")
     if not project.exists():
         p = subprocess.run([npx, "--yes", f"hyperframes@{HF_VERSION}", "init", slug, "--example", "blank",
-                            "--video", str(src), "--resolution", "portrait", "--skip-transcribe", "--non-interactive"],
+                            "--video", str(src), "--resolution", body.resolution, "--skip-transcribe", "--non-interactive"],
                            cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace",
                            env=env, timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if p.returncode != 0 or not (project / "index.html").is_file():
