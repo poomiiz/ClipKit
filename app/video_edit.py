@@ -618,46 +618,39 @@ def summarize_transcript(lines: list[str], source_name: str) -> dict[str, str]:
 STORY_PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "story_split.md"
 
 
-def ask_claude(prompt: str, timeout: int = 900) -> str:
-    """One answer from Claude through the Claude Code CLI on this machine (the editor's own sign-in).
-    Raises with a plain message when Claude Code is missing or the call fails - never a quiet default."""
-    claude = shutil.which("claude")
-    if not claude:
-        raise VideoEditError("ยังไม่ได้ลง Claude Code ในเครื่องนี้ — ลงจาก claude.com/code แล้วล็อกอิน")
-    run = subprocess.run([claude, "-p", "--output-format", "text"], input=prompt, capture_output=True,
-                         text=True, encoding="utf-8", errors="replace", timeout=timeout)
-    out = run.stdout.strip()
-    if run.returncode != 0 or not out:
-        raise VideoEditError("Claude ตอบไม่สำเร็จ: " + (run.stderr or out or "no answer").strip()[-300:])
-    return out
+def transcript_file(video: str) -> Path:
+    return Path(video).with_suffix(Path(video).suffix + ".transcript.json")
 
 
-def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[str, Any]]:
-    """Split one long transcript into stand-alone stories with Claude (the Claude Code CLI on this machine,
-    signed in with the editor's own account). The instructions live in prompts/story_split.md.
+def stories_file(video: str) -> Path:
+    return Path(video).with_suffix(Path(video).suffix + ".stories.json")
 
-    Lengths count speech only (sum of phrase times), which is roughly what is left after the silent gaps are cut.
-    """
-    if not phrases:
-        raise VideoEditError("no speech found in this file")
-    numbered = "\n".join(f"[{i}] ({int(p['start'] // 60)}:{int(p['start'] % 60):02d}) {p['text']}"
-                         for i, p in enumerate(phrases))
-    template = STORY_PROMPT.read_text(encoding="utf-8")
-    template = re.sub(r"<!--.*?-->", "", template, flags=re.S).strip()
-    prompt = template.replace("{source}", source_name).replace("{transcript}", numbered)
-    content = ask_claude(prompt)
-    match = re.search(r"\[.*\]", content, re.S)
+
+def agent_command(kind: str, target: str) -> str:
+    """The line the editor pastes into Claude / Codex chat; the ClipKit skill knows what to do with it."""
+    return {"stories": f'ClipKit: แบ่งเรื่อง "{target}"',
+            "translate": f'ClipKit: แปลซับเป็นอังกฤษ "{target}"'}[kind]
+
+
+def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    """Stories the agent wrote to <video>.stories.json as [{title, summary, start, end}] (seconds).
+    None while the file is not there yet; a broken file raises."""
+    path = stories_file(video)
+    if not path.is_file():
+        return None
     try:
-        raw = json.loads(match.group(0) if match else content)
-    except json.JSONDecodeError as exc:
-        raise VideoEditError(f"Claude did not return a story list: {content[:300]}") from exc
-    stories = []
-    for item in raw:
-        first = max(0, min(int(item["first"]), len(phrases) - 1))
-        last = max(first, min(int(item["last"]), len(phrases) - 1))
-        stories.extend(_split_long(first, last, phrases, str(item.get("title", "")).strip(),
-                                   str(item.get("summary", "")).strip()))
-    return stories
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        items = [(float(i["start"]), float(i["end"]), str(i.get("title", "")).strip(),
+                  str(i.get("summary", "")).strip()) for i in raw]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise VideoEditError(f"{path.name} is not a story list: {exc}") from exc
+    out = []
+    for start, end, title, summary in items:
+        idx = [n for n, p in enumerate(phrases) if p["start"] >= start - 0.5 and p["end"] <= end + 0.5]
+        if not idx:
+            raise VideoEditError(f"story '{title}' ({start}-{end} s) has no speech in the transcript")
+        out.extend(_split_long(idx[0], idx[-1], phrases, title, summary))
+    return out
 
 
 STORY_MAX_S = 150     # a short clip above this is split

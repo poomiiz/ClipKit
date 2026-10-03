@@ -283,15 +283,21 @@ _story_jobs: dict[str, dict[str, Any]] = {}
 
 
 def _run_story_plan(file: str) -> None:
+    """Transcribe once and save <file>.transcript.json; the agent (Claude / Codex with the ClipKit skill)
+    reads it and writes <file>.stories.json, which the status call below picks up."""
     job = _story_jobs[file]
     try:
-        duration = video_edit.probe(file)["duration"]
-        job["step"] = "ถอดเสียง"
-        phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model for everything: video_edit.WHISPER_MODEL (large-v3)
-        video_edit._model = None  # free VRAM for the local LLM (8GB card)
-        job["step"] = "แบ่งเรื่อง"
-        stories = video_edit.plan_stories(phrases, Path(file).name)
-        job.update(status="done", duration=round(duration, 1), stories=stories,
+        tf = video_edit.transcript_file(file)
+        if tf.is_file():
+            phrases = json.loads(tf.read_text(encoding="utf-8"))
+        else:
+            duration = video_edit.probe(file)["duration"]
+            job["step"] = "ถอดเสียง"
+            phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model: video_edit.WHISPER_MODEL
+            tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+        job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
+                   command=video_edit.agent_command("stories", file),
+                   duration=round(phrases[-1]["end"] if phrases else 0, 1),
                    speech=round(sum(p["end"] - p["start"] for p in phrases), 1))
     except Exception as exc:  # surface every failure to the page
         job.update(status="error", error=str(exc))
@@ -315,6 +321,14 @@ def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
     job = _story_jobs.get(file)
     if not job:
         raise HTTPException(status_code=404, detail="no plan started for this file")
+    if job["status"] == "waiting":
+        try:
+            phrases = json.loads(Path(job["transcript"]).read_text(encoding="utf-8"))
+            stories = video_edit.stories_from_agent(file, phrases)
+        except VideoEditError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if stories is not None:
+            job.update(status="done", stories=stories)
     return job
 
 
@@ -444,6 +458,8 @@ class SubsLangRequest(BaseModel):
 def draft_subs_lang(req: SubsLangRequest) -> dict[str, Any]:
     try:
         return capcut_edit.subtitles_language(req.path, req.lang)
+    except capcut_edit.NeedsAgent as exc:
+        raise HTTPException(status_code=409, detail={"command": str(exc)}) from exc
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

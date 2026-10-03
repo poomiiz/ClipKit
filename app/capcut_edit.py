@@ -308,13 +308,16 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
     return {"name": folder.name, "restyled": changed}
 
 
+class NeedsAgent(VideoEditError):
+    """This step is done by the agent in chat; the message is the command to paste there."""
+
+
 SUBS_PRESET = {"size": 14.0, "y": -0.62, "color": "#ffffff", "stroke": 0.08}   # plain white, sits above TikTok's buttons
 
 
 def subtitles_language(path: str, lang: str) -> dict[str, Any]:
     """Plain white subtitles in Thai or English with the recommended look. English is translated from the
     Thai lines (kept in clipkit_subs_th.json beside the draft, so switching back restores the original)."""
-    from video_edit import translate_lines
     folder = Path(path)
     current = read_draft(path)["subtitles"]
     if not current:
@@ -324,8 +327,14 @@ def subtitles_language(path: str, lang: str) -> dict[str, Any]:
         if not keep.is_file():
             keep.write_text(json.dumps(current, ensure_ascii=False), encoding="utf-8")
         thai = json.loads(keep.read_text(encoding="utf-8"))
-        texts = translate_lines([s["text"] for s in thai], "en")
-        subs = [{"start": s["start"], "end": s["end"], "text": t} for s, t in zip(thai, texts)]
+        en_file = folder / "clipkit_subs_en.json"   # written by the agent: one English line per Thai line
+        if not en_file.is_file():
+            raise NeedsAgent(f'ClipKit: แปลซับเป็นอังกฤษ "{folder}"')
+        texts = json.loads(en_file.read_text(encoding="utf-8-sig"))
+        if not isinstance(texts, list) or len(texts) != len(thai):
+            raise VideoEditError(f"clipkit_subs_en.json has {len(texts) if isinstance(texts, list) else '?'} lines "
+                                 f"for {len(thai)} Thai lines - ask the agent to translate again")
+        subs = [{"start": s["start"], "end": s["end"], "text": str(t)} for s, t in zip(thai, texts)]
     elif lang == "th":
         src = json.loads(keep.read_text(encoding="utf-8")) if keep.is_file() else current
         subs = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in src]
