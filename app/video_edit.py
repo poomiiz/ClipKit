@@ -390,13 +390,56 @@ def _new_id() -> str:
     return str(uuid.uuid4()).upper()
 
 
+CANVAS = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
+
+
+def crop_clip(vw: int, vh: int, W: int, H: int, focus: tuple[float, float]) -> dict[str, float]:
+    """CapCut clip values that fill the canvas with the footage (no bars) and put focus (0-1 of the frame,
+    e.g. the speaker's face) as near the middle as the frame allows. CapCut's scale 1 = fit inside."""
+    fit, cover = min(W / vw, H / vh), max(W / vw, H / vh)
+    sw, sh = vw * cover, vh * cover
+    ox = max(-(sw - W) / 2, min((sw - W) / 2, (0.5 - focus[0]) * sw))
+    oy = max(-(sh - H) / 2, min((sh - H) / 2, (focus[1] - 0.5) * sh))  # CapCut y points up
+    return {"scale": round(cover / fit, 4), "x": round(ox / (W / 2), 4), "y": round(oy / (H / 2), 4)}
+
+
+def find_focus(path: str, start: float = 0.0, end: float | None = None, frames: int = 8) -> dict[str, Any]:
+    """Where the speaker is: the median centre of the biggest face over a few frames (0-1 of the frame)."""
+    import statistics
+    import tempfile
+    import cv2
+    info = probe(path)
+    end = min(end or info["duration"], info["duration"])
+    det = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    xs, ys = [], []
+    with tempfile.TemporaryDirectory() as tmp:
+        for k in range(frames):
+            t = start + (end - start) * (k + 0.5) / frames
+            jpg = Path(tmp) / f"{k}.jpg"
+            subprocess.run([FFMPEG, "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", path, "-frames:v", "1",
+                            "-vf", "scale=640:-2", str(jpg)], capture_output=True)
+            img = cv2.imread(str(jpg))
+            if img is None:
+                continue
+            faces = det.detectMultiScale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 1.1, 6, minSize=(40, 40))
+            if len(faces):
+                x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+                xs.append((x + w / 2) / img.shape[1])
+                ys.append((y + h / 2) / img.shape[0])
+    if not xs:
+        return {"found": False, "x": 0.5, "y": 0.5, "frames": frames}
+    return {"found": True, "x": round(statistics.median(xs), 3), "y": round(statistics.median(ys), 3),
+            "faces": len(xs), "frames": frames}
+
+
 def create_capcut_draft(video_path: str, project_name: str,
                         clip_in: float, clip_out: float,
                         cuts: list[dict[str, float]] | None = None,
                         subs: list[dict[str, Any]] | None = None,
                         sub_size: int = 18, sub_y: float = -0.60,
                         sub_color: str = "#ffffff", sub_stroke: float = 0.05,
-                        drafts_root: str | None = None) -> dict[str, Any]:
+                        drafts_root: str | None = None, shape: str = "source",
+                        focus: tuple[float, float] = (0.5, 0.5)) -> dict[str, Any]:
     """Clone a working draft and rewrite its timeline for this clip."""
     cuts = sorted((c for c in (cuts or [])), key=lambda c: c["start"])
     subs = sorted((s for s in (subs or [])), key=lambda s: s["start"])
@@ -411,7 +454,8 @@ def create_capcut_draft(video_path: str, project_name: str,
         target = root / f"{safe_name} {time.strftime('%H%M%S')}"
     shutil.copytree(_template_dir(), target,
                     ignore=shutil.ignore_patterns("*.bak_*", "*.bak", "draft_content.before_*",
-                                                  "draft_content.user_edited_*", "*.tmp"))
+                                                  "draft_content.user_edited_*", "*.tmp",
+                                                  "clipkit*.json"))  # the template project's own raw file / motions / subs
 
     content_path = target / "draft_content.json"
     draft = json.loads(content_path.read_text(encoding="utf-8"))
@@ -534,12 +578,13 @@ def create_capcut_draft(video_path: str, project_name: str,
         text_track["segments"] = text_segments
 
     draft["duration"] = timeline
-    draft["canvas_config"] = {
-        "ratio": "original",
-        "width": 1080 if info["vertical"] else 1920,
-        "height": 1920 if info["vertical"] else 1080,
-        "background": None,
-    }
+    W, H = CANVAS.get(shape) or ((1080, 1920) if info["vertical"] else (1920, 1080))
+    draft["canvas_config"] = {"ratio": "original", "width": W, "height": H, "background": None}
+    if shape in CANVAS:
+        clip = crop_clip(info["width"], info["height"], W, H, focus)
+        for seg in segments:
+            seg["clip"]["scale"] = {"x": clip["scale"], "y": clip["scale"]}
+            seg["clip"]["transform"] = {"x": clip["x"], "y": clip["y"]}
     content_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
 
     meta_path = target / "draft_meta_info.json"

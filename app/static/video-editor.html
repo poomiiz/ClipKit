@@ -486,6 +486,11 @@
   .ov-row .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ov-row.on { outline: 1px solid #7c5cff; }
   .ov-row button { white-space: nowrap; }
+  .vbox { position: relative; }
+  .crop-box { position: absolute; display: none; border: 2px solid #fff; border-radius: 6px; cursor: grab;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.55); touch-action: none; }
+  .vbox { overflow: hidden; border-radius: 12px; }
+  .shape-row { display: flex; gap: 8px; align-items: center; justify-content: center; margin-bottom: 10px; font-size: 14px; flex-wrap: wrap; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -531,7 +536,7 @@
   <div class="screen" id="s-clip">
     <div class="clip-layout">
       <div class="card clip-left">
-        <video id="clipVideo" controls preload="metadata"></video>
+        <div class="vbox" id="vbox"><video id="clipVideo" controls preload="metadata"></video><div id="cropBox" class="crop-box" title="ลากเพื่อเลือกส่วนที่จะติดอยู่ในคลิป"></div></div>
         <label>ชื่อโปรเจกต์</label>
         <input id="pname">
         <div id="clipInfo" class="hint"></div>
@@ -546,16 +551,18 @@
       </div>
     </div>
     <div class="make-wrap">
+      <div class="shape-row">ขนาดภาพ
+        <select id="shape" onchange="shapeChanged()">
+          <option value="portrait">แนวตั้ง 9:16</option>
+          <option value="landscape">แนวนอน 16:9</option>
+          <option value="square">สี่เหลี่ยม 1:1</option>
+          <option value="source">ตามฟุตเทจ</option></select>
+        <span class="hint" id="focusNote"></span></div>
       <div class="make-pair">
         <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
         <button class="ghost" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">สร้างโปรเจกต์ แล้วเปิด CapCut</small></button>
         <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว</small></button>
       </div>
-      <div class="hint" style="margin-top:8px">ขนาดภาพ HyperFrames
-        <select id="hfShape" style="margin-left:6px">
-          <option value="portrait">แนวตั้ง 9:16 (ซูมฟุตเทจให้เต็มจอ)</option>
-          <option value="landscape">แนวนอน 16:9</option>
-          <option value="square">สี่เหลี่ยม 1:1</option></select></div>
       <div class="msg" id="result"></div>
     </div>
   </div>
@@ -1202,7 +1209,59 @@ function pickFile(f) {
   document.getElementById('clipVideo').src = '/api/kit/media?path=' + encodeURIComponent(f.path);
   document.getElementById('result').className = 'msg';
   go('s-clip');
+  findFocus();
 }
+
+// crop: the frame shape is one choice for every button; where to crop starts on the speaker's face and can be dragged
+state.focus = {x: 0.5, y: 0.5};
+const SHAPES = {portrait: 9 / 16, landscape: 16 / 9, square: 1};
+const shapeNow = () => document.getElementById('shape').value;
+try { const v = localStorage.getItem('ck_shape'); if (v) document.getElementById('shape').value = v; } catch {}
+function shapeChanged() { try { localStorage.setItem('ck_shape', shapeNow()); } catch {} drawCrop(); }
+async function findFocus(range) {
+  const note = document.getElementById('focusNote');
+  state.focus = {x: 0.5, y: 0.5};
+  note.textContent = 'กำลังหาใบหน้า…';
+  drawCrop();
+  try {
+    const f = await api('focus', {file: state.file.path, ...(range || {})});
+    state.focus = {x: f.x, y: f.y};
+    note.textContent = f.found ? '· กรอบอยู่ที่ใบหน้าคนพูดแล้ว ลากปรับได้' : '· ไม่เจอใบหน้า วางกลางภาพ ลากปรับได้';
+  } catch (e) { note.textContent = '❌ หาใบหน้าไม่ได้: ' + e.message; }
+  drawCrop();
+}
+// the box shows the part of the frame that stays in the clip, drawn over the picture inside the player
+function cropRect() {
+  const v = document.getElementById('clipVideo'), f = state.file;
+  if (!f || !f.width || !SHAPES[shapeNow()]) return null;
+  const a = f.width / f.height, A = SHAPES[shapeNow()];
+  const s = Math.min(v.clientWidth / f.width, v.clientHeight / f.height);
+  const pw = f.width * s, ph = f.height * s, px = (v.clientWidth - pw) / 2, py = (v.clientHeight - ph) / 2;
+  const cw = a > A ? ph * A : pw, ch = a > A ? ph : pw / A;
+  const cx = Math.max(cw / 2, Math.min(pw - cw / 2, state.focus.x * pw));
+  const cy = Math.max(ch / 2, Math.min(ph - ch / 2, state.focus.y * ph));
+  return {left: px + cx - cw / 2, top: py + cy - ch / 2, width: cw, height: ch, pw, ph};
+}
+function drawCrop() {
+  const b = document.getElementById('cropBox'), r = cropRect();
+  if (!r || (r.width >= r.pw - 1 && r.height >= r.ph - 1)) { b.style.display = 'none'; return; }
+  Object.assign(b.style, {display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px'});
+}
+window.addEventListener('resize', drawCrop);
+document.getElementById('clipVideo').addEventListener('loadedmetadata', drawCrop);
+document.getElementById('cropBox').addEventListener('pointerdown', e => {
+  const b = e.currentTarget, r0 = cropRect(), x0 = e.clientX, y0 = e.clientY, f0 = {...state.focus};
+  b.setPointerCapture(e.pointerId);
+  const move = ev => {
+    state.focus = {x: Math.max(0, Math.min(1, f0.x + (ev.clientX - x0) / r0.pw)),
+                   y: Math.max(0, Math.min(1, f0.y + (ev.clientY - y0) / r0.ph))};
+    drawCrop();
+  };
+  const up = () => { b.removeEventListener('pointermove', move); b.removeEventListener('pointerup', up);
+    document.getElementById('focusNote').textContent = '· ใช้ตำแหน่งที่ลากไว้'; };
+  b.addEventListener('pointermove', move);
+  b.addEventListener('pointerup', up);
+});
 
 ['dSize', 'dY', 'dStroke', 'dColor'].forEach(id => {
   const el = document.getElementById(id);
@@ -1686,7 +1745,7 @@ async function makeDraft(open = true) {
   main.disabled = true;
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
-    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', ...(state.range || {})});
+    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
     drafts = (await api('drafts')).drafts;
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
@@ -1834,7 +1893,7 @@ async function makeHyperframes(open = true) {
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ HyperFrames และเปิด Studio… (ครั้งแรกอาจใช้ 1–2 นาที)';
   try {
     const r = await fetch('/api/kit/hyperframes', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                                   body: JSON.stringify({file: state.file.path, name: name, resolution: document.getElementById('hfShape').value, ...(state.range || {})})});
+                                                   body: JSON.stringify({file: state.file.path, name: name, resolution: shapeNow() === 'source' ? (state.file.height > state.file.width ? 'portrait' : 'landscape') : shapeNow(), ...(state.range || {})})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.status);
     out.innerHTML = '✅ เปิด Studio แล้ว: <a href="' + j.url + '" target="_blank">' + j.url + '</a> · โฟลเดอร์ ' + j.project;
