@@ -451,6 +451,13 @@
   .wz-nav { display: flex; justify-content: space-between; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
   #s-draft #c-style > .hint.text-center { display: none; }
   body:has(#s-draft.on) #stepper { display: none !important; }
+  .ly-cap { position: absolute; z-index: 3; white-space: pre; text-align: center; color: #fff; font-weight: 700; cursor: grab;
+    text-shadow: 0 0 2px #000, 1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000; outline: 2px dashed #7c5cff;
+    outline-offset: 4px; touch-action: none; user-select: none; }
+  .ly-list { max-height: 260px; overflow: auto; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; }
+  .ly-row { display: flex; gap: 10px; align-items: center; padding: 7px 10px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .ly-row .tx { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ly-row.on { background: var(--acc-glow); }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -591,7 +598,7 @@
           </div>
           <div class="preview" id="preview">
             <img id="previewImg" alt="">
-            <div class="cap" id="previewCap">ตัวอย่างข้อความซับ
+            <div class="ly-cap" id="lyCap" style="display:none"></div><div class="cap" id="previewCap">ตัวอย่างข้อความซับ
 ขนาดนี้บนจอจริง</div>
           </div>
           <div class="hint text-center">พรีวิวบนเฟรมจริงของคลิปนี้ · อัปเดตทันทีที่ปรับ</div>
@@ -603,6 +610,21 @@
             <button class="small primary grow" onclick="draftStyle()">💾 ใช้สไตล์นี้กับคลิป</button>
             <button class="small ghost" onclick="go('s-style')">📂 สไตล์ที่เคยทำ</button>
           </div>
+        </div>
+
+        <!-- Place each subtitle: the system lays them out, the editor drags / tilts any of them -->
+        <div class="tool-card" id="c-layout">
+          <div class="tc-head"><div class="icon">✋</div><div class="titles">
+            <h3>จัดวางข้อความ</h3><p>ระบบวางและย่อให้พอดีจอก่อน กดข้อความในรายการแล้วลากบนภาพซ้ายเพื่อย้าย</p></div></div>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <button class="small" onclick="layoutLoad()">โหลดข้อความ</button>
+            <button class="small" onclick="layoutAuto()">จัดอัตโนมัติ (ย่อให้พอดีจอ)</button>
+            <button class="small primary" onclick="layoutSave()">💾 บันทึกตำแหน่ง</button>
+          </div>
+          <div class="form-row"><label>เอียง (องศา)</label><input id="lyRot" type="range" min="-30" max="30" step="1" value="0" oninput="layoutEdit()"><span id="lyRotV" class="hint">0°</span></div>
+          <div class="form-row"><label>ขนาด</label><input id="lySize" type="number" step="0.5" oninput="layoutEdit()"></div>
+          <div id="lyList" class="ly-list"><div class="hint">กดโหลดข้อความ</div></div>
+          <div class="busy" id="lyBusy"></div>
         </div>
 
         <!-- Motion text: the standalone page, embedded so titles are tuned while editing the clip -->
@@ -1549,7 +1571,7 @@ const WZ = [
    main: [['✂️ ตัดช่วงเงียบ', () => draftTrim(true)], ['🔍 ดูก่อนว่าจะตัดตรงไหน', () => draftTrim(false), 'ghost']],
    more: ['filmstripCard', 'c-grade']},
   {key: 'text', label: 'ซับและตัวหนังสือ', help: 'สไตล์ซับ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
-   main: [['💾 ใช้สไตล์ซับนี้', () => draftStyle()]], show: ['c-style'], more: ['c-anim', 'c-motion']},
+   main: [['💾 ใช้สไตล์ซับนี้', () => draftStyle()]], show: ['c-style', 'c-layout'], more: ['c-anim', 'c-motion']},
   {key: 'music', label: 'เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
   {key: 'broll', label: 'ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
@@ -1975,6 +1997,102 @@ fetch('/api/kit/config').then(r => r.json()).then(c => {
   else loadHomeDrafts();
 }).catch(() => loadHomeDrafts());
 window.addEventListener('hashchange', () => { if (!location.hash) loadHomeDrafts(); });
+</script>
+<script>
+// ---- subtitle layout: auto place + fit, then drag / tilt per line (CapCut x, y run -1..1, y up) ----
+let LY = [], lySel = -1;
+const lyBox = () => document.getElementById('preview');
+function lyPx(size) { return size * CAPCUT_PX * (lyBox().clientWidth / 1080); }
+function lyWidth(text, size) {
+  const c = lyWidth.c || (lyWidth.c = document.createElement('canvas').getContext('2d'));
+  const cs = getComputedStyle(document.getElementById('previewCap'));
+  c.font = `${cs.fontWeight} ${lyPx(size)}px ${cs.fontFamily}`;
+  return Math.max(...text.split('\n').map(t => c.measureText(t).width));
+}
+function lyFit(item, base) {   // largest size up to `base` whose widest line fits 88% of the frame
+  const max = lyBox().clientWidth * 0.88, w = lyWidth(item.text, base);
+  return w > max ? Math.max(4, Math.floor(base * max / w * 2) / 2) : base;
+}
+async function layoutLoad() {
+  if (!state.draft) return;
+  const d = await api('draft', {path: state.draft.path});
+  LY = d.subtitles.map(t => ({...t, size: t.size || 18}));
+  lySel = -1;
+  layoutList();
+  document.getElementById('lyBusy').textContent = LY.length + ' ข้อความ';
+}
+function layoutAuto() {
+  if (!LY.length) return;
+  const base = parseFloat(document.getElementById('dSize').value) || 18, y = parseFloat(document.getElementById('dY').value) || -0.6;
+  LY.forEach(t => { t.x = 0; t.y = y; t.rotation = 0; t.size = lyFit(t, base); });
+  layoutList();
+  document.getElementById('lyBusy').textContent = 'จัดแล้ว ' + LY.filter(t => t.size < base).length + ' ข้อความถูกย่อให้พอดีจอ · กดบันทึกเพื่อใส่ลง CapCut';
+}
+function layoutList() {
+  const box = document.getElementById('lyList');
+  box.innerHTML = '';
+  LY.forEach((t, i) => {
+    const r = document.createElement('div');
+    r.className = 'ly-row' + (i === lySel ? ' on' : '');
+    r.innerHTML = '<span class="hint">' + t.start.toFixed(1) + 's</span><span class="tx"></span><span class="hint">' + t.size + '</span>';
+    r.querySelector('.tx').textContent = t.text;
+    r.onclick = () => { lySel = i; layoutList(); layoutShow(); };
+    box.appendChild(r);
+  });
+  layoutShow();
+}
+function layoutShow() {
+  const cap = document.getElementById('lyCap'), plain = document.getElementById('previewCap');
+  if (lySel < 0) { cap.style.display = 'none'; plain.style.display = ''; return; }
+  const t = LY[lySel];
+  plain.style.display = 'none';
+  cap.style.display = 'block';
+  cap.textContent = t.text;
+  cap.style.fontSize = lyPx(t.size) + 'px';
+  cap.style.left = (50 + t.x * 50) + '%';
+  cap.style.top = (50 - t.y * 50) + '%';
+  cap.style.transform = `translate(-50%, -50%) rotate(${t.rotation}deg)`;
+  document.getElementById('lyRot').value = t.rotation;
+  document.getElementById('lyRotV').textContent = t.rotation + '°';
+  document.getElementById('lySize').value = t.size;
+}
+function layoutEdit() {
+  if (lySel < 0) return;
+  const t = LY[lySel];
+  t.rotation = +document.getElementById('lyRot').value;
+  t.size = parseFloat(document.getElementById('lySize').value) || t.size;
+  layoutShow();
+  layoutList.pending || (layoutList.pending = setTimeout(() => { layoutList.pending = 0; layoutList(); }, 300));
+}
+// drag the selected line on the preview
+(() => {
+  const cap = document.getElementById('lyCap');
+  if (!cap) return;
+  cap.addEventListener('pointerdown', e => {
+    if (lySel < 0) return;
+    cap.setPointerCapture(e.pointerId);
+    const move = ev => {
+      const r = lyBox().getBoundingClientRect(), t = LY[lySel];
+      t.x = Math.max(-1, Math.min(1, ((ev.clientX - r.left) / r.width - 0.5) * 2));
+      t.y = Math.max(-1, Math.min(1, -((ev.clientY - r.top) / r.height - 0.5) * 2));
+      t.x = Math.round(t.x * 1000) / 1000; t.y = Math.round(t.y * 1000) / 1000;
+      layoutShow();
+    };
+    const up = () => { cap.removeEventListener('pointermove', move); cap.removeEventListener('pointerup', up); };
+    cap.addEventListener('pointermove', move);
+    cap.addEventListener('pointerup', up);
+  });
+})();
+async function layoutSave() {
+  if (!LY.length || !state.draft) return;
+  const busy = document.getElementById('lyBusy');
+  busy.textContent = 'กำลังบันทึก… (ปิด CapCut ไว้ก่อน)';
+  try {
+    const r = await api('draft/layout', {path: state.draft.path,
+      items: LY.map(t => ({id: t.id, x: t.x, y: t.y, rotation: t.rotation, size: t.size}))});
+    busy.textContent = '✅ บันทึกตำแหน่ง ' + r.placed + ' ข้อความลง CapCut แล้ว';
+  } catch (e) { busy.textContent = '❌ ' + e.message; }
+}
 </script>
 <script src="/shell.js?v=4"></script>
 <script>
