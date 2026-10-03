@@ -78,6 +78,12 @@
     p.innerHTML = `<div class="lead">${chars.map(c => `<span class="ch">${c}</span>`).join("")}<span class="cur"></span></div><div class="punch">${punch}</div>`;
     root.appendChild(p);
     const cur = p.querySelector(".cur"), pu = p.querySelector(".punch");
+    // keep both lines inside the frame whatever the font (punch is centred, lead starts at 92 px)
+    const fit = () => [[pu, 960], [p.querySelector(".lead"), 900]].forEach(([el, max]) => {
+      el.style.fontSize = "";
+      if (el.offsetWidth > max) el.style.fontSize = parseFloat(getComputedStyle(el).fontSize) * max / el.offsetWidth + "px";
+    });
+    fit(); document.fonts.ready.then(fit);
 
     tl.set(p, { opacity: 1 }, start);
     // typewriter: graphemes appear one by one (Thai vowels/tone marks stay with their consonant).
