@@ -472,6 +472,11 @@
   .story .st-done { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: rgba(16,185,129,.15); color: #10b981; white-space: nowrap; }
   #draftList .tile .body { min-width: 0; }
   #draftList .tile .t1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proj.sel .th { outline: 3px solid #7c5cff; outline-offset: 2px; }
+  .proj.sel .nm { color: #b9a8ff; }
+  .marquee { position: fixed; z-index: 50; border: 1px solid #7c5cff; background: rgba(124,92,255,.15); pointer-events: none; border-radius: 4px; }
+  #selBar { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
+  #selHint { margin-left: 12px; font-size: 12.5px; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -493,7 +498,11 @@
       <div class="nz-plus">+</div>
       <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
     </div>
-    <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span></div>
+    <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span>
+      <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
+        <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
+        <button class="small" onclick="clearSel()">ยกเลิก</button></span>
+      <span class="hint" id="selHint">ลากคลุมเพื่อเลือกหลายโปรเจกต์ · Ctrl+คลิก เลือกทีละอัน</span></div>
     <div id="homeDrafts" class="proj-grid"><div class="hint">กำลังอ่านโปรเจกต์…</div></div>
     <div id="recentWrap" class="recent-list"></div>
   </div>
@@ -2028,6 +2037,7 @@ async function loadHomeDrafts() {
     document.getElementById('projCount').textContent = all.length + ' โปรเจกต์';
     if (!all.length) { box.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>'; return; }
     box.innerHTML = '';
+    selSet.clear(); showSel();
     all.forEach(d => box.appendChild(projCard(d)));
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
 }
@@ -2043,6 +2053,7 @@ function projCard(d) {
     '<div class="acts"><button data-a="open">เปิด</button><button data-a="rename">แก้ชื่อ</button><button data-a="del" class="del">ลบ</button></div>';
   el.querySelector('.nm').textContent = d.name;
   el.title = d.name;
+  el._d = d;
   const open = async () => {
     if (d.kind === 'capcut') { openDraft(d.i); return; }
     const r = await kit('draft-open', d.path);
@@ -2062,6 +2073,62 @@ function projCard(d) {
   };
   return el;
 }
+// select several projects: drag a box over them (from any empty spot or a card), or Ctrl+click one by one
+const selSet = new Set();
+function showSel() {
+  document.querySelectorAll('#homeDrafts .proj').forEach(el => el.classList.toggle('sel', selSet.has(el)));
+  document.getElementById('selN').textContent = selSet.size;
+  document.getElementById('selBar').style.display = selSet.size ? '' : 'none';
+  document.getElementById('selHint').style.display = selSet.size ? 'none' : '';
+}
+function clearSel() { selSet.clear(); showSel(); }
+async function delSelected() {
+  const list = [...selSet].map(el => el._d);
+  if (!list.length || !confirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)\n\n' + list.map(d => '• ' + d.name).join('\n'))) return;
+  let ok = 0;
+  for (const d of list) if (await kit('draft-delete', d.path)) ok++;
+  toast('ย้ายไปถังขยะแล้ว ' + ok + '/' + list.length + ' โปรเจกต์');
+  clearSel();
+  loadHomeDrafts();
+}
+(() => {
+  const area = document.getElementById('homeDrafts');
+  let start = null, box = null, base = null, eatClick = false;
+  area.parentElement.addEventListener('mousedown', e => {
+    if (e.button !== 0 || e.target.closest('button, input, a, .proj-head')) return;
+    const card = e.target.closest('#homeDrafts .proj');
+    if (card && (e.ctrlKey || e.metaKey)) { selSet.has(card) ? selSet.delete(card) : selSet.add(card); showSel(); eatClick = true; return; }
+    start = {x: e.clientX, y: e.clientY};
+    base = e.ctrlKey || e.metaKey ? new Set(selSet) : new Set();
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!start) return;
+    if (!box) {
+      if (Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) < 6) return;
+      box = document.createElement('div');
+      box.className = 'marquee';
+      document.body.appendChild(box);
+    }
+    const l = Math.min(start.x, e.clientX), t = Math.min(start.y, e.clientY);
+    const r = Math.max(start.x, e.clientX), b = Math.max(start.y, e.clientY);
+    Object.assign(box.style, {left: l + 'px', top: t + 'px', width: r - l + 'px', height: b - t + 'px'});
+    selSet.clear(); base.forEach(x => selSet.add(x));
+    area.querySelectorAll('.proj').forEach(el => {
+      const q = el.getBoundingClientRect();
+      if (q.left < r && q.right > l && q.top < b && q.bottom > t) selSet.add(el);
+    });
+    showSel();
+  });
+  document.addEventListener('mouseup', () => {
+    if (box) { box.remove(); box = null; eatClick = true; }
+    else if (start && !base.size && selSet.size) clearSel();  // plain click on empty space clears
+    start = null;
+  });
+  // a drag or Ctrl+click must not also open the card under the mouse
+  area.addEventListener('click', e => { if (eatClick) { e.stopPropagation(); e.preventDefault(); eatClick = false; } }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && selSet.size) clearSel(); });
+})();
 async function kit(path, draftPath, extra) {
   try {
     const r = await fetch('/api/kit/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'},
