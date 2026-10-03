@@ -30,6 +30,25 @@ def _font(path: str | None) -> tuple[str, Path]:
     return TTFont(str(f), fontNumber=0)["name"].getDebugName(1), f
 
 
+def _fit(text: str, font_file: Path, size: float, max_w: float) -> tuple[list[str], float]:
+    """Keep a subtitle inside the frame: one line when it fits, else two lines split at the Thai word break
+    that balances them best, and only if the longer of the two still overflows, a smaller size."""
+    from PIL import ImageFont
+    from pythainlp.tokenize import word_tokenize
+    font = ImageFont.truetype(str(font_file), 100)
+    width = lambda t: font.getlength(t) * size / 100  # noqa: E731
+    if "\n" in text:  # the editor already chose the line breaks
+        lines = text.split("\n")
+    elif width(text) <= max_w:
+        return [text], size
+    else:
+        words = word_tokenize(text, keep_whitespace=True)
+        cuts = [("".join(words[:i]).strip(), "".join(words[i:]).strip()) for i in range(1, len(words))]
+        lines = list(min(cuts, key=lambda c: max(width(c[0]), width(c[1])))) if cuts else [text]
+    widest = max(width(t) for t in lines)
+    return lines, size if widest <= max_w else size * max_w / widest
+
+
 def _ass_color(rgb: list[float]) -> str:
     r, g, b = (max(0, min(255, round(c * 255))) for c in rgb[:3])
     return f"&H00{b:02X}{g:02X}{r:02X}"
@@ -97,7 +116,8 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         y = H / 2 - s["clip"]["transform"]["y"] * H / 2
         t0 = s["target_timerange"]["start"] / US
         t1 = t0 + s["target_timerange"]["duration"] / US
-        words = body.get("text", "").replace("\n", "\\N")
+        lines, size = _fit(body.get("text", ""), fdir, size, W * 0.9)
+        words = "\\N".join(lines)
         events.append(f"Dialogue: 0,{_ts(t0)},{_ts(t1)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
                       f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
                       f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}}}{words}")
