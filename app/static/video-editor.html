@@ -393,6 +393,9 @@
     border-top-color: transparent; border-radius: 50%; animation: sp .8s linear infinite; vertical-align: -2px;
   }
   @keyframes sp { to { transform: rotate(360deg); } }
+  body.dropping::after { content: 'วางไฟล์วิดีโอหรือโฟลเดอร์ที่นี่'; position: fixed; inset: 12px; z-index: 98;
+    border: 3px dashed #7c5cff; border-radius: 18px; background: rgba(12,15,23,.82); color: #fff; font-size: 22px;
+    display: grid; place-items: center; pointer-events: none; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -910,10 +913,46 @@ async function startNew() {
   openPicker();
 }
 
-function openPicker() {
-  document.getElementById('sheet').classList.add('on');
-  loadPicker(localStorage.getItem('ve_last') || '');
+function toast(text) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1b2030;border:1px solid #3a4260;color:#f1f4fb;padding:10px 16px;border-radius:10px;z-index:99;max-width:90vw;font-size:14px';
+    document.body.appendChild(t); }
+  t.textContent = text; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 6000);
 }
+// Windows' own Open dialog (file or whole folder); the old in-page folder browser stays only as loadPicker()
+async function openPicker() {
+  try {
+    const r = await fetch('/api/kit/pick?start=' + encodeURIComponent(localStorage.getItem('ve_last') || ''), {method: 'POST'})
+      .then(x => x.json());
+    if (r.path) openPicked(r);
+  } catch (e) { toast('❌ เปิดหน้าต่างเลือกไฟล์ไม่ได้: ' + e.message); }
+}
+function openPicked(r) {
+  if (r.kind === 'file') {
+    const i = Math.max(r.path.lastIndexOf('\\'), r.path.lastIndexOf('/'));
+    scanFolder(r.path.slice(0, i), r.path.slice(i + 1));
+  } else scanFolder(r.path);
+}
+// drag a video or folder from Explorer onto the page: the browser gives only its name and size,
+// so the server finds it inside the workspace folders
+document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+document.addEventListener('drop', async e => {
+  e.preventDefault(); document.body.classList.remove('dropping');
+  const item = e.dataTransfer.items && e.dataTransfer.items[0];
+  const entry = item && item.webkitGetAsEntry && item.webkitGetAsEntry();
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  try {
+    const r = await fetch('/api/kit/locate', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: file.name, size: entry && entry.isDirectory ? -1 : file.size})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    openPicked(j);
+  } catch (err) { toast('❌ ' + err.message); }
+});
 function closePicker() { document.getElementById('sheet').classList.remove('on'); }
 
 async function loadPicker(path) {
@@ -990,7 +1029,7 @@ function renderRecent() {
 }
 renderRecent();
 
-async function scanFolder(path) {
+async function scanFolder(path, autoName) {
   const box = document.getElementById('fileList');
   document.getElementById('folderLabel').textContent = path;
   box.innerHTML = '<div class="hint">กำลังสแกน…</div>';
@@ -1014,6 +1053,8 @@ async function scanFolder(path) {
       if (!f.error) div.onclick = () => pickFile(f);
       box.appendChild(div);
     });
+    const auto = autoName && data.files.find(f => f.name === autoName && !f.error);
+    if (auto) pickFile(auto);   // a single file was picked or dropped: open it straight away
   } catch (e) {
     box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
   }
