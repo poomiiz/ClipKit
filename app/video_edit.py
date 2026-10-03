@@ -549,6 +549,14 @@ def create_capcut_draft(video_path: str, project_name: str,
         meta["draft_root_path"] = str(root.as_posix())
         meta["draft_id"] = _new_id()
         meta["tm_duration"] = timeline
+        # the template's cover picture and media size would show in CapCut's project list: use this clip's
+        meta["draft_timeline_materials_size_"] = Path(video_path).stat().st_size
+        cover = target / "draft_cover.jpg"
+        cut = subprocess.run([FFMPEG, "-v", "error", "-y", "-ss", f"{clip_in + 1:.2f}", "-i", str(video_path),
+                              "-frames:v", "1", "-vf", "scale=-2:720", str(cover)], capture_output=True, text=True)
+        if cut.returncode != 0:
+            raise VideoEditError(f"could not make the project cover: {cut.stderr.strip()[-200:]}")
+        meta["draft_cover"] = "draft_cover.jpg"
         meta["tm_draft_create"] = int(time.time() * 1_000_000)
         meta["tm_draft_modified"] = int(time.time() * 1_000_000)
         for group in meta.get("draft_materials", []):
