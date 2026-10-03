@@ -1990,7 +1990,7 @@ fetch('/api/kit/config').then(r => r.json()).then(c => {
 }).catch(() => loadHomeDrafts());
 window.addEventListener('hashchange', () => { if (!location.hash) loadHomeDrafts(); });
 </script>
-<script src="/shell.js?v=3"></script>
+<script src="/shell.js?v=4"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

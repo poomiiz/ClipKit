@@ -44,8 +44,7 @@
       bar.innerHTML = '<span>มี ClipKit เวอร์ชันใหม่ (' + u.count + ' รายการ)</span>' +
         '<button style="background:#7c5cff;color:#fff;border:0;border-radius:8px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer">อัปเดต</button>' +
         '<button style="background:none;border:0;color:#828ca4;cursor:pointer;font:inherit">ภายหลัง</button>';
-      bar.title = (u.changes || []).join('
-');
+      bar.title = (u.changes || []).join('\n');
       const [go, later] = bar.querySelectorAll('button');
       later.onclick = () => bar.remove();
       go.onclick = async () => {
@@ -56,8 +55,7 @@
           let j;
           do { await new Promise(x => setTimeout(x, 1500)); j = await fetch('/api/kit/job/update').then(x => x.json()); }
           while (j.status === 'running');
-          if (j.status !== 'done') throw new Error((j.log || '').trim().split('
-').pop());
+          if (j.status !== 'done') throw new Error((j.log || '').trim().split('\n').pop());
           bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด ClipKit ใหม่ให้ครบทุกส่วน';
           go.remove(); later.textContent = 'ปิด';
         } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
