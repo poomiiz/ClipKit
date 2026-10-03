@@ -658,19 +658,10 @@ def bug_report(body: BugReport) -> dict[str, Any]:
     folder.mkdir(exist_ok=True)
     f = folder / f"{time.strftime('%Y%m%d-%H%M%S')}.json"
     f.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    md = (f"{report['text']}
-
-- page: {report['page']}
-- version: {report['version']} ({report['commit']})
-"
-          f"- machine: {report['machine']}
-- time: {report['time']}
-
-errors:
-```
-" + "
-".join(report["errors"]) + "
-```")
+    md = chr(10).join([report["text"], "", f"- page: {report['page']}",
+                     f"- version: {report['version']} ({report['commit']})",
+                     f"- machine: {report['machine']}", f"- time: {report['time']}", "", "errors:", "```",
+                     *report["errors"], "```"])
     title = report["text"].splitlines()[0][:80]
     url = "https://github.com/poomiiz/ClipKit/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
     return {"saved": str(f), "issue_url": url}

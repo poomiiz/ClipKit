@@ -429,7 +429,8 @@ def draft_export(req: DraftPath) -> dict[str, Any]:
     """MP4 straight from ClipKit (no CapCut): <output_dir>/exports/<project>.mp4"""
     import kit_settings
     import render
-    out = kit_settings._read_config().get("output_dir")
+    cfg = kit_settings._read_config()
+    out = cfg.get("output_dir") or cfg.get("work_root")  # same place covers and motion files go
     if not out:
         raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
     try:

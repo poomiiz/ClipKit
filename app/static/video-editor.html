@@ -1807,7 +1807,7 @@ async function makeChosen(kind) {
       done.push(i + 1);
     }
     if (list.length > 1) out.textContent = made.length
-      ? `✅ ได้ MP4 ${made.length} ไฟล์ (เรื่อง ${done.join(', ')}) · อยู่ที่ ${made[0].replace(/[\/][^\/]*$/, '')}`
+      ? `✅ ได้ MP4 ${made.length} ไฟล์ (เรื่อง ${done.join(', ')}) · อยู่ที่ ${made[0].replace(/[\\/][^\\/]*$/, '')}`
       : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
     if (lastCapcut) await kit('draft-open', lastCapcut.path);
   } catch (e) {
