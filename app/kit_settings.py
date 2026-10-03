@@ -452,23 +452,86 @@ def capcut_detect() -> dict[str, str]:
 
 @router.post("/browse")
 def browse(start: str = "") -> dict[str, str]:
-    """Native folder picker on this machine (the app is local-only)."""
-    script = ("import tkinter as t,tkinter.filedialog as f,sys;r=t.Tk();r.withdraw();r.attributes('-topmost',1);"
-              "print(f.askdirectory(initialdir=sys.argv[1] or None) or '')")
-    p = subprocess.run([sys.executable, "-c", script, start], capture_output=True, text=True, encoding="utf-8",
-                       timeout=600)
-    return {"path": p.stdout.strip().replace("/", "\\")}
+    """Folder pick (settings): same Windows Open dialog; a picked file means its folder."""
+    r = pick(start)
+    return {"path": r["path"] if r["kind"] != "file" else str(Path(r["path"]).parent)}
 
 
 @router.post("/browse-file")
 def browse_file(start: str = "") -> dict[str, str]:
-    """Native file picker (video or image) on this machine."""
-    script = ("import tkinter as t,tkinter.filedialog as f,sys;r=t.Tk();r.withdraw();r.attributes('-topmost',1);"
-              "print(f.askopenfilename(initialdir=sys.argv[1] or None,filetypes=[('Video / image','*.mov *.mp4 *.mkv "
-              "*.jpg *.jpeg *.png *.webp'),('All','*.*')]) or '')")
-    p = subprocess.run([sys.executable, "-c", script, start], capture_output=True, text=True, encoding="utf-8",
-                       timeout=600)
-    return {"path": p.stdout.strip().replace("/", "\\")}
+    """File pick (cover background): same Windows Open dialog; a folder is not an answer here."""
+    r = pick(start)
+    if r["kind"] == "folder":
+        raise HTTPException(400, "เลือกไฟล์วิดีโอหรือรูป ไม่ใช่โฟลเดอร์")
+    return {"path": r["path"]}
+
+
+PICK_PS = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$d = New-Object System.Windows.Forms.OpenFileDialog
+$d.Title = 'เลือกไฟล์วิดีโอ หรือเข้าไปในโฟลเดอร์แล้วกด Open เพื่อเลือกทั้งโฟลเดอร์'
+$d.Filter = 'วิดีโอ|*.mov;*.mp4;*.mkv;*.m4v;*.avi|ทุกไฟล์|*.*'
+$d.CheckFileExists = $false; $d.ValidateNames = $false
+$d.FileName = 'เลือกโฟลเดอร์นี้'
+if ($args[0]) { $d.InitialDirectory = $args[0] }
+$f = New-Object System.Windows.Forms.Form; $f.TopMost = $true
+if ($d.ShowDialog($f) -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $d.FileName }
+"""
+
+
+@router.post("/pick")
+def pick(start: str = "") -> dict[str, str]:
+    """Windows' own Open dialog: pick a video file, or open a folder and press Open to take the whole folder
+    (the classic 'file name = select this folder' trick, since Windows has no single file-or-folder dialog)."""
+    script = Path(tempfile_dir()) / "clipkit_pick.ps1"
+    script.write_text(PICK_PS, encoding="utf-8-sig")   # BOM: Windows PowerShell reads Thai text correctly
+    p = subprocess.run(["powershell", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", str(script), start],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    out = p.stdout.strip()
+    if not out:
+        return {"path": "", "kind": ""}
+    path = Path(out)
+    if path.is_file():
+        return {"path": str(path), "kind": "file"}
+    folder = path if path.is_dir() else path.parent    # "เลือกโฟลเดอร์นี้" does not exist: its folder is the pick
+    if not folder.is_dir():
+        raise HTTPException(400, f"not found: {out}")
+    return {"path": str(folder), "kind": "folder"}
+
+
+def tempfile_dir() -> str:
+    import tempfile
+    return tempfile.gettempdir()
+
+
+class LocateRequest(BaseModel):
+    name: str
+    size: int = -1      # bytes for a file, -1 for a folder
+
+
+@router.post("/locate")
+def locate(body: LocateRequest) -> dict[str, Any]:
+    """Find a file/folder dropped onto the page. Browsers hand the page only the name and size, never the
+    path, so look for an exact name (+ size) match under the workspace folders. Several matches or none = say so."""
+    cfg = _read_config()
+    roots = [Path(cfg[k]) for k in ("work_root", "output_dir", "workspace", "stock_video") if cfg.get(k)]
+    roots = [r for r in dict.fromkeys(roots) if r.is_dir()]
+    if not roots:
+        raise HTTPException(400, "set the workspace folder in Settings first")
+    hits: list[str] = []
+    for r in roots:
+        for p in r.rglob(body.name):
+            ok = p.is_dir() if body.size < 0 else (p.is_file() and p.stat().st_size == body.size)
+            if ok and str(p) not in hits:
+                hits.append(str(p))
+            if len(hits) > 5:
+                break
+    if not hits:
+        raise HTTPException(404, f"ไม่เจอ {body.name} ในโฟลเดอร์งาน — ย้ายไฟล์เข้าโฟลเดอร์ฟุตเทจก่อน หรือกดปุ่มเลือกไฟล์")
+    if len(hits) > 1:
+        raise HTTPException(409, f"เจอ {body.name} หลายที่ ({len(hits)}) — กดปุ่มเลือกไฟล์แทน")
+    p = Path(hits[0])
+    return {"path": str(p), "kind": "folder" if p.is_dir() else "file"}
 
 
 @router.post("/setup")
