@@ -48,7 +48,6 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   <div class="tabs" id="tabs">
     <button data-go="machine">เครื่อง</button>
     <button data-go="folders">โฟลเดอร์</button>
-    <button data-go="account">ตัวเลือก</button>
   </div>
 
   <div class="card" data-tab="machine">
@@ -76,7 +75,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="checks" id="wsTree" style="grid-template-columns:1fr;margin-top:14px"></div>
   </div>
 
-  <div class="card" data-tab="account">
+  <div class="card" data-tab="machine">
     <h2>ตัวเลือก</h2>
     <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ (เร็ว)</option><option value="cpu">CPU (ช้า ใช้เมื่อไม่มีการ์ดจอ)</option></select></div>
     <div class="row"><label>หาภาพผ่าน</label><select id="o_envato_backend"><option value="local">เครื่องนี้</option><option value="bot">บอทกลางของบริษัท</option></select></div>
