@@ -287,7 +287,7 @@ def _run_story_plan(file: str) -> None:
     try:
         duration = video_edit.probe(file)["duration"]
         job["step"] = "ถอดเสียง"
-        phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model for everything: whisper_model in config.json (large-v3)
+        phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model for everything: video_edit.WHISPER_MODEL (large-v3)
         video_edit._model = None  # free VRAM for the local LLM (8GB card)
         job["step"] = "แบ่งเรื่อง"
         stories = video_edit.plan_stories(phrases, Path(file).name)
