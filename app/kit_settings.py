@@ -530,7 +530,17 @@ def locate(body: LocateRequest) -> dict[str, Any]:
     roots = [r for r in dict.fromkeys(roots) if r.is_dir()]
     if not roots:
         raise HTTPException(400, "set the workspace folder in Settings first")
+    # Windows user folders people drag from (Desktop, Downloads...), searched only 2 levels deep:
+    # Downloads can hold whole repos and a full walk there would take minutes
+    home = Path.home()
+    shallow = [home / d for d in ("Desktop", "Downloads", "Videos", "Documents") if (home / d).is_dir()]
     hits: list[str] = []
+    for r in shallow:
+        for pat in (body.name, "*/" + body.name, "*/*/" + body.name):
+            for p in r.glob(pat):
+                ok = p.is_dir() if body.size < 0 else (p.is_file() and p.stat().st_size == body.size)
+                if ok and str(p) not in hits:
+                    hits.append(str(p))
     for r in roots:
         for p in r.rglob(body.name):
             ok = p.is_dir() if body.size < 0 else (p.is_file() and p.stat().st_size == body.size)
@@ -539,7 +549,7 @@ def locate(body: LocateRequest) -> dict[str, Any]:
             if len(hits) > 5:
                 break
     if not hits:
-        raise HTTPException(404, f"ไม่เจอ {body.name} ในโฟลเดอร์งาน — ย้ายไฟล์เข้าโฟลเดอร์ฟุตเทจก่อน หรือกดปุ่มเลือกไฟล์")
+        raise HTTPException(404, f"ไม่เจอ {body.name} ในโฟลเดอร์งาน, Desktop หรือ Downloads — กดช่องสร้างใหม่เพื่อเลือกไฟล์แทน")
     if len(hits) > 1:
         raise HTTPException(409, f"เจอ {body.name} หลายที่ ({len(hits)}) — กดปุ่มเลือกไฟล์แทน")
     p = Path(hits[0])
