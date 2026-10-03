@@ -129,6 +129,9 @@ def read_draft(path: str) -> dict[str, Any]:
                 "text": body.get("text", ""),
                 "size": material.get("font_size"),
                 "y": round(seg["clip"]["transform"]["y"], 3),
+                "x": round(seg["clip"]["transform"].get("x", 0.0), 3),
+                "rotation": round(seg["clip"].get("rotation", 0.0), 1),
+                "id": seg["id"],
             })
 
     source = next((m.get("path") for m in draft["materials"].get("videos", []) if m.get("path")), None)
@@ -303,6 +306,36 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
 
     _save(folder, draft, "style")
     return {"name": folder.name, "restyled": changed}
+
+
+def set_text_layout(path: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Place each subtitle where the editor put it on the 9:16 preview: position (x, y in -1..1),
+    tilt in degrees and font size. Only the listed segments change; a backup is kept as .bak_layout."""
+    folder = Path(path)
+    draft = _load(folder)
+    index = _index(draft)
+    text = _text_track(draft)
+    if text is None:
+        raise VideoEditError("this draft has no subtitles")
+    by_id = {s["id"]: s for s in text["segments"]}
+    missing = [i["id"] for i in items if i["id"] not in by_id]
+    if missing:
+        raise VideoEditError(f"subtitles not in this draft (reload the project): {missing[:3]}")
+    for item in items:
+        seg = by_id[item["id"]]
+        seg["clip"]["transform"] = {"x": float(item["x"]), "y": float(item["y"])}
+        seg["clip"]["rotation"] = float(item.get("rotation", 0.0))
+        if item.get("size"):
+            material = index.get(seg["material_id"], (None, None))[1]
+            if material:
+                body = json.loads(material["content"])
+                for style in body["styles"]:
+                    style["size"] = float(item["size"])
+                material["content"] = json.dumps(body, ensure_ascii=False)
+                material["font_size"] = float(item["size"])
+                material["text_size"] = float(item["size"])
+    _save(folder, draft, "layout")
+    return {"name": folder.name, "placed": len(items)}
 
 
 def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
