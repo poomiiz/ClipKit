@@ -1571,7 +1571,7 @@ const WZ = [
    main: [['✂️ ตัดช่วงเงียบ', () => draftTrim(true)], ['🔍 ดูก่อนว่าจะตัดตรงไหน', () => draftTrim(false), 'ghost']],
    more: ['filmstripCard', 'c-grade']},
   {key: 'text', label: 'ซับและตัวหนังสือ', help: 'สไตล์ซับ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
-   main: [['💾 ใช้สไตล์ซับนี้', () => draftStyle()]], show: ['c-style', 'c-layout'], more: ['c-anim', 'c-motion']},
+   main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')], ['💾 ใช้สไตล์ซับที่ปรับเอง', () => draftStyle(), 'ghost']], show: ['c-layout'], more: ['c-style', 'c-anim', 'c-motion']},
   {key: 'music', label: 'เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
   {key: 'broll', label: 'ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
@@ -2083,6 +2083,16 @@ function layoutEdit() {
     cap.addEventListener('pointerup', up);
   });
 })();
+// plain white subtitles with the recommended look; English is translated by Claude from the Thai lines
+async function subsLang(lang) {
+  const busy = document.getElementById('lyBusy');
+  busy.textContent = lang === 'en' ? 'กำลังแปลเป็นภาษาอังกฤษ… (ราว 1 นาที)' : 'กำลังใส่ซับภาษาไทย…';
+  try {
+    const r = await api('draft/subs-lang', {path: state.draft.path, lang});
+    busy.textContent = '✅ ใส่ซับ' + (lang === 'en' ? 'อังกฤษ' : 'ไทย') + ' ' + r.lines + ' บรรทัดแล้ว · กดจัดอัตโนมัติเพื่อย่อบรรทัดที่ยาวเกิน';
+    await layoutLoad();
+  } catch (e) { busy.textContent = '❌ ' + e.message; throw e; }
+}
 async function layoutSave() {
   if (!LY.length || !state.draft) return;
   const busy = document.getElementById('lyBusy');

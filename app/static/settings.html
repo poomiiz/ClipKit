@@ -65,6 +65,10 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
       <p class="sub" style="margin:2px 0 0">ล็อกอินบัญชีบริษัทครั้งเดียว ใช้หาภาพประกอบ · โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง</p></div>
       <button id="bLogin">ล็อกอิน Envato</button></div>
     <span class="msg" id="mLogin"></span>
+    <div class="row" style="justify-content:space-between;margin-top:16px"><div><h2 style="margin:0">บัญชี Claude</h2>
+      <p class="sub" style="margin:2px 0 0">ใช้แบ่งเรื่องและแปลซับเป็นภาษาอังกฤษ · ล็อกอินบัญชี Claude ของตัวเองครั้งเดียว</p></div>
+      <button id="bClaude">ล็อกอิน Claude</button></div>
+    <span class="msg" id="mClaude"></span>
   </div>
 
   <div class="card" data-tab="folders">
@@ -125,7 +129,7 @@ async function runDoctor(asr) {
     const r = await api('doctor' + (asr ? '?asr=true' : ''));
     const TH = {'python': 'Python', 'python packages': 'ส่วนเสริมของโปรแกรม', 'ffmpeg': 'ตัวแปลงวิดีโอ', 'config + folders': 'โฟลเดอร์งาน',
                 'GPU': 'การ์ดจอ', 'speech model': 'ตัวถอดเสียง', 'disk space': 'พื้นที่ดิสก์', 'preview font': 'ฟอนต์ภาพตัวอย่าง',
-                'speech-to-text': 'ทดสอบถอดเสียง'};
+                'speech-to-text': 'ทดสอบถอดเสียง', 'claude': 'บัญชี Claude'};
     const short = c => c.state === 'OK' ? 'พร้อม' : (c.detail || '');
     $('checks').innerHTML = r.checks.map(c => `<div class="chk" title="${(c.detail || '').replace(/"/g, '&quot;')}"><i class="dot ${c.state}"></i><b>${TH[c.name] || c.name}</b><span>${short(c)}</span></div>`).join('');
     const bad = r.checks.some(c => c.state === 'FAIL');
@@ -182,6 +186,10 @@ $('bDoctor').onclick = () => runDoctor(false);
 $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
 $('bSave').onclick = saveConfig;
+$('bClaude').onclick = async () => {
+  try { await api('claude-login', {method: 'POST'}); say('mClaude', 'เปิดหน้าต่างแล้ว ล็อกอินในเบราว์เซอร์ให้เสร็จ แล้วกดตรวจอีกครั้ง'); }
+  catch (e) { say('mClaude', '❌ ' + e.message, false); }
+};
 $('bLogin').onclick = () => startJob('envato-login', $('bLogin'), 'mLogin', null, 'เปิด Chrome แล้ว — ล็อกอินให้เสร็จแล้วปิดหน้าต่าง');
 loadConfig(); runDoctor(false);
 </script>
