@@ -541,6 +541,11 @@
         <button class="primary" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
         <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
       </div>
+      <div class="hint" style="margin-top:8px">ขนาดภาพ HyperFrames
+        <select id="hfShape" style="margin-left:6px">
+          <option value="portrait">แนวตั้ง 9:16 (ซูมฟุตเทจให้เต็มจอ)</option>
+          <option value="landscape">แนวนอน 16:9</option>
+          <option value="square">สี่เหลี่ยม 1:1</option></select></div>
       <div class="msg" id="result"></div>
     </div>
   </div>
@@ -1737,7 +1742,7 @@ async function markMade() {
     const st = storyList[i], tail = norm((i + 1) + ' ' + st.title), range = `-${Math.trunc(st.start)}-${Math.trunc(st.end)}`;
     const made = [], fileSlug = state.file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
     if ((cc.drafts || []).some(d => norm(d.name).endsWith(tail))) made.push('CapCut');
-    if ((hf.projects || []).some(p => (p.name || '').endsWith(range) && p.name.startsWith(fileSlug))) made.push('HyperFrames');
+    if ((hf.projects || []).some(p => (p.name || '').endsWith(range) && p.name.startsWith(fileSlug + '-'))) made.push('HyperFrames');
     const tag = row.querySelector('.st-done');
     tag.style.display = made.length ? '' : 'none';
     tag.textContent = '✓ ' + made.map(k => k === 'HyperFrames' ? 'HF' : k).join(' · ');
@@ -1786,7 +1791,7 @@ async function makeHyperframes(open = true) {
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ HyperFrames และเปิด Studio… (ครั้งแรกอาจใช้ 1–2 นาที)';
   try {
     const r = await fetch('/api/kit/hyperframes', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                                   body: JSON.stringify({file: state.file.path, name: name, ...(state.range || {})})});
+                                                   body: JSON.stringify({file: state.file.path, name: name, resolution: document.getElementById('hfShape').value, ...(state.range || {})})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.status);
     out.innerHTML = '✅ เปิด Studio แล้ว: <a href="' + j.url + '" target="_blank">' + j.url + '</a> · โฟลเดอร์ ' + j.project;
