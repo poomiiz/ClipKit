@@ -485,8 +485,11 @@ def pick(start: str = "") -> dict[str, str]:
     (the classic 'file name = select this folder' trick, since Windows has no single file-or-folder dialog)."""
     script = Path(tempfile_dir()) / "clipkit_pick.ps1"
     script.write_text(PICK_PS, encoding="utf-8-sig")   # BOM: Windows PowerShell reads Thai text correctly
-    p = subprocess.run(["powershell", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", str(script), start],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    # CREATE_NO_WINDOW: no black console window behind the dialog (only the Open dialog shows)
+    p = subprocess.run(["powershell", "-NoProfile", "-STA", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+                        "-File", str(script), start],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     out = p.stdout.strip()
     if not out:
         return {"path": "", "kind": ""}

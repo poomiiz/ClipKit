@@ -21,6 +21,17 @@ if not _CFG.is_file():
     import shutil
     shutil.copyfile(HERE.parent / "config.example.json", _CFG)
 
+# Windows: every helper the app starts (ffmpeg, npx, powershell, python) runs without a console window,
+# otherwise a black terminal flashes up for each cover, motion render, check or file dialog
+if os.name == "nt":
+    import subprocess
+    _Popen_init = subprocess.Popen.__init__
+
+    def _no_window(self, *args, **kwargs):
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        _Popen_init(self, *args, **kwargs)
+    subprocess.Popen.__init__ = _no_window
+
 import kit_settings  # noqa: E402
 import video_editor  # noqa: E402
 
