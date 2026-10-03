@@ -435,6 +435,19 @@ def draft_subs_fill(req: FillGapsRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+class SubsLangRequest(BaseModel):
+    path: str
+    lang: str = Field(pattern="^(th|en)$")
+
+
+@router.post("/draft/subs-lang")
+def draft_subs_lang(req: SubsLangRequest) -> dict[str, Any]:
+    try:
+        return capcut_edit.subtitles_language(req.path, req.lang)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 class TextPlace(BaseModel):
     id: str
     x: float = Field(ge=-1.5, le=1.5)

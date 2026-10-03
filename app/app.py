@@ -28,7 +28,10 @@ if os.name == "nt":
     _Popen_init = subprocess.Popen.__init__
 
     def _no_window(self, *args, **kwargs):
-        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        flags = kwargs.get("creationflags", 0)
+        if not flags & subprocess.CREATE_NEW_CONSOLE:   # a window asked for on purpose (sign-in) stays visible
+            flags |= subprocess.CREATE_NO_WINDOW
+        kwargs["creationflags"] = flags
         _Popen_init(self, *args, **kwargs)
     subprocess.Popen.__init__ = _no_window
 

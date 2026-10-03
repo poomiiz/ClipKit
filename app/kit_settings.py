@@ -745,6 +745,17 @@ def fonts() -> dict[str, Any]:
     return {"fonts": names}
 
 
+@router.post("/claude-login")
+def claude_login() -> dict[str, str]:
+    """Open a console with Claude Code's own sign-in (it opens the browser). The person signs in themselves."""
+    import shutil
+    exe = shutil.which("claude")
+    if not exe:
+        raise HTTPException(400, "Claude Code is not installed - install it from claude.com/code")
+    subprocess.Popen(["cmd", "/c", exe, "auth", "login"], creationflags=subprocess.CREATE_NEW_CONSOLE)
+    return {"opened": "claude auth login"}
+
+
 @router.get("/update-check")
 def update_check() -> dict[str, Any]:
     """Ask GitHub whether a newer ClipKit exists (git fetch, then count commits we do not have yet)."""

@@ -76,6 +76,21 @@ def model():
     return name
 
 
+def claude():
+    import json
+    exe = shutil.which("claude")
+    if not exe:
+        raise RuntimeError("Claude Code not installed (story split and English subtitles use it)")
+    r = subprocess.run([exe, "auth", "status"], capture_output=True, text=True, timeout=60)
+    try:
+        ok = json.loads(r.stdout).get("loggedIn")
+    except ValueError:
+        ok = False
+    if not ok:
+        raise RuntimeError("Claude Code is not signed in - press 'Sign in to Claude'")
+    return "signed in"
+
+
 def disk():
     low = []
     for d in {Path.home().anchor, *(Path(p).anchor for p in [ROOT])}:
@@ -103,6 +118,7 @@ for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("
     check(n, f)
 # fonts are each editor's own choice; only the preview render needs "card_font" installed
 check("preview font", font, optional=True)
+check("claude", claude, optional=True)
 if "--asr" in sys.argv:
     check("speech-to-text", asr)
 

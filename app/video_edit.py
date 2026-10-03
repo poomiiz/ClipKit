@@ -618,6 +618,20 @@ def summarize_transcript(lines: list[str], source_name: str) -> dict[str, str]:
 STORY_PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "story_split.md"
 
 
+def ask_claude(prompt: str, timeout: int = 900) -> str:
+    """One answer from Claude through the Claude Code CLI on this machine (the editor's own sign-in).
+    Raises with a plain message when Claude Code is missing or the call fails - never a quiet default."""
+    claude = shutil.which("claude")
+    if not claude:
+        raise VideoEditError("ยังไม่ได้ลง Claude Code ในเครื่องนี้ — ลงจาก claude.com/code แล้วล็อกอิน")
+    run = subprocess.run([claude, "-p", "--output-format", "text"], input=prompt, capture_output=True,
+                         text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    out = run.stdout.strip()
+    if run.returncode != 0 or not out:
+        raise VideoEditError("Claude ตอบไม่สำเร็จ: " + (run.stderr or out or "no answer").strip()[-300:])
+    return out
+
+
 def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[str, Any]]:
     """Split one long transcript into stand-alone stories with Claude (the Claude Code CLI on this machine,
     signed in with the editor's own account). The instructions live in prompts/story_split.md.
@@ -626,19 +640,12 @@ def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[s
     """
     if not phrases:
         raise VideoEditError("no speech found in this file")
-    claude = shutil.which("claude")
-    if not claude:
-        raise VideoEditError("ยังไม่ได้ลง Claude Code ในเครื่องนี้ (ปุ่มแบ่งเรื่องใช้ Claude) — ลงจาก claude.com/code แล้วล็อกอิน")
     numbered = "\n".join(f"[{i}] ({int(p['start'] // 60)}:{int(p['start'] % 60):02d}) {p['text']}"
                          for i, p in enumerate(phrases))
     template = STORY_PROMPT.read_text(encoding="utf-8")
     template = re.sub(r"<!--.*?-->", "", template, flags=re.S).strip()
     prompt = template.replace("{source}", source_name).replace("{transcript}", numbered)
-    run = subprocess.run([claude, "-p", "--output-format", "text"], input=prompt, capture_output=True,
-                         text=True, encoding="utf-8", errors="replace", timeout=900)
-    content = run.stdout.strip()
-    if run.returncode != 0 or not content:
-        raise VideoEditError("Claude แบ่งเรื่องไม่สำเร็จ: " + (run.stderr or content or "no answer").strip()[-300:])
+    content = ask_claude(prompt)
     match = re.search(r"\[.*\]", content, re.S)
     try:
         raw = json.loads(match.group(0) if match else content)
@@ -840,36 +847,19 @@ def read_briefs(folder: str) -> list[dict[str, Any]]:
 # ── Thai → English subtitles via the local model ─────────────────────
 
 def translate_lines(lines: list[str], target: str = "en") -> list[str]:
-    """Translate subtitle lines with the local LLM. One line in, one line out —
+    """Translate subtitle lines with Claude. One line in, one line out -
     a mismatch raises rather than returning a silently misaligned list."""
-    import urllib.request
-
     if not lines:
         return []
     numbered = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(lines))
     language = "English" if target == "en" else target
     prompt = (
-        f"Translate each numbered subtitle line into {language}. "
-        "Keep the same numbering, one line per number, no extra words, "
-        "no explanations. Keep brand names and technical terms as they are.\n\n"
+        f"Translate each numbered Thai subtitle line into natural, short {language} for a vertical short video. "
+        "Keep the same numbering, one line per number, no extra words, no explanations. "
+        "Keep brand names and technical terms as they are.\n\n"
         f"{numbered}"
     )
-    payload = json.dumps({
-        "model": LOCAL_LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
-        "max_tokens": 2000,
-    }).encode("utf-8")
-    request = urllib.request.Request(f"{LOCAL_LLM_URL}/chat/completions", data=payload,
-                                     headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=180) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
-        raise VideoEditError(f"local model not reachable at {LOCAL_LLM_URL}: {exc}") from exc
-
-    content = body["choices"][0]["message"]["content"]
-    content = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
+    content = ask_claude(prompt, timeout=600)
     out: dict[int, str] = {}
     for line in content.splitlines():
         match = re.match(r"\s*(\d+)[.)]\s*(.+)", line)
