@@ -615,12 +615,12 @@ def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[s
 
     if not phrases:
         raise VideoEditError("no speech found in this file")
-    numbered = "\n".join(f"[{i}] ({int(p['start'] // 60)}:{int(p['start'] % 60):02d}) {p['text']}"
-                         for i, p in enumerate(phrases))
+    # no timestamps per line: the local model has a 4k-token window and a 6-minute file already nearly fills it
+    numbered = "\n".join(f"[{i}] {p['text']}" for i, p in enumerate(phrases))
     prompt = (
         "นี่คือข้อความถอดเสียงภาษาไทยจากวิดีโอยาวหนึ่งไฟล์ แต่ละบรรทัดมีเลขลำดับ [n]. "
         "แบ่งเป็นเรื่องที่ตัดเป็นคลิปสั้นแยกกันได้ (เรื่องละประเด็นเดียว ต่อเนื่องกัน ไม่ข้ามไปมา). "
-        "คลิปสั้นแต่ละเรื่องยาว 60-130 วินาที (ดูเวลาในวงเล็บ). เนื้อหายาวกว่านั้นให้แบ่งตามประเด็นย่อยเป็นหลายเรื่อง "
+        "คลิปสั้นแต่ละเรื่องยาว 60-130 วินาที (ราว 20-40 บรรทัด).เนื้อหายาวกว่านั้นให้แบ่งตามประเด็นย่อยเป็นหลายเรื่อง "
         "ห้ามรวมทั้งไฟล์เป็นเรื่องเดียว. "
         "ตอบ JSON เท่านั้น เป็น array ของ {\"title\", \"summary\", \"first\", \"last\"} "
         "title หัวข้อสั้นภาษาไทย, summary สรุป 1 ประโยค, first/last คือเลขบรรทัดแรกและบรรทัดสุดท้ายของเรื่อง.\n\n"
