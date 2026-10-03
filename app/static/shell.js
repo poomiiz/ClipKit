@@ -32,6 +32,39 @@
     aside.querySelectorAll('.sb-item').forEach(a => a.classList.toggle('on',
       a.getAttribute('href') === now || (!location.hash && a.getAttribute('href') === location.pathname)));
   });
+  // new version on GitHub: one banner at the top when the app opens, one click to update
+  if (!sessionStorage.getItem('ck_upd_checked')) {
+    sessionStorage.setItem('ck_upd_checked', '1');
+    fetch('/api/kit/update-check').then(r => r.json()).then(u => {
+      if (!u.available) return;
+      const bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;background:#1d2236;' +
+        'border:1px solid #7c5cff;border-radius:12px;padding:10px 14px;display:flex;gap:12px;align-items:center;' +
+        'color:#f1f4fb;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.5);max-width:92vw';
+      bar.innerHTML = '<span>มี ClipKit เวอร์ชันใหม่ (' + u.count + ' รายการ)</span>' +
+        '<button style="background:#7c5cff;color:#fff;border:0;border-radius:8px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer">อัปเดต</button>' +
+        '<button style="background:none;border:0;color:#828ca4;cursor:pointer;font:inherit">ภายหลัง</button>';
+      bar.title = (u.changes || []).join('
+');
+      const [go, later] = bar.querySelectorAll('button');
+      later.onclick = () => bar.remove();
+      go.onclick = async () => {
+        go.disabled = true; go.textContent = 'กำลังอัปเดต…';
+        try {
+          const r = await fetch('/api/kit/update', {method: 'POST'});
+          if (!r.ok) throw new Error((await r.json()).detail);
+          let j;
+          do { await new Promise(x => setTimeout(x, 1500)); j = await fetch('/api/kit/job/update').then(x => x.json()); }
+          while (j.status === 'running');
+          if (j.status !== 'done') throw new Error((j.log || '').trim().split('
+').pop());
+          bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด ClipKit ใหม่ให้ครบทุกส่วน';
+          go.remove(); later.textContent = 'ปิด';
+        } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
+      };
+      document.body.appendChild(bar);
+    }).catch(() => {});
+  }
   fetch('/api/kit/version').then(r => r.ok ? r.json() : null).then(v => {
     if (v) document.getElementById('sbVer').innerHTML = `เวอร์ชัน <b>${v.version || ''}</b>${v.commit ? ' · ' + v.commit : ''}`;
   }).catch(() => {});

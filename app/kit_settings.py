@@ -731,6 +731,21 @@ def job(name: str) -> dict[str, Any]:
     return {"job": name, "status": j["status"], "log": j["log"][-6000:]}
 
 
+@router.get("/update-check")
+def update_check() -> dict[str, Any]:
+    """Ask GitHub whether a newer ClipKit exists (git fetch, then count commits we do not have yet)."""
+    def git(*args: str, timeout: int = 20) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", str(KIT), *args], capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=timeout)
+    f = git("fetch", "-q")
+    if f.returncode != 0:
+        return {"available": False, "error": (f.stderr or "git fetch failed").strip()[-200:]}
+    behind = git("rev-list", "--count", "HEAD..@{u}")
+    n = int(behind.stdout.strip() or 0) if behind.returncode == 0 else 0
+    log = git("log", "--format=%s", "-8", "HEAD..@{u}").stdout.splitlines() if n else []
+    return {"available": n > 0, "count": n, "changes": log}
+
+
 @router.get("/version")
 def version() -> dict[str, Any]:
     meta = json.loads((KIT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
