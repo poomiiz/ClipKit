@@ -74,7 +74,10 @@ class DraftRequest(BaseModel):
     sub_y: float = Field(default=-0.60, ge=-1.0, le=1.0)
     sub_color: str = Field(default="#ffffff", pattern=r"^#[0-9a-fA-F]{6}$")
     sub_stroke: float = Field(default=0.05, ge=0.0, le=0.3)
-    via: str = Field(default="capcut", pattern="^(clipkit|capcut)$")  # which button made it: finish in ClipKit or in CapCut
+    via: str = Field(default="capcut", pattern="^(clipkit|capcut)$")
+    shape: str = Field(default="source", pattern="^(source|portrait|landscape|square)$")
+    focus_x: float = Field(default=0.5, ge=0, le=1)  # where to keep in frame when cropping (0 left, 1 right)
+    focus_y: float = Field(default=0.5, ge=0, le=1)  # which button made it: finish in ClipKit or in CapCut
 
 
 class BriefRequest(BaseModel):
@@ -348,6 +351,8 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
             sub_y=req.sub_y,
             sub_color=req.sub_color,
             sub_stroke=req.sub_stroke,
+            shape=req.shape,
+            focus=(req.focus_x, req.focus_y),
         )
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -355,6 +360,21 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
     (Path(result["draft_path"]) / "clipkit.json").write_text(
         json.dumps({"raw": req.file, "start": req.start, "end": end, "via": req.via}, ensure_ascii=False), encoding="utf-8")
     return result
+
+
+class FocusRequest(BaseModel):
+    file: str
+    start: float = 0.0
+    end: float | None = None
+
+
+@router.post("/focus")
+def focus(req: FocusRequest) -> dict[str, Any]:
+    """Where the speaker's face is, to place the crop."""
+    try:
+        return video_edit.find_focus(req.file, req.start, req.end)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/browse")
