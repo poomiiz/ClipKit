@@ -381,14 +381,6 @@ def briefs(req: BriefRequest) -> dict[str, Any]:
     return {"count": len(items), "briefs": items}
 
 
-@router.post("/translate")
-def translate(req: TranslateRequest) -> dict[str, Any]:
-    try:
-        return {"lines": video_edit.translate_lines(req.lines, req.target)}
-    except VideoEditError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
 @router.get("/frame")
 def frame(path: str = Query(...), t: float = Query(1.0), width: int = Query(360)) -> Response:
     """A still from the clip, used as the backdrop of the subtitle preview."""

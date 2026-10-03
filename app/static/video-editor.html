@@ -458,6 +458,8 @@
   .ly-row { display: flex; gap: 10px; align-items: center; padding: 7px 10px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: 14px; }
   .ly-row .tx { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ly-row.on { background: var(--acc-glow); }
+  .agent-cmd { padding: 12px; border: 1px dashed var(--acc); border-radius: 12px; background: var(--card2); margin: 8px 0; }
+  .agent-cmd code { display: block; margin: 8px 0; padding: 8px 10px; background: #080a10; border-radius: 8px; font-size: 13px; word-break: break-all; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -1651,8 +1653,9 @@ async function planStories() {
   document.getElementById('planStoriesBtn').disabled = true;
   try {
     let job = await api('story-plan', {file});
-    while (job.status === 'running') {
-      box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
+    while (job.status === 'running' || job.status === 'waiting') {
+      if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
+      else if (!box.querySelector('.agent-cmd')) box.innerHTML = agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
       await new Promise(r => setTimeout(r, 3000));
       job = await api('story-plan?file=' + encodeURIComponent(file));
     }
@@ -2083,12 +2086,27 @@ function layoutEdit() {
     cap.addEventListener('pointerup', up);
   });
 })();
-// plain white subtitles with the recommended look; English is translated by Claude from the Thai lines
+// steps that need thinking (story split, translation) are done by the agent in chat: show the line to paste
+function agentBox(cmd, note) {
+  const id = 'c' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => { const b = document.getElementById(id); if (b) b.onclick = () => {
+    navigator.clipboard.writeText(cmd).then(() => { b.textContent = '✓ คัดลอกแล้ว'; }); }; });
+  return '<div class="agent-cmd"><div class="hint">' + note + '</div><code></code><button class="small primary" id="' + id + '">คัดลอกคำสั่ง</button></div>'
+    .replace('<code></code>', '<code>' + cmd.replace(/</g, '&lt;') + '</code>');
+}
+// plain white subtitles with the recommended look; English lines come from the agent (clipkit_subs_en.json)
 async function subsLang(lang) {
   const busy = document.getElementById('lyBusy');
-  busy.textContent = lang === 'en' ? 'กำลังแปลเป็นภาษาอังกฤษ… (ราว 1 นาที)' : 'กำลังใส่ซับภาษาไทย…';
+  busy.textContent = 'กำลังใส่ซับ…';
   try {
-    const r = await api('draft/subs-lang', {path: state.draft.path, lang});
+    const res = await fetch('/api/video/draft/subs-lang', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: state.draft.path, lang})});
+    const r = await res.json().catch(() => ({}));
+    if (res.status === 409 && r.detail && r.detail.command) {
+      busy.innerHTML = agentBox(r.detail.command, 'ให้ Claude ในแชตแปลก่อน แล้วกดปุ่มซับอังกฤษอีกครั้ง');
+      return;
+    }
+    if (!res.ok) throw new Error(typeof r.detail === 'string' ? r.detail : res.statusText);
     busy.textContent = '✅ ใส่ซับ' + (lang === 'en' ? 'อังกฤษ' : 'ไทย') + ' ' + r.lines + ' บรรทัดแล้ว · กดจัดอัตโนมัติเพื่อย่อบรรทัดที่ยาวเกิน';
     await layoutLoad();
   } catch (e) { busy.textContent = '❌ ' + e.message; throw e; }

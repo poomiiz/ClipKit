@@ -125,7 +125,7 @@ async function runDoctor(asr) {
     const r = await api('doctor' + (asr ? '?asr=true' : ''));
     const TH = {'python': 'Python', 'python packages': 'ส่วนเสริมของโปรแกรม', 'ffmpeg': 'ตัวแปลงวิดีโอ', 'config + folders': 'โฟลเดอร์งาน',
                 'GPU': 'การ์ดจอ', 'speech model': 'ตัวถอดเสียง', 'disk space': 'พื้นที่ดิสก์', 'preview font': 'ฟอนต์ภาพตัวอย่าง',
-                'speech-to-text': 'ทดสอบถอดเสียง', 'claude': 'บัญชี Claude'};
+                'speech-to-text': 'ทดสอบถอดเสียง'};
     const short = c => c.state === 'OK' ? 'พร้อม' : (c.detail || '');
     $('checks').innerHTML = r.checks.map(c => `<div class="chk" title="${(c.detail || '').replace(/"/g, '&quot;')}"><i class="dot ${c.state}"></i><b>${TH[c.name] || c.name}</b><span>${short(c)}</span></div>`).join('');
     const bad = r.checks.some(c => c.state === 'FAIL');

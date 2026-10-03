@@ -837,33 +837,6 @@ def read_briefs(folder: str) -> list[dict[str, Any]]:
     return briefs
 
 
-# ── Thai → English subtitles via the local model ─────────────────────
-
-def translate_lines(lines: list[str], target: str = "en") -> list[str]:
-    """Translate subtitle lines with Claude. One line in, one line out -
-    a mismatch raises rather than returning a silently misaligned list."""
-    if not lines:
-        return []
-    numbered = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(lines))
-    language = "English" if target == "en" else target
-    prompt = (
-        f"Translate each numbered Thai subtitle line into natural, short {language} for a vertical short video. "
-        "Keep the same numbering, one line per number, no extra words, no explanations. "
-        "Keep brand names and technical terms as they are.\n\n"
-        f"{numbered}"
-    )
-    content = ask_claude(prompt, timeout=600)
-    out: dict[int, str] = {}
-    for line in content.splitlines():
-        match = re.match(r"\s*(\d+)[.)]\s*(.+)", line)
-        if match:
-            out[int(match.group(1))] = match.group(2).strip()
-    if len(out) != len(lines):
-        raise VideoEditError(
-            f"translation came back with {len(out)} lines for {len(lines)} inputs")
-    return [out[i + 1] for i in range(len(lines))]
-
-
 # ── folder browsing (so nobody has to type a path) ───────────────────
 
 def list_drives() -> list[dict[str, Any]]:
