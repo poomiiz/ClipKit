@@ -569,7 +569,7 @@
       <div class="hero-top-row">
         <div class="p-title-box">
           <div class="hero-badge-row">
-            <span class="capcut-badge">CapCut Draft</span>
+            <span class="capcut-badge" id="sysBadge">CapCut</span>
             <span class="chip" id="draftStatusChip"><span class="chip-dot"></span> พร้อมแก้ไข</span>
           </div>
           <h2 id="draftProjectTitle" class="hero-title">โปรเจกต์</h2>
@@ -1641,7 +1641,9 @@ function renderGuide(d) {
   document.getElementById('wzHelp').textContent = w.help;
   const main = document.getElementById('wzMain');
   main.innerHTML = '';
-  (w.main || []).forEach(([text, fn, cls]) => {
+  // a CapCut project finishes in CapCut: that button leads on its export tab
+  const mains = w.key === 'export' && d.via !== 'clipkit' ? [...w.main].reverse().map(([t, f], k) => [t, f, k ? 'ghost' : undefined]) : (w.main || []);
+  mains.forEach(([text, fn, cls]) => {
     const b = document.createElement('button');
     b.textContent = text;
     b.className = cls || 'primary';
@@ -1831,6 +1833,7 @@ function openDraft(i) {
   const d = state.draft;
 
   // Set Project Name
+  document.getElementById('sysBadge').textContent = d.via === 'clipkit' ? 'ClipKit' : 'CapCut';
   const titleEl = document.getElementById('draftProjectTitle');
   if (titleEl) titleEl.textContent = d.name;
 

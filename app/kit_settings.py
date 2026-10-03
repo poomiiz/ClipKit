@@ -186,6 +186,8 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
                            env=env, timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if p.returncode != 0 or not (project / "index.html").is_file():
             raise HTTPException(500, "hyperframes init failed: " + (p.stderr or p.stdout).strip()[-600:])
+        if src.name.endswith("-source" + src.suffix) and src.parent == root:
+            src.unlink()  # init copied the cut into the project; the loose copy would outlive a deleted project
     (project / "clipkit.json").write_text(json.dumps({"raw": body.file, "start": body.start, "end": body.end},
                                                      ensure_ascii=False), encoding="utf-8")
     _stop_studio()
