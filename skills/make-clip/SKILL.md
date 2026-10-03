@@ -1,11 +1,26 @@
 ---
 name: make-clip
-description: One-request runner for a whole short clip - "ทำคลิปนี้", "ตัดคลิปจากไฟล์นี้", "make a clip from this footage". Checks the machine, transcribes, proposes stories, waits for the person to pick, then builds the CapCut draft with cuts and subtitles, adds cards/B-roll/motion per the client style, runs QC and logs the clip. Use this as the entry point; it calls clip-workflow, style-*, broll-finder and clip-qc in order.
+description: One-request runner for a whole short clip - "ทำคลิปนี้", "ตัดคลิปจากไฟล์นี้", "make a clip from this footage", and the commands the ClipKit app asks the person to paste ("ClipKit: แบ่งเรื่อง ...", "ClipKit: แปลซับเป็นอังกฤษ ..."). Checks the machine, transcribes, proposes stories, waits for the person to pick, then builds the CapCut draft with cuts and subtitles, adds cards/B-roll/motion per the client style, runs QC and logs the clip. Use this as the entry point; it calls clip-workflow, style-*, broll-finder and clip-qc in order.
 ---
 
 # Make a clip (entry point)
 
 Run from the ClipKit folder. Stop and report `Blocked` with the exact error if any command fails - never skip a step or guess a value.
+
+## Commands pasted from the ClipKit app
+The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
+
+### `ClipKit: แบ่งเรื่อง "<video path>"`
+1. Read `<video path>.transcript.json` (list of `{start, end, text}`, seconds). Missing = tell the person to press the button in the app again.
+2. Split it following every rule in `prompts/story_split.md` (60-130 s per story, one point each, start on the hook, end on a finished sentence, skip greetings).
+3. Write `<video path>.stories.json` as UTF-8 JSON: `[{"title": "...", "summary": "...", "start": 12.3, "end": 95.0}]` with start/end taken from transcript lines.
+4. Reply with the list (number, title, length). The app picks the file up by itself within a few seconds.
+
+### `ClipKit: แปลซับเป็นอังกฤษ "<CapCut project folder>"`
+1. Read `<folder>/clipkit_subs_th.json` (list of `{start, end, text}`).
+2. Translate every line into short natural English for a vertical short; keep brand names and technical terms.
+3. Write `<folder>/clipkit_subs_en.json` as a JSON list of strings, exactly one per Thai line, same order.
+4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
 ## 1. Machine ready
 `python scripts/doctor.py` - every line OK (WARN on "preview font" is fine). FAIL = tell the person which line and stop.
