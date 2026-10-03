@@ -417,8 +417,10 @@
   @media (max-width: 860px) { .clip-layout { grid-template-columns: 1fr; } }
   .clip-left video { width: 100%; max-height: 60vh; border-radius: 12px; background: #000; display: block; margin-bottom: 4px; }
   .clip-right .card + .card { margin-top: 14px; }
-  .make-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .make-pair button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; font-size: 16px; text-align: left; }
+  .make-wrap { max-width: 620px; margin: 22px auto 0; text-align: center; }
+  .make-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .make-pair b { font-size: 17px; white-space: nowrap; }
+  .make-pair button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; text-align: center; }
   .make-pair small { font-size: 12.5px; font-weight: 400; opacity: .8; }
   .make-pair .ghost, #planStoriesBtn { background: #1b2030; color: #f1f4fb; border: 1px solid #3a4260; border-radius: 12px; }
   .make-pair .ghost:hover, #planStoriesBtn:hover { border-color: #7c5cff; }
@@ -473,19 +475,18 @@
       </div>
       <div class="clip-right">
         <div class="card">
-          <h2>สร้างเป็น</h2>
-          <div class="make-pair">
-            <button class="primary" onclick="makeDraft()">🎞️ CapCut<small>ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
-            <button class="ghost" onclick="makeHyperframes()">✨ HyperFrames<small>ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
-          </div>
-        </div>
-        <div class="card">
           <h2>ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
           <button class="ghost" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเสียงและแบ่งเรื่อง</button>
           <div id="storyPlan" style="margin-top:10px"></div>
         </div>
-        <div class="msg" id="result"></div>
       </div>
+    </div>
+    <div class="make-wrap">
+      <div class="make-pair">
+        <button class="primary" onclick="makeDraft()"><b>🎞️ CapCut</b><small>ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
+        <button class="ghost" onclick="makeHyperframes()"><b>✨ HyperFrames</b><small>ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
+      </div>
+      <div class="msg" id="result"></div>
     </div>
   </div>
 

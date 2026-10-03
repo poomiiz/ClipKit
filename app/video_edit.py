@@ -615,10 +615,13 @@ def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[s
 
     if not phrases:
         raise VideoEditError("no speech found in this file")
-    numbered = "\n".join(f"[{i}] {p['text']}" for i, p in enumerate(phrases))
+    numbered = "\n".join(f"[{i}] ({int(p['start'] // 60)}:{int(p['start'] % 60):02d}) {p['text']}"
+                         for i, p in enumerate(phrases))
     prompt = (
         "นี่คือข้อความถอดเสียงภาษาไทยจากวิดีโอยาวหนึ่งไฟล์ แต่ละบรรทัดมีเลขลำดับ [n]. "
         "แบ่งเป็นเรื่องที่ตัดเป็นคลิปสั้นแยกกันได้ (เรื่องละประเด็นเดียว ต่อเนื่องกัน ไม่ข้ามไปมา). "
+        "คลิปสั้นแต่ละเรื่องยาว 60-130 วินาที (ดูเวลาในวงเล็บ). เนื้อหายาวกว่านั้นให้แบ่งตามประเด็นย่อยเป็นหลายเรื่อง "
+        "ห้ามรวมทั้งไฟล์เป็นเรื่องเดียว. "
         "ตอบ JSON เท่านั้น เป็น array ของ {\"title\", \"summary\", \"first\", \"last\"} "
         "title หัวข้อสั้นภาษาไทย, summary สรุป 1 ประโยค, first/last คือเลขบรรทัดแรกและบรรทัดสุดท้ายของเรื่อง.\n\n"
         f"ไฟล์: {source_name}\n\n{numbered}"
@@ -643,15 +646,39 @@ def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[s
     for item in raw:
         first = max(0, min(int(item["first"]), len(phrases) - 1))
         last = max(first, min(int(item["last"]), len(phrases) - 1))
-        part = phrases[first:last + 1]
-        stories.append({
-            "title": str(item.get("title", "")).strip(),
-            "summary": str(item.get("summary", "")).strip(),
+        stories.extend(_split_long(first, last, phrases, str(item.get("title", "")).strip(),
+                                   str(item.get("summary", "")).strip()))
+    return stories
+
+
+STORY_MAX_S = 150     # a short clip above this is split
+STORY_AIM_S = 95
+
+
+def _split_long(first: int, last: int, phrases: list[dict[str, Any]], title: str, summary: str) -> list[dict[str, Any]]:
+    """The small local model sometimes returns one story for a whole file. Any story longer than STORY_MAX_S
+    is cut at the longest pause near every STORY_AIM_S, so each part still ends on a finished sentence."""
+    parts, a = [], first
+    while phrases[last]["end"] - phrases[a]["start"] > STORY_MAX_S:
+        target = phrases[a]["start"] + STORY_AIM_S
+        window = [i for i in range(a + 1, last + 1) if abs(phrases[i]["start"] - target) <= 25]
+        if not window:
+            break
+        cut = max(window, key=lambda i: phrases[i]["start"] - phrases[i - 1]["end"])   # longest pause
+        parts.append((a, cut - 1))
+        a = cut
+    parts.append((a, last))
+    out = []
+    for n, (f, l) in enumerate(parts, 1):
+        part = phrases[f:l + 1]
+        out.append({
+            "title": title + (f" (ตอน {n})" if len(parts) > 1 else ""),
+            "summary": summary if n == 1 else "",
             "start": part[0]["start"], "end": part[-1]["end"],
             "speech": round(sum(p["end"] - p["start"] for p in part), 1),
             "lines": len(part),
         })
-    return stories
+    return out
 
 
 def extract_presets(drafts_root: str | None = None) -> dict[str, Any]:
