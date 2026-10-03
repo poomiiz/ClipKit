@@ -233,7 +233,9 @@ def _get_model(model_size: str | None = None):
 
     if _has_cuda():
         _enable_cuda_libs()
-        wanted = (model_size or WHISPER_MODEL, "cuda", "float16")
+        # int8_float16: large-v3 in about half the VRAM of float16 with near-identical accuracy, so it fits on an
+        # 8 GB card next to the local LLM that keeps its own share loaded
+        wanted = (model_size or WHISPER_MODEL, "cuda", "int8_float16")
     else:
         wanted = (model_size or WHISPER_CPU_FALLBACK, "cpu", "int8")
 
@@ -605,43 +607,35 @@ def summarize_transcript(lines: list[str], source_name: str) -> dict[str, str]:
         return {"title": source_name, "hook": "", "summary": f"สรุป Qwen ไม่สำเร็จ: {exc}"}
 
 
+STORY_PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "story_split.md"
+
+
 def plan_stories(phrases: list[dict[str, Any]], source_name: str) -> list[dict[str, Any]]:
-    """Split one long transcript into stand-alone stories with the local LLM.
+    """Split one long transcript into stand-alone stories with Claude (the Claude Code CLI on this machine,
+    signed in with the editor's own account). The instructions live in prompts/story_split.md.
 
-    Lengths count speech only (sum of phrase times), which is roughly what is
-    left after the silent gaps are cut.
+    Lengths count speech only (sum of phrase times), which is roughly what is left after the silent gaps are cut.
     """
-    import urllib.request
-
     if not phrases:
         raise VideoEditError("no speech found in this file")
-    # no timestamps per line: the local model has a 4k-token window and a 6-minute file already nearly fills it
-    numbered = "\n".join(f"[{i}] {p['text']}" for i, p in enumerate(phrases))
-    prompt = (
-        "นี่คือข้อความถอดเสียงภาษาไทยจากวิดีโอยาวหนึ่งไฟล์ แต่ละบรรทัดมีเลขลำดับ [n]. "
-        "แบ่งเป็นเรื่องที่ตัดเป็นคลิปสั้นแยกกันได้ (เรื่องละประเด็นเดียว ต่อเนื่องกัน ไม่ข้ามไปมา). "
-        "คลิปสั้นแต่ละเรื่องยาว 60-130 วินาที (ราว 20-40 บรรทัด).เนื้อหายาวกว่านั้นให้แบ่งตามประเด็นย่อยเป็นหลายเรื่อง "
-        "ห้ามรวมทั้งไฟล์เป็นเรื่องเดียว. "
-        "ตอบ JSON เท่านั้น เป็น array ของ {\"title\", \"summary\", \"first\", \"last\"} "
-        "title หัวข้อสั้นภาษาไทย, summary สรุป 1 ประโยค, first/last คือเลขบรรทัดแรกและบรรทัดสุดท้ายของเรื่อง.\n\n"
-        f"ไฟล์: {source_name}\n\n{numbered}"
-    )
-    payload = json.dumps({"model": LOCAL_LLM_MODEL,
-                          "messages": [{"role": "user", "content": prompt}],
-                          "temperature": 0.2, "max_tokens": 2000}).encode("utf-8")
-    request = urllib.request.Request(f"{LOCAL_LLM_URL}/chat/completions", data=payload,
-                                     headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=600) as response:
-            content = json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"]
-    except Exception as exc:
-        raise VideoEditError(f"local LLM ({LOCAL_LLM_URL}) failed: {exc}") from exc
-    content = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
+    claude = shutil.which("claude")
+    if not claude:
+        raise VideoEditError("ยังไม่ได้ลง Claude Code ในเครื่องนี้ (ปุ่มแบ่งเรื่องใช้ Claude) — ลงจาก claude.com/code แล้วล็อกอิน")
+    numbered = "\n".join(f"[{i}] ({int(p['start'] // 60)}:{int(p['start'] % 60):02d}) {p['text']}"
+                         for i, p in enumerate(phrases))
+    template = STORY_PROMPT.read_text(encoding="utf-8")
+    template = re.sub(r"<!--.*?-->", "", template, flags=re.S).strip()
+    prompt = template.replace("{source}", source_name).replace("{transcript}", numbered)
+    run = subprocess.run([claude, "-p", "--output-format", "text"], input=prompt, capture_output=True,
+                         text=True, encoding="utf-8", errors="replace", timeout=900)
+    content = run.stdout.strip()
+    if run.returncode != 0 or not content:
+        raise VideoEditError("Claude แบ่งเรื่องไม่สำเร็จ: " + (run.stderr or content or "no answer").strip()[-300:])
     match = re.search(r"\[.*\]", content, re.S)
     try:
         raw = json.loads(match.group(0) if match else content)
     except json.JSONDecodeError as exc:
-        raise VideoEditError(f"local LLM did not return a story list: {content[:300]}") from exc
+        raise VideoEditError(f"Claude did not return a story list: {content[:300]}") from exc
     stories = []
     for item in raw:
         first = max(0, min(int(item["first"]), len(phrases) - 1))
