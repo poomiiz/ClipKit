@@ -18,7 +18,7 @@
   #root { position: absolute; inset: 0; }
   #bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .pair { position: absolute; left: 0; right: 0; top: 0; opacity: 0; }
-  .lead, .punch { position: absolute; white-space: nowrap; font-family: "Sukhumvit Set", "DB Heavent", sans-serif; font-weight: 700; }
+  .lead, .punch { position: absolute; white-space: nowrap; font-family: var(--font, "Sukhumvit Set", "DB Heavent", sans-serif); font-weight: 700; }
   .lead {
     left: 92px; top: 1250px; font-size: 70px; color: #fff;
     text-shadow: 0 0 2px #000, 0 4px 10px rgba(0,0,0,.75);
@@ -36,7 +36,8 @@
 {"label": "คำโปรย · ประโยคขาว + คำเน้นน้ำเงิน", "length": "pairs",
    "fields": [{"key": "pairs", "label": "ประโยค (บรรทัดละคู่: ตัวขาว / คำเน้น)", "type": "pairs",
                "default": "ผู้รับเหมาก็จะ / ถูกกดดัน\nเรื่องงานที่ต้องเสร็จ / ตามกำหนดเวลา\nเพื่อตอบสนอง / โจทย์ผู้บริโภค",
-               "each": 2.5, "delay": 0.8}]}
+               "each": 2.5, "delay": 0.8},
+              {"key": "font", "label": "ฟอนต์", "type": "font", "default": ""}]}
 </script>
 </head>
 <body>
@@ -55,6 +56,7 @@
   // ARGS.pairs = JSON array in the same shape, e.g. [[0,2.5,"ผู้รับเหมาก็จะ","ถูกกดดัน",1]]
   const PAIRS = ARGS.pairs ? (typeof ARGS.pairs === "string" ? JSON.parse(ARGS.pairs) : ARGS.pairs) : DEMO;
   const TOTAL = Math.max(...PAIRS.map(p => p[1]));
+  if (ARGS.font) document.documentElement.style.setProperty("--font", `"${ARGS.font}", "Sukhumvit Set", sans-serif`);
   // SPEED 2 = typing, punch delay and smear twice as fast as the original CapCut edit; ?speed= overrides.
   // Pair start/end stay as written (they follow the speech).
   const SPEED = parseFloat(ARGS.speed) || 2;

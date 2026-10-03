@@ -31,7 +31,8 @@
               {"key": "sub", "label": "คำรอง", "type": "text", "default": "เพราะพลาดเรื่องนี้"},
               {"key": "style", "label": "สไตล์", "type": "select", "default": "nina",
                "options": [["nina", "Nina · แดงเอียง ไฟนีออน"], ["bps", "คุณตั้น · ขาวบน แดงล่าง"]]},
-              {"key": "duration", "label": "ยาว (วินาที)", "type": "number", "default": 5.5}]}
+              {"key": "duration", "label": "ยาว (วินาที)", "type": "number", "default": 5.5},
+              {"key": "font", "label": "ฟอนต์", "type": "font", "default": ""}]}
 </script>
 </head>
 <body>
@@ -66,7 +67,8 @@
   const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);
   const h = document.createElement("div");
   h.className = "hook clip"; h.dataset.start = 0; h.dataset.duration = HOOK.duration; h.dataset.trackIndex = 1;
-  h.style.fontFamily = S.font;
+  // ?font= / KIT.font: any font installed on this machine, the style font stays as fallback
+  h.style.fontFamily = ARGS.font ? `"${ARGS.font}", ${S.font}` : S.font;
   h.innerHTML = `
     <div class="line key" style="top:${S.key.top}px;font-size:${S.key.size}px;color:${S.key.color}">
       <span class="solid">${HOOK.key}</span><span class="glow">${HOOK.key}</span></div>
