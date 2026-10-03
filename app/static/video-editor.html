@@ -1221,6 +1221,7 @@ function shapeChanged() { try { localStorage.setItem('ck_shape', shapeNow()); } 
 async function findFocus(range) {
   const note = document.getElementById('focusNote');
   state.focus = {x: 0.5, y: 0.5};
+  state.focusManual = false;
   note.textContent = 'กำลังหาใบหน้า…';
   drawCrop();
   try {
@@ -1258,7 +1259,7 @@ document.getElementById('cropBox').addEventListener('pointerdown', e => {
     drawCrop();
   };
   const up = () => { b.removeEventListener('pointermove', move); b.removeEventListener('pointerup', up);
-    document.getElementById('focusNote').textContent = '· ใช้ตำแหน่งที่ลากไว้'; };
+    state.focusManual = true; document.getElementById('focusNote').textContent = '· ใช้ตำแหน่งที่ลากไว้'; };
   b.addEventListener('pointermove', move);
   b.addEventListener('pointerup', up);
 });
@@ -1795,6 +1796,7 @@ async function planStories() {
         if (e.target.closest('.tick')) return;
         const v = document.getElementById('clipVideo');
         v.currentTime = st.start; v.play();
+        if (!state.focusManual) findFocus({start: st.start, end: st.end});  // crop box follows the story being viewed
         v.ontimeupdate = () => { if (v.currentTime >= st.end) { v.pause(); v.ontimeupdate = null; } };
       };
       box.appendChild(row);
@@ -1860,6 +1862,10 @@ async function makeChosen(kind) {
       nameBox.value = base + ' - ' + (i + 1) + ' ' + st.title;
       state.range = {start: st.start, end: st.end};
       const single = list.length === 1;
+      if (!state.focusManual && SHAPES[shapeNow()]) {
+        const f = await api('focus', {file: state.file.path, start: st.start, end: st.end}).catch(() => null);
+        if (f && f.found) { state.focus = {x: f.x, y: f.y}; drawCrop(); }
+      }
       const say = step => { if (!single) out.innerHTML = `<span class="spin"></span> เรื่อง ${i + 1} (${done.length + 1}/${list.length}) · ${step}…`; };
       say('สร้างโปรเจกต์');
       if (kind === 'hyperframes') await makeHyperframes(single);
