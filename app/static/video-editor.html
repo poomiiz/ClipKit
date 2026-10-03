@@ -407,10 +407,17 @@
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
   .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
   .proj { cursor: pointer; }
-  .proj .th { aspect-ratio: 9/16; border-radius: 12px; background: #1b2030 center/cover; border: 1px solid #262d40;
+  .proj .th { position: relative; aspect-ratio: 9/16; border-radius: 12px; background: #1b2030 center/cover; border: 1px solid #262d40;
     display: grid; place-items: center; font-size: 28px; overflow: hidden; transition: border-color .15s; }
   .proj:hover .th { border-color: #7c5cff; }
   .proj .th img { width: 100%; height: 100%; object-fit: cover; }
+  .proj .acts { position: absolute; left: 8px; right: 8px; bottom: 8px; display: none; gap: 6px; }
+  .proj:hover .acts { display: flex; }
+  .proj .acts button { flex: 1; padding: 7px 4px; font-size: 12.5px; border-radius: 8px; border: 0; cursor: pointer;
+    background: rgba(12,15,23,.85); color: #fff; backdrop-filter: blur(4px); }
+  .proj .acts button:hover { background: #7c5cff; }
+  .proj .acts .del { flex: 0 0 52px; }
+  .proj .acts .del:hover { background: #ef4444; }
   .proj .nm { margin-top: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .proj .mt { font-size: 12px; color: #828ca4; }
   .clip-layout { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 16px; align-items: start; }
@@ -965,10 +972,15 @@ function openPicked(r) {
 }
 // drag a video or folder from Explorer onto the page: the browser gives only its name and size,
 // so the server finds it inside the workspace folders
-document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dropping'); });
+// dragging a thumbnail inside the page is not a drop from Explorer
+let innerDrag = false;
+document.addEventListener('dragstart', () => { innerDrag = true; });
+document.addEventListener('dragend', () => { innerDrag = false; });
+document.addEventListener('dragover', e => { if (innerDrag) return; e.preventDefault(); document.body.classList.add('dropping'); });
 document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
 document.addEventListener('drop', async e => {
   e.preventDefault(); document.body.classList.remove('dropping');
+  if (innerDrag) { innerDrag = false; return; }
   const item = e.dataTransfer.items && e.dataTransfer.items[0];
   const entry = item && item.webkitGetAsEntry && item.webkitGetAsEntry();
   const file = e.dataTransfer.files[0];
@@ -1935,9 +1947,29 @@ async function loadHomeDrafts() {
       el.querySelector('.nm').textContent = d.name;
       el.title = d.name;
       el.onclick = () => openDraft(i);
+      const acts = document.createElement('div');
+      acts.className = 'acts';
+      acts.innerHTML = '<button title="เปิดใน CapCut">เปิดใน CapCut</button><button class="del" title="ย้ายไปถังขยะ">ลบ</button>';
+      const [bOpen, bDel] = acts.querySelectorAll('button');
+      bOpen.onclick = async ev => { ev.stopPropagation(); await kit('draft-open', d.path); toast('เปิด CapCut แล้ว · เลือกโปรเจกต์ ' + d.name); };
+      bDel.onclick = async ev => {
+        ev.stopPropagation();
+        if (!confirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? กู้คืนได้จากถังขยะของ Windows')) return;
+        if (await kit('draft-delete', d.path)) { toast('ย้าย ' + d.name + ' ไปถังขยะแล้ว'); loadHomeDrafts(); }
+      };
+      el.querySelector('.th').appendChild(acts);
       box.appendChild(el);
     });
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+}
+async function kit(path, draftPath) {
+  try {
+    const r = await fetch('/api/kit/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: draftPath})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.statusText);
+    return j;
+  } catch (e) { toast('❌ ' + e.message); return null; }
 }
 // first run: no footage or CapCut folder yet -> the step-by-step setup comes first
 fetch('/api/kit/config').then(r => r.json()).then(c => {

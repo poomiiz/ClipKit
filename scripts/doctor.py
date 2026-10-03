@@ -65,6 +65,17 @@ def gpu():
     return out
 
 
+def model():
+    import kitconfig
+    from faster_whisper.utils import download_model
+    name = kitconfig.CFG.get("whisper_model") or "large-v3"
+    try:
+        download_model(name, local_files_only=True)
+    except Exception:
+        raise RuntimeError(f"Whisper {name} not downloaded yet - press Install (or run scripts/fetch_model.py)")
+    return name
+
+
 def disk():
     low = []
     for d in {Path.home().anchor, *(Path(p).anchor for p in [ROOT])}:
@@ -88,7 +99,7 @@ def asr():
 
 
 for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("config + folders", config),
-             ("GPU", gpu), ("disk space", disk)]:
+             ("GPU", gpu), ("speech model", model), ("disk space", disk)]:
     check(n, f)
 # fonts are each editor's own choice; only the preview render needs "card_font" installed
 check("preview font", font, optional=True)
