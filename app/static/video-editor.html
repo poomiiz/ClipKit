@@ -460,6 +460,9 @@
   .ly-row.on { background: var(--acc-glow); }
   .agent-cmd { padding: 12px; border: 1px dashed var(--acc); border-radius: 12px; background: var(--card2); margin: 8px 0; }
   .agent-cmd code { display: block; margin: 8px 0; padding: 8px 10px; background: #080a10; border-radius: 8px; font-size: 13px; word-break: break-all; }
+  .story { display: flex; gap: 10px; padding: 10px 12px; margin: 6px 0; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); cursor: pointer; }
+  .story.on { border-color: #7c5cff; }
+  .story .tick { padding-top: 3px; cursor: pointer; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -517,8 +520,8 @@
     </div>
     <div class="make-wrap">
       <div class="make-pair">
-        <button class="primary" onclick="makeDraft()"><b>🎞️ CapCut</b><small>ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
-        <button class="ghost" onclick="makeHyperframes()"><b>✨ HyperFrames</b><small>ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
+        <button class="primary" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
+        <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
       </div>
       <div class="msg" id="result"></div>
     </div>
@@ -1621,7 +1624,7 @@ function renderGuide(d) {
 }
 
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
-async function makeDraft() {
+async function makeDraft(open = true) {
   const main = document.getElementById('mainAction');
   const out = document.getElementById('result');
   const name = document.getElementById('pname').value.trim();
@@ -1635,9 +1638,11 @@ async function makeDraft() {
     await loadDrafts();
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
     if (i < 0) throw new Error('สร้างแล้วแต่หาโปรเจกต์ในรายการไม่เจอ: ' + r.draft_name);
-    openDraft(i);
+    if (open) openDraft(i);
+    return r.draft_name;
   } catch (e) {
     out.textContent = '❌ ' + e.message;
+    if (!open) throw e;
   } finally {
     main.disabled = false;
   }
@@ -1664,18 +1669,28 @@ async function planStories() {
     box.innerHTML = `<div style="font-weight:700;margin-bottom:6px">ได้ ${storyList.length} เรื่อง · ไฟล์ยาว ${mmss(job.duration)} · มีเสียงพูดรวม ${mmss(job.speech)}</div>`;
     storyList.forEach((st, i) => {
       const row = document.createElement('div');
-      row.style.cssText = 'padding:10px 12px;margin:6px 0;border-radius:12px;background:var(--card2);border:1px solid var(--line)';
-      row.innerHTML = `<b></b><div class="hint"></div>
-        <div class="hint">ช่วง ${mmss(st.start)}–${mmss(st.end)} · ตัดเงียบแล้วราว ${mmss(st.speech)} นาที</div>
-        <div class="row" style="gap:8px;margin-top:6px">
-          <button class="small primary" data-cc="${i}">🎞️ ทำด้วย CapCut</button>
-          <button class="small" data-hf="${i}">✨ ทำด้วย HyperFrames</button></div>`;
+      row.className = 'story on';
+      row.innerHTML = `<label class="tick"><input type="checkbox" checked data-i="${i}"></label><div>
+        <b></b><div class="hint"></div>
+        <div class="hint">ช่วง ${mmss(st.start)}–${mmss(st.end)} · ตัดเงียบแล้วราว ${mmss(st.speech)} นาที · กดเพื่อฟัง</div></div>`;
       row.querySelector('b').textContent = (i + 1) + '. ' + st.title;
       row.querySelector('.hint').textContent = st.summary;
+      const cb = row.querySelector('input');
+      cb.onchange = () => { row.classList.toggle('on', cb.checked); storyNotes(); };
+      row.onclick = e => {
+        if (e.target.closest('.tick')) return;
+        const v = document.getElementById('clipVideo');
+        v.currentTime = st.start; v.play();
+        v.ontimeupdate = () => { if (v.currentTime >= st.end) { v.pause(); v.ontimeupdate = null; } };
+      };
       box.appendChild(row);
     });
-    box.querySelectorAll('[data-cc]').forEach(b => b.onclick = () => makeStory(+b.dataset.cc, 'capcut'));
-    box.querySelectorAll('[data-hf]').forEach(b => b.onclick = () => makeStory(+b.dataset.hf, 'hyperframes'));
+    const all = document.createElement('label');
+    all.className = 'hint'; all.style.cssText = 'display:flex;gap:6px;align-items:center;cursor:pointer;margin:4px 0';
+    all.innerHTML = '<input type="checkbox" checked> เลือกทุกเรื่อง';
+    all.querySelector('input').onchange = e => box.querySelectorAll('.story input').forEach(c => { c.checked = e.target.checked; c.onchange(); });
+    box.insertBefore(all, box.children[1]);
+    storyNotes();
   } catch (e) {
     box.textContent = '❌ ' + e.message;
   } finally {
@@ -1683,17 +1698,40 @@ async function planStories() {
   }
 }
 
-async function makeStory(i, kind) {
-  const st = storyList[i];
-  const base = document.getElementById('pname').value.trim() || state.file.name.replace(/\.[^.]+$/, '');
-  document.getElementById('pname').value = base + ' - ' + (i + 1) + ' ' + st.title;
-  state.range = {start: st.start, end: st.end};
-  try { return await (kind === 'capcut' ? makeDraft() : makeHyperframes()); }
-  finally { state.range = null; }
+const chosenStories = () => [...document.querySelectorAll('#storyPlan .story input:checked')].map(c => +c.dataset.i);
+function storyNotes() {
+  const n = chosenStories().length;
+  const t = !storyList.length || !n ? '' : n === storyList.length && n > 1 ? `ทำทุกเรื่อง (${n} โปรเจกต์)` : n === 1 ? `ทำเรื่อง ${chosenStories()[0] + 1}` : `ทำ ${n} เรื่องที่เลือก`;
+  document.getElementById('ccNote').textContent = t || 'ตัด ใส่ซับ แล้วเกลาต่อใน CapCut';
+  document.getElementById('hfNote').textContent = t || 'ตัวหนังสือเคลื่อนไหว ส่งออก MP4';
+}
+// bottom buttons: no stories ticked = the whole clip; one = make it and open it; several = make them one by one
+async function makeChosen(kind) {
+  const list = storyList.length ? chosenStories() : [];
+  if (!list.length) return kind === 'capcut' ? makeDraft() : makeHyperframes();
+  const nameBox = document.getElementById('pname');
+  const base = nameBox.value.trim() || state.file.name.replace(/\.[^.]+$/, '');
+  const done = [];
+  try {
+    for (const i of list) {
+      const st = storyList[i];
+      nameBox.value = base + ' - ' + (i + 1) + ' ' + st.title;
+      state.range = {start: st.start, end: st.end};
+      const single = list.length === 1;
+      if (kind === 'capcut') await makeDraft(single);
+      else await makeHyperframes(single);
+      done.push(i + 1);
+    }
+    if (list.length > 1) document.getElementById('result').textContent =
+      `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากหน้าแรก`;
+  } catch (e) {
+    document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
+      (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
+  } finally { state.range = null; nameBox.value = base; }
 }
 
 // Alternative to CapCut: open the raw file as a HyperFrames project (motion graphics, renders to MP4)
-async function makeHyperframes() {
+async function makeHyperframes(open = true) {
   const out = document.getElementById('result');
   const name = document.getElementById('pname').value.trim();
   if (!state.file || !name) { out.textContent = '❌ เลือกไฟล์และตั้งชื่อโปรเจกต์ก่อน'; return; }
@@ -1704,8 +1742,8 @@ async function makeHyperframes() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.detail || r.status);
     out.innerHTML = '✅ เปิด Studio แล้ว: <a href="' + j.url + '" target="_blank">' + j.url + '</a> · โฟลเดอร์ ' + j.project;
-    window.open(j.url, '_blank');
-  } catch (e) { out.textContent = '❌ ' + e.message; }
+    if (open) window.open(j.url, '_blank');
+  } catch (e) { out.textContent = '❌ ' + e.message; if (!open) throw e; }
 }
 
 function openDraft(i) {
