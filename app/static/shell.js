@@ -23,30 +23,52 @@
       <span class="sb-name">ClipKit<small>Video → CapCut</small></span></a>` +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
-    '<div class="sb-group">โปรเจกต์</div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
+    '<div class="sb-group">ไฟล์ดิบ</div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
     `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html">${svg('settings')}<span>ตั้งค่า</span></a>` +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
   document.body.prepend(aside);
-  // every project, newest first; the editor page opens it in place, other pages go to the editor first
+  // raw files on the left, the projects cut from each one underneath (click a raw file = pick its stories again)
   window.ckLoadProjects = async () => {
     const box = document.getElementById('sbProjects');
+    let open = {};
+    try { open = JSON.parse(localStorage.getItem('ck_sb_open') || '{}'); } catch {}
     try {
-      const [cc, hf] = await Promise.all([fetch('/api/video/drafts').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-        fetch('/api/kit/hf-projects').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })]);
-      const all = (cc.drafts || []).map(d => ({...d, kind: 'capcut'})).concat((hf.projects || []).map(p => ({...p, kind: 'hyperframes'})))
-        .sort((x, y) => (y.modified || 0) - (x.modified || 0));
-      box.innerHTML = all.length ? '' : '<div class="sb-empty">ยังไม่มีโปรเจกต์</div>';
-      all.forEach(d => {
-        const a = document.createElement('a');
-        a.className = 'sb-proj';
-        a.href = '/video-editor.html?open=' + encodeURIComponent(d.path);
-        a.title = d.name;
-        a.innerHTML = `<span class="k ${d.kind}">${d.kind === 'capcut' ? 'CC' : 'HF'}</span><span class="n"></span>`;
-        a.querySelector('.n').textContent = d.name;
-        a.onclick = e => { if (window.ckOpenProject) { e.preventDefault(); window.ckOpenProject(d.path); } };
-        box.appendChild(a);
+      const r = await fetch('/api/kit/raw-groups');
+      if (!r.ok) throw new Error(r.status);
+      const {groups} = await r.json();
+      box.innerHTML = groups.length ? '' : '<div class="sb-empty">ยังไม่มีงาน · ลากไฟล์ดิบมาวางที่หน้าแรก</div>';
+      groups.forEach(g => {
+        const wrap = document.createElement('div');
+        wrap.className = 'sb-raw' + (open[g.raw] ? ' open' : '');
+        wrap.innerHTML = `<div class="sb-raw-h"><button class="tw" title="กาง/หุบ">▸</button><a class="rn"></a><span class="cnt">${g.projects.length}</span></div><div class="sb-raw-b"></div>`;
+        const rn = wrap.querySelector('.rn');
+        rn.textContent = g.name;
+        rn.title = g.raw ? (g.exists ? g.raw : g.raw + ' (ไม่พบไฟล์แล้ว)') : 'โปรเจกต์ที่ไม่รู้ว่าตัดจากไฟล์ไหน';
+        if (!g.exists) rn.classList.add('gone');
+        rn.href = g.exists ? '/video-editor.html?raw=' + encodeURIComponent(g.raw) : '#';
+        rn.onclick = e => {
+          if (!g.exists) { e.preventDefault(); wrap.querySelector('.tw').click(); return; }
+          if (window.ckOpenRaw) { e.preventDefault(); window.ckOpenRaw(g.raw); }
+        };
+        wrap.querySelector('.tw').onclick = () => {
+          wrap.classList.toggle('open');
+          open[g.raw] = wrap.classList.contains('open');
+          try { localStorage.setItem('ck_sb_open', JSON.stringify(open)); } catch {}
+        };
+        const body = wrap.querySelector('.sb-raw-b');
+        g.projects.forEach(d => {
+          const a = document.createElement('a');
+          a.className = 'sb-proj';
+          a.href = '/video-editor.html?open=' + encodeURIComponent(d.path);
+          a.title = d.name;
+          a.innerHTML = `<span class="k ${d.kind}">${d.kind === 'capcut' ? 'CC' : 'HF'}</span><span class="n"></span>`;
+          a.querySelector('.n').textContent = d.name;
+          a.onclick = e => { if (window.ckOpenProject) { e.preventDefault(); window.ckOpenProject(d.path); } };
+          body.appendChild(a);
+        });
+        box.appendChild(wrap);
       });
-    } catch (e) { box.innerHTML = '<div class="sb-empty">❌ อ่านรายชื่อโปรเจกต์ไม่ได้</div>'; }
+    } catch (e) { box.innerHTML = '<div class="sb-empty">❌ อ่านรายการงานไม่ได้</div>'; }
   };
   window.ckLoadProjects();
   document.body.classList.add('shell');

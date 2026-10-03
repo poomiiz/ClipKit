@@ -350,6 +350,9 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
         )
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # which raw file this project came from: the sidebar groups projects under it
+    (Path(result["draft_path"]) / "clipkit.json").write_text(
+        json.dumps({"raw": req.file, "start": req.start, "end": end}, ensure_ascii=False), encoding="utf-8")
     return result
 
 

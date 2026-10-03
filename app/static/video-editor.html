@@ -538,8 +538,8 @@
     </div>
     <div class="make-wrap">
       <div class="make-pair">
-        <button class="primary" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
-        <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
+        <button class="primary" onclick="makeChosen('capcut')"><b>🎞️ ClipKit + CapCut</b><small id="ccNote">ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
+        <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ ClipKit + HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
       </div>
       <div class="hint" style="margin-top:8px">ขนาดภาพ HyperFrames
         <select id="hfShape" style="margin-left:6px">
@@ -1783,7 +1783,7 @@ async function makeChosen(kind) {
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
-  } finally { state.range = null; nameBox.value = base; markMade(); }
+  } finally { state.range = null; nameBox.value = base; markMade(); if (window.ckLoadProjects) window.ckLoadProjects(); }
 }
 
 // Alternative to CapCut: open the raw file as a HyperFrames project (motion graphics, renders to MP4)
@@ -2048,11 +2048,14 @@ async function loadHomeDrafts() {
     selSet.clear(); showSel();
     all.forEach(d => box.appendChild(projCard(d)));
     if (window.ckLoadProjects) window.ckLoadProjects();
-    const want = new URLSearchParams(location.search).get('open');
-    if (want) { history.replaceState(null, '', location.pathname); ckOpenProject(want); }
+    const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw');
+    if (want || raw) history.replaceState(null, '', location.pathname);
+    if (want) ckOpenProject(want);
+    if (raw) ckOpenRaw(raw);
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
 }
 // sidebar click / ?open=<path>: open that project here (CapCut = workbench, HyperFrames = Studio)
+window.ckOpenRaw = path => openPicked({kind: 'file', path});
 window.ckOpenProject = async path => {
   const card = [...document.querySelectorAll('#homeDrafts .proj')].find(el => el._d.path === path);
   if (!card) { toast('❌ ไม่พบโปรเจกต์นี้แล้ว: ' + path); return; }
