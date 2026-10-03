@@ -36,7 +36,7 @@ def main() -> int:
             status["takes"].append({"take": take, "status": "existing", "file": str(target)})
             continue
         print(f"START Take {take}: {source.name}", flush=True)
-        phrases = transcribe(str(source), 0, file["duration"], "th", "large-v3-turbo")
+        phrases = transcribe(str(source), 0, file["duration"], "th", None)  # one model for everything: whisper_model in config.json (large-v3)
         payload = {"take": take, "source": str(source), "duration": file["duration"],
                    "folder": file.get("folder", ""),
                    "phrases": phrases}
