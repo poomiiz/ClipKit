@@ -396,6 +396,23 @@
   body.dropping::after { content: 'วางไฟล์วิดีโอหรือโฟลเดอร์ที่นี่'; position: fixed; inset: 12px; z-index: 98;
     border: 3px dashed #7c5cff; border-radius: 18px; background: rgba(12,15,23,.82); color: #fff; font-size: 22px;
     display: grid; place-items: center; pointer-events: none; }
+  .new-zone { display: flex; align-items: center; gap: 18px; padding: 26px 28px; border: 2px dashed #3b3f63;
+    border-radius: 16px; background: linear-gradient(120deg, #1d1a3d, #15203a); cursor: pointer; transition: border-color .15s; }
+  .new-zone:hover { border-color: #7c5cff; }
+  .new-zone b { display: block; font-size: 19px; }
+  .new-zone span { color: #b9bedd; font-size: 14px; }
+  .nz-plus { width: 54px; height: 54px; border-radius: 14px; background: #7c5cff; display: grid; place-items: center;
+    font-size: 32px; font-weight: 300; flex: none; }
+  .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 26px 0 12px; }
+  .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
+  .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+  .proj { cursor: pointer; }
+  .proj .th { aspect-ratio: 9/16; border-radius: 12px; background: #1b2030 center/cover; border: 1px solid #262d40;
+    display: grid; place-items: center; font-size: 28px; overflow: hidden; transition: border-color .15s; }
+  .proj:hover .th { border-color: #7c5cff; }
+  .proj .th img { width: 100%; height: 100%; object-fit: cover; }
+  .proj .nm { margin-top: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .proj .mt { font-size: 12px; color: #828ca4; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -413,14 +430,12 @@
 
   <!-- Screen 1: Home -->
   <div class="screen on" id="s-home">
-    <div class="dash-head"><h2>วันนี้ทำอะไรดี</h2><p>เริ่มจากคลิปดิบ หรือหยิบเครื่องมือที่ต้องการ</p></div>
-    <div class="dash">
-      <button class="tile hero" onclick="location.hash='new'"><span class="ic" data-ic="clip"></span>
-        <div><b>เริ่มคลิปใหม่</b><br><span>เลือกฟุตเทจ ถอดเสียง ตัดช่วงเงียบ ใส่ซับ แล้วส่งเป็นโปรเจกต์ CapCut</span></div>
-        <span class="go">เริ่ม →</span></button>
-      <button class="tile" onclick="location.hash='drafts'"><span class="ic" data-ic="drafts" style="background:#1f6feb"></span>
-        <b>ทำต่อโปรเจกต์เดิม</b><span>เปิดโปรเจกต์ CapCut ที่มีอยู่ ใส่ซับ ตัดเงียบ เปลี่ยนสไตล์</span></button>
+    <div class="new-zone" onclick="openPicker()">
+      <div class="nz-plus">+</div>
+      <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
     </div>
+    <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span></div>
+    <div id="homeDrafts" class="proj-grid"><div class="hint">กำลังอ่านโปรเจกต์…</div></div>
     <div id="recentWrap" class="recent-list"></div>
   </div>
 
@@ -1882,6 +1897,38 @@ async function draftGrade() {
   }
 }
 
+</script>
+<script>
+// home = CapCut-style: "new" drop zone on top, every existing CapCut project below
+async function loadHomeDrafts() {
+  const box = document.getElementById('homeDrafts');
+  try {
+    const data = await api('drafts');
+    drafts = data.drafts;
+    document.getElementById('projCount').textContent = drafts.length + ' โปรเจกต์';
+    if (!drafts.length) { box.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>'; return; }
+    box.innerHTML = '';
+    drafts.forEach((d, i) => {
+      const src = (d.sources || [])[0];
+      const el = document.createElement('div');
+      el.className = 'proj';
+      const when = d.modified ? new Date(d.modified * 1000).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'}) : '';
+      el.innerHTML = '<div class="th">' + (src ? '<img loading="lazy" alt="" src="/api/video/frame?path=' +
+        encodeURIComponent(src) + '&t=1&width=240">' : '🎞️') + '</div><div class="nm"></div><div class="mt">' +
+        when + (d.duration ? ' · ' + Math.round(d.duration) + ' วิ' : '') + '</div>';
+      el.querySelector('.nm').textContent = d.name;
+      el.title = d.name;
+      el.onclick = () => openDraft(i);
+      box.appendChild(el);
+    });
+  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+}
+// first run: no footage or CapCut folder yet -> the step-by-step setup comes first
+fetch('/api/kit/config').then(r => r.json()).then(c => {
+  if (!c.folders.work_root || !c.folders.capcut_drafts) location.replace('/setup.html');
+  else loadHomeDrafts();
+}).catch(() => loadHomeDrafts());
+window.addEventListener('hashchange', () => { if (!location.hash) loadHomeDrafts(); });
 </script>
 <script src="/shell.js?v=3"></script>
 <script>
