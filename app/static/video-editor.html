@@ -413,6 +413,17 @@
   .proj .th img { width: 100%; height: 100%; object-fit: cover; }
   .proj .nm { margin-top: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .proj .mt { font-size: 12px; color: #828ca4; }
+  .clip-layout { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .clip-layout { grid-template-columns: 1fr; } }
+  .clip-left video { width: 100%; max-height: 60vh; border-radius: 12px; background: #000; display: block; margin-bottom: 4px; }
+  .clip-right .card + .card { margin-top: 14px; }
+  .make-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .make-pair button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; font-size: 16px; text-align: left; }
+  .make-pair small { font-size: 12.5px; font-weight: 400; opacity: .8; }
+  .make-pair .ghost, #planStoriesBtn { background: #1b2030; color: #f1f4fb; border: 1px solid #3a4260; border-radius: 12px; }
+  .make-pair .ghost:hover, #planStoriesBtn:hover { border-color: #7c5cff; }
+  #planStoriesBtn { padding: 10px 16px; width: 100%; }
+  #s-clip { max-width: 1100px; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -452,26 +463,30 @@
 
   <!-- Screen 3: New Project From Clip -->
   <div class="screen" id="s-clip">
-    <div class="card">
-      <h2>คลิปที่เลือก</h2>
-      <div id="clipInfo" class="hint"></div>
-      <label>ตั้งชื่อโปรเจกต์</label>
-      <input id="pname">
-      <div class="hint">สร้างโปรเจกต์ก่อน แล้วค่อยถอดเสียง ตัดช่วงเงียบ ใส่สไตล์ ทุกอย่างจะถูกบันทึกลงโปรเจกต์ทันที</div>
+    <div class="clip-layout">
+      <div class="card clip-left">
+        <video id="clipVideo" controls preload="metadata"></video>
+        <label>ชื่อโปรเจกต์</label>
+        <input id="pname">
+        <div id="clipInfo" class="hint"></div>
+        <div id="clipFolder" class="hint" style="word-break:break-all"></div>
+      </div>
+      <div class="clip-right">
+        <div class="card">
+          <h2>สร้างเป็น</h2>
+          <div class="make-pair">
+            <button class="primary" onclick="makeDraft()">🎞️ CapCut<small>ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
+            <button class="ghost" onclick="makeHyperframes()">✨ HyperFrames<small>ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
+          <button class="ghost" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเสียงและแบ่งเรื่อง</button>
+          <div id="storyPlan" style="margin-top:10px"></div>
+        </div>
+        <div class="msg" id="result"></div>
+      </div>
     </div>
-    <div class="card">
-      <h2>ดูเนื้อหาก่อน</h2>
-      <div class="hint">ถอดเสียงทั้งไฟล์ แบ่งเป็นเรื่อง แล้วบอกว่าได้กี่เรื่อง เรื่องละกี่นาที ก่อนเลือกว่าจะทำด้วย CapCut หรือ HyperFrames</div>
-      <button class="primary" style="margin-top:10px" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเนื้อหาและแบ่งเรื่อง</button>
-      <div id="storyPlan" style="margin-top:10px"></div>
-    </div>
-    <div class="card">
-      <h2>สร้างเป็นอะไร?</h2>
-      <div class="hint">🎞️ <b>CapCut</b> — กดปุ่มม่วงด้านล่าง แล้วไปถอดเสียง ตัด ใส่ซับ ต่อในโปรเจกต์ · คนเกลาต่อใน CapCut ได้</div>
-      <div class="hint" style="margin-top:6px">✨ <b>HyperFrames</b> — ตัวหนังสือเคลื่อนไหว ส่งออกเป็น MP4 ไม่ต้องใช้ CapCut</div>
-      <button class="ghost" style="margin-top:10px" onclick="makeHyperframes()">✨ สร้างด้วย HyperFrames แทน</button>
-    </div>
-    <div class="msg" id="result"></div>
   </div>
 
   <!-- Screen 4: Drafts List -->
@@ -840,11 +855,8 @@ function go(id, push) {
   document.getElementById('backBtn').style.display = state.stack.length ? 'flex' : 'none';
   const bar = document.getElementById('bar');
   const main = document.getElementById('mainAction');
-  if (id === 's-clip' && state.file) {
-    bar.style.display = 'flex';
-    main.textContent = '🚀 สร้างโปรเจกต์ แล้วไปต่อ';
-    main.onclick = makeDraft;
-  } else if (id === 's-subs' && state.draft) {
+  if (id !== 's-clip') document.getElementById('clipVideo').pause();
+  if (id === 's-subs' && state.draft) {
     bar.style.display = 'flex';
     main.textContent = '💾 บันทึกลงโปรเจกต์ CapCut';
     main.onclick = saveSubs;
@@ -1144,8 +1156,11 @@ async function showTranscriptResults(path) {
 function pickFile(f) {
   state.file = f;
   document.getElementById('pname').value = f.name.replace(/\.[^.]+$/, '');
-  document.getElementById('clipInfo').textContent =
-    f.name + ' · ' + f.duration + ' วินาที · ' + (f.vertical ? 'แนวตั้ง' : 'แนวนอน');
+  const mins = Math.floor(f.duration / 60) + ':' + String(Math.round(f.duration % 60)).padStart(2, '0');
+  document.getElementById('clipInfo').textContent = mins + ' นาที · ' + (f.height > f.width ? 'แนวตั้ง' : 'แนวนอน') +
+    (f.width ? ' · ' + f.width + '×' + f.height : '');
+  document.getElementById('clipFolder').textContent = f.path;
+  document.getElementById('clipVideo').src = '/api/kit/media?path=' + encodeURIComponent(f.path);
   document.getElementById('result').className = 'msg';
   go('s-clip');
 }
