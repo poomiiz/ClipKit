@@ -702,7 +702,7 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     dur = round(min(6.0, max(3.0, req.end - req.start)), 2)
     params = ({"key": a, "sub": b, "duration": dur} if req.template == "hook-title"
               else {"pairs": [[0, dur, a, b, 0.8]]})
-    name = f"{Path(req.path).name[:40]} {req.template} {req.start:.1f}"
+    name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
     mov = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params))["file"]
     items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]  # one motion per moment
     items.append({"file": mov, "start": req.start, "duration": dur, "template": req.template, "text": req.text})

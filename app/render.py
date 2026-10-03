@@ -98,10 +98,15 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
 
     # subtitles: one ASS event per line, positioned and tilted like the CapCut segment
     events, font_files, family = [], set(), None
+    olist = folder / "clipkit_overlays.json"
+    overlays = json.loads(olist.read_text(encoding="utf-8")) if olist.is_file() else []
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
             continue
+        at = s["target_timerange"]["start"] / US
+        if any(o["start"] - 0.05 <= at < o["start"] + o["duration"] for o in overlays):
+            continue  # a motion shows this line's words already: no second copy as a subtitle
         body = json.loads(m["content"])
         st = (body.get("styles") or [{}])[0]
         fam, fdir = _font((st.get("font") or {}).get("path") or m.get("font_path"))
@@ -147,8 +152,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
             vout = "[vo]"
         # motion clips (transparent MOV) on top, each from its own moment; scaled to the canvas height
         ins = []
-        olist = folder / "clipkit_overlays.json"
-        for k, o in enumerate(json.loads(olist.read_text(encoding="utf-8")) if olist.is_file() else []):
+        for k, o in enumerate(overlays):
             if not Path(o["file"]).is_file():
                 raise VideoEditError(f"motion file missing: {o['file']}")
             ins += ["-i", o["file"]]
