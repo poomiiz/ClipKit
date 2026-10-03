@@ -478,7 +478,7 @@
   #selBar { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
   #selHint { margin-left: 12px; font-size: 12.5px; }
 </style>
-<link rel="stylesheet" href="/shell.css?v=2">
+<link rel="stylesheet" href="/shell.css?v=3">
 </head>
 <body>
 <div class="app">
@@ -2047,8 +2047,17 @@ async function loadHomeDrafts() {
     box.innerHTML = '';
     selSet.clear(); showSel();
     all.forEach(d => box.appendChild(projCard(d)));
+    if (window.ckLoadProjects) window.ckLoadProjects();
+    const want = new URLSearchParams(location.search).get('open');
+    if (want) { history.replaceState(null, '', location.pathname); ckOpenProject(want); }
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
 }
+// sidebar click / ?open=<path>: open that project here (CapCut = workbench, HyperFrames = Studio)
+window.ckOpenProject = async path => {
+  const card = [...document.querySelectorAll('#homeDrafts .proj')].find(el => el._d.path === path);
+  if (!card) { toast('❌ ไม่พบโปรเจกต์นี้แล้ว: ' + path); return; }
+  card.querySelector('[data-a=open]').click();
+};
 function projCard(d) {
   const src = (d.sources || [])[0];
   const el = document.createElement('div');
@@ -2296,7 +2305,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 </script>
-<script src="/shell.js?v=4"></script>
+<script src="/shell.js?v=5"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

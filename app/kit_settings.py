@@ -722,7 +722,10 @@ def draft_delete(body: DraftPath) -> dict[str, str]:
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=120, env={**os.environ, "CLIPKIT_TARGET": str(p)})
     if r.returncode != 0 or p.exists():
-        raise HTTPException(500, "could not move to Recycle Bin: " + (r.stderr or r.stdout).strip()[-300:])
+        err = (r.stderr or r.stdout).strip()
+        if "IOException" in err or "being used" in err:
+            raise HTTPException(409, f"ลบ {p.name} ไม่ได้ เพราะไฟล์ยังเปิดอยู่ (HyperFrames Studio หรือ CapCut) ปิดก่อนแล้วลองใหม่")
+        raise HTTPException(500, "could not move to Recycle Bin: " + err[-300:])
     return {"recycled": str(p)}
 
 
