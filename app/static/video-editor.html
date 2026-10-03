@@ -477,6 +477,10 @@
   .marquee { position: fixed; z-index: 50; border: 1px solid #7c5cff; background: rgba(124,92,255,.15); pointer-events: none; border-radius: 4px; }
   #selBar { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
   #selHint { margin-left: 12px; font-size: 12.5px; }
+  .proj-tabs { display: inline-flex; gap: 6px; margin-left: 12px; }
+  .proj-tabs button.on { background: #7c5cff; color: #fff; border-color: #7c5cff; }
+  .proj .badge.capcut { background: #2a3150; color: #c9d3ff; }
+  .proj .badge.clipkit { background: #7c5cff; color: #fff; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -498,7 +502,7 @@
       <div class="nz-plus">+</div>
       <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
     </div>
-    <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span>
+    <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
@@ -1666,7 +1670,7 @@ async function makeDraft(open = true) {
   main.disabled = true;
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
-    const r = await api('capcut', {file: state.file.path, name: name, ...(state.range || {})});
+    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
     drafts = (await api('drafts')).drafts;
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
@@ -1768,17 +1772,11 @@ function storyNotes() {
 // bottom buttons: no stories ticked = the whole clip; one = make it and open it; several = make them one by one
 async function makeChosen(kind) {
   const list = storyList.length ? chosenStories() : [];
-  if (!list.length) {
-    if (kind === 'hyperframes') return makeHyperframes();
-    if (kind === 'clipkit') return makeDraft();
-    const d = await makeDraft(false).catch(() => null);
-    if (d) await kit('draft-open', d.path);
-    return;
-  }
+  state.via = kind === 'clipkit' ? 'clipkit' : 'capcut';
+  if (!list.length) return kind === 'hyperframes' ? makeHyperframes() : makeDraft();
   const nameBox = document.getElementById('pname');
   const base = nameBox.value.trim().replace(/ - \d+ .*$/, '') || state.file.name.replace(/\.[^.]+$/, '');
   const done = [], made = [];
-  let lastCapcut = null;
   const out = document.getElementById('result');
   out.scrollIntoView({block: 'center'});
   try {
@@ -1790,7 +1788,7 @@ async function makeChosen(kind) {
       const say = step => { if (!single) out.innerHTML = `<span class="spin"></span> เรื่อง ${i + 1} (${done.length + 1}/${list.length}) · ${step}…`; };
       say('สร้างโปรเจกต์');
       if (kind === 'hyperframes') await makeHyperframes(single);
-      else if (kind === 'clipkit' && single) await makeDraft(true);
+      else if (single) await makeDraft(true);
       else if (kind === 'clipkit') {   // several stories: subtitles + MP4 without stopping at the workbench
         const d = await makeDraft(false);
         say('ถอดเสียงใส่ซับ');
@@ -1800,16 +1798,12 @@ async function makeChosen(kind) {
         say('ส่งออก MP4');
         const mp4 = await api('draft/export', {path: d.path});
         made.push(mp4.file);
-      } else {
-        const d = await makeDraft(false);
-        lastCapcut = d;
-      }
+      } else await makeDraft(false);
       done.push(i + 1);
     }
     if (list.length > 1) out.textContent = made.length
       ? `✅ ได้ MP4 ${made.length} ไฟล์ (เรื่อง ${done.join(', ')}) · อยู่ที่ ${made[0].replace(/[\\/][^\\/]*$/, '')}`
       : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
-    if (lastCapcut) await kit('draft-open', lastCapcut.path);
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
@@ -2072,11 +2066,17 @@ async function loadHomeDrafts() {
     const all = drafts.map((d, i) => ({...d, kind: 'capcut', i}))
       .concat((hf.projects || []).map(p => ({...p, kind: 'hyperframes'})))
       .sort((x, y) => (y.modified || 0) - (x.modified || 0));
-    document.getElementById('projCount').textContent = all.length + ' โปรเจกต์';
-    if (!all.length) { box.innerHTML = '<div class="hint">ยังไม่มีโปรเจกต์ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>'; return; }
-    box.innerHTML = '';
+    all.forEach(d => { d.sys = d.kind === 'hyperframes' ? 'hyperframes' : d.via || 'capcut'; });
+    const SYS = [['all', 'ทั้งหมด'], ['clipkit', 'ClipKit'], ['capcut', 'CapCut'], ['hyperframes', 'HyperFrames']];
+    const pick = loadHomeDrafts.sys || 'all';
+    const shown = all.filter(d => pick === 'all' || d.sys === pick);
+    document.getElementById('projCount').textContent = shown.length + ' โปรเจกต์';
+    const tabs = document.getElementById('projTabs');
+    tabs.innerHTML = SYS.map(([k, t]) => `<button class="small${k === pick ? ' on' : ''}" data-k="${k}">${t} ${k === 'all' ? all.length : all.filter(d => d.sys === k).length}</button>`).join('');
+    tabs.querySelectorAll('button').forEach(b => b.onclick = () => { loadHomeDrafts.sys = b.dataset.k; loadHomeDrafts(); });
+    box.innerHTML = shown.length ? '' : '<div class="hint">ยังไม่มีโปรเจกต์ในหมวดนี้ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>';
     selSet.clear(); showSel();
-    all.forEach(d => box.appendChild(projCard(d)));
+    shown.forEach(d => box.appendChild(projCard(d)));
     if (window.ckLoadProjects) window.ckLoadProjects();
     const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw');
     if (want || raw) history.replaceState(null, '', location.pathname);
@@ -2096,7 +2096,7 @@ function projCard(d) {
   const el = document.createElement('div');
   el.className = 'proj';
   const when = d.modified ? new Date(d.modified * 1000).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'}) : '';
-  const badge = d.kind === 'hyperframes' ? '<span class="badge">HyperFrames</span>' : '';
+  const badge = `<span class="badge ${d.sys}">${{clipkit: 'ClipKit', capcut: 'CapCut', hyperframes: 'HyperFrames'}[d.sys]}</span>`;
   el.innerHTML = '<div class="th">' + badge + (src ? '<img loading="lazy" draggable="false" alt="" src="/api/video/frame?path=' +
     encodeURIComponent(src) + '&t=1&width=240">' : (d.kind === 'hyperframes' ? '✨' : '🎞️')) + '</div>' +
     '<div class="nm"></div><div class="mt">' + when + (d.duration ? ' · ' + Math.round(d.duration) + ' วิ' : '') + '</div>' +

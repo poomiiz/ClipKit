@@ -74,6 +74,7 @@ class DraftRequest(BaseModel):
     sub_y: float = Field(default=-0.60, ge=-1.0, le=1.0)
     sub_color: str = Field(default="#ffffff", pattern=r"^#[0-9a-fA-F]{6}$")
     sub_stroke: float = Field(default=0.05, ge=0.0, le=0.3)
+    via: str = Field(default="capcut", pattern="^(clipkit|capcut)$")  # which button made it: finish in ClipKit or in CapCut
 
 
 class BriefRequest(BaseModel):
@@ -352,7 +353,7 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # which raw file this project came from: the sidebar groups projects under it
     (Path(result["draft_path"]) / "clipkit.json").write_text(
-        json.dumps({"raw": req.file, "start": req.start, "end": end}, ensure_ascii=False), encoding="utf-8")
+        json.dumps({"raw": req.file, "start": req.start, "end": end, "via": req.via}, ensure_ascii=False), encoding="utf-8")
     return result
 
 
@@ -402,6 +403,9 @@ def drafts() -> dict[str, Any]:
         items = capcut_edit.list_drafts()
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for d in items:  # made by the ClipKit button, or a CapCut project (any made before the buttons split)
+        meta = Path(d["path"]) / "clipkit.json"
+        d["via"] = json.loads(meta.read_text(encoding="utf-8")).get("via", "capcut") if meta.is_file() else "capcut"
     return {"count": len(items), "drafts": items}
 
 
