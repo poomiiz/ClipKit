@@ -466,6 +466,8 @@
   .story .st-txt b, .story .st-txt .hint { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .story .st-time { color: var(--mut, #828ca4); font-size: 12.5px; white-space: nowrap; }
   .story .st-done { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: rgba(16,185,129,.15); color: #10b981; white-space: nowrap; }
+  #draftList .tile .body { min-width: 0; }
+  #draftList .tile .t1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -1639,7 +1641,7 @@ async function makeDraft(open = true) {
   try {
     const r = await api('capcut', {file: state.file.path, name: name, ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
-    await loadDrafts();
+    drafts = (await api('drafts')).drafts;
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
     if (i < 0) throw new Error('สร้างแล้วแต่หาโปรเจกต์ในรายการไม่เจอ: ' + r.draft_name);
     if (open) openDraft(i);
@@ -1709,10 +1711,12 @@ async function markMade() {
   if (!storyList.length) return;
   const [cc, hf] = await Promise.all([api('drafts').catch(() => ({drafts: []})),
     fetch('/api/kit/hf-projects').then(r => r.json()).catch(() => ({projects: []}))]);
-  const names = [...(cc.drafts || []).map(d => ['CapCut', d.name]), ...(hf.projects || []).map(p => ['HyperFrames', p.name])];
+  const norm = t => (t || '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   document.querySelectorAll('#storyPlan .story').forEach((row, i) => {
-    const tail = ' - ' + (i + 1) + ' ' + storyList[i].title;
-    const made = [...new Set(names.filter(([, n]) => (n || '').endsWith(tail)).map(([k]) => k))];
+    const st = storyList[i], tail = norm((i + 1) + ' ' + st.title), range = `-${Math.trunc(st.start)}-${Math.trunc(st.end)}`;
+    const made = [], fileSlug = state.file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
+    if ((cc.drafts || []).some(d => norm(d.name).endsWith(tail))) made.push('CapCut');
+    if ((hf.projects || []).some(p => (p.name || '').endsWith(range) && p.name.startsWith(fileSlug))) made.push('HyperFrames');
     const tag = row.querySelector('.st-done');
     tag.style.display = made.length ? '' : 'none';
     tag.textContent = '✓ ทำแล้ว · ' + made.join(' + ');
@@ -1730,19 +1734,22 @@ async function makeChosen(kind) {
   const list = storyList.length ? chosenStories() : [];
   if (!list.length) return kind === 'capcut' ? makeDraft() : makeHyperframes();
   const nameBox = document.getElementById('pname');
-  const base = nameBox.value.trim() || state.file.name.replace(/\.[^.]+$/, '');
+  const base = nameBox.value.trim().replace(/ - \d+ .*$/, '') || state.file.name.replace(/\.[^.]+$/, '');
   const done = [];
+  const out = document.getElementById('result');
+  out.scrollIntoView({block: 'center'});
   try {
     for (const i of list) {
       const st = storyList[i];
       nameBox.value = base + ' - ' + (i + 1) + ' ' + st.title;
       state.range = {start: st.start, end: st.end};
       const single = list.length === 1;
+      if (!single) out.innerHTML = `<span class="spin"></span> กำลังทำเรื่อง ${i + 1} (${done.length + 1}/${list.length}) ด้วย ${kind === 'capcut' ? 'CapCut' : 'HyperFrames'}…`;
       if (kind === 'capcut') await makeDraft(single);
       else await makeHyperframes(single);
       done.push(i + 1);
     }
-    if (list.length > 1) document.getElementById('result').textContent =
+    if (list.length > 1) out.textContent =
       `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากหน้าแรก`;
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
