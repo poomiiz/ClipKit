@@ -51,6 +51,13 @@ button:disabled{opacity:.5;cursor:wait}
 </main>
 <script>
 const $ = id => document.getElementById(id);
+// installed fonts for the font pickers; the last choice is remembered on this machine
+let FONTS = [];
+const fontsReady = fetch('/api/kit/fonts').then(r => r.json()).then(j => FONTS = j.fonts || []).catch(() => FONTS = []);
+const fontOptions = sel => '<option value="">ตามเทมเพลต</option>' + FONTS.map(f =>
+  `<option${f === sel ? ' selected' : ''}>${f.replace(/</g, '&lt;')}</option>`).join('');
+const savedFont = () => { try { return localStorage.getItem('ck_font') || ''; } catch { return ''; } };
+const keepFont = v => { try { localStorage.setItem('ck_font', v); } catch {} };
 // the form comes from each template's <script id="clipkit-motion"> spec (GET /api/kit/motion-templates)
 let SPECS = {};
 const spec = () => SPECS[$('tpl').value];
@@ -59,6 +66,7 @@ function drawFields() {
     const id = 'f_' + f.key;
     if (f.type === 'select') return `<label>${f.label}</label><select id="${id}">${f.options.map(([v, t]) =>
       `<option value="${v}"${v === f.default ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+    if (f.type === 'font') return `<label>${f.label}</label><select id="${id}" onchange="keepFont(this.value)">${fontOptions(savedFont())}</select>`;
     if (f.type === 'pairs') return `<label>${f.label}</label><textarea id="${id}">${f.default || ''}</textarea>
       <label>แต่ละคู่โชว์กี่วินาที</label><input id="${id}_each" type="number" min="1" step="0.5" value="${f.each || 2.5}">`;
     return `<label>${f.label}</label><input id="${id}" ${f.type === 'number' ? 'type="number" step="0.5"' : ''} value="${f.default ?? ''}">`;
@@ -111,7 +119,7 @@ $('go').onclick = async () => {
   } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + e.message; }
   b.disabled = false;
 };
-fetch('/api/kit/motion-templates').then(r => r.json()).then(j => {
+Promise.all([fetch('/api/kit/motion-templates').then(r => r.json()), fontsReady]).then(([j]) => {
   SPECS = j.templates;
   $('tpl').innerHTML = Object.entries(SPECS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
   drawFields(); refresh();

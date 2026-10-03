@@ -32,7 +32,7 @@
 <script>
   // c1/s1 = headline fill/outline, c2/s2 = sub-line fill/outline (any CSS colour, e.g. #ff7d00)
   const COVER = { l1: "ธุรกิจสมัยนี้", l2: "ไม่ต้องแย่งทำเลอีกแล้ว", bg: "preview-bg.jpg",
-                  c1: "#ff7d00", s1: "#ffffff", c2: "#ffffff", s2: "#111111" };
+                  c1: "#ff7d00", s1: "#ffffff", c2: "#ffffff", s2: "#111111", font: "" };
 
   const q = new URLSearchParams(location.search);
   const c = { ...COVER, ...Object.fromEntries([...q].filter(([k]) => k in COVER)) };
@@ -40,6 +40,7 @@
   l1.textContent = c.l1; l2.textContent = c.l2;
   l1.style.color = c.c1; l1.style.webkitTextStrokeColor = c.s1;
   l2.style.color = c.c2; l2.style.webkitTextStrokeColor = c.s2;
+  if (c.font) for (const el of [l1, l2]) el.style.fontFamily = `"${c.font}", "DB Heavent", sans-serif`;
   document.getElementById("bg").src = c.bg;
   // shrink a line that would run off the 1080 px frame (keep a 60 px margin each side), after fonts load
   const fit = () => { for (const el of [l1, l2]) {

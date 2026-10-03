@@ -47,6 +47,8 @@ button:disabled{opacity:.5;cursor:wait}
     <input id="l1" placeholder="เช่น ธุรกิจสมัยนี้">
     <label>หัวข้อบรรทัด 2 (รอง)</label>
     <input id="l2" placeholder="เช่น ไม่ต้องแย่งทำเลอีกแล้ว">
+    <label>ฟอนต์</label>
+    <select id="font"></select>
     <label>แบบปก</label>
     <select id="layout"><option value="cover-a">A · ตัวหนา 2 สี</option></select>
     <label>สี (เลือกเองได้ หรือกดชุดสำเร็จรูป)</label>
@@ -89,6 +91,15 @@ $('suggest').onclick = async () => {
   } catch (e) { box.innerHTML = '<div class="msg bad">❌ ' + e.message + '</div>'; }
   b.disabled = false; b.textContent = '🔎 หาภาพสวย 6 ภาพให้เลือก';
 };
+// installed fonts for the font pickers; the last choice is remembered on this machine
+let FONTS = [];
+const fontsReady = fetch('/api/kit/fonts').then(r => r.json()).then(j => FONTS = j.fonts || []).catch(() => FONTS = []);
+const fontOptions = sel => '<option value="">ตามเทมเพลต</option>' + FONTS.map(f =>
+  `<option${f === sel ? ' selected' : ''}>${f.replace(/</g, '&lt;')}</option>`).join('');
+const savedFont = () => { try { return localStorage.getItem('ck_font') || ''; } catch { return ''; } };
+const keepFont = v => { try { localStorage.setItem('ck_font', v); } catch {} };
+fontsReady.then(() => { $('font').innerHTML = fontOptions(savedFont()); refresh(); });
+$('font').addEventListener('input', () => keepFont($('font').value));
 // ---- live preview: the real template in an iframe, scaled to the preview box ----
 const COLORS = ['c1', 's1', 'c2', 's2'];
 let bgUrl = '', bgKey = '', timer = 0;
@@ -101,12 +112,13 @@ function refresh() {
     if (src && key !== bgKey) { bgKey = key; bgUrl = '/api/kit/frame?source=' + encodeURIComponent(src) + '&at=' + at; }
     const p = new URLSearchParams({l1: $('l1').value || 'หัวข้อบรรทัด 1', l2: $('l2').value || 'หัวข้อบรรทัด 2', bg: bgUrl});
     COLORS.forEach(k => p.set(k, $(k).value));
+    if ($('font').value) p.set('font', $('font').value);
     $('live').src = '/motion/' + $('layout').value + '/index.html?' + p;
     $('pvTag').textContent = 'ตัวอย่างสด';
     fitFrame();
   }, 250);   // wait for typing to pause so the frame is not reloaded on every key
 }
-['src', 'at', 'l1', 'l2', 'layout', ...COLORS].forEach(id => $(id).addEventListener('input', refresh));
+['src', 'at', 'l1', 'l2', 'layout', 'font', ...COLORS].forEach(id => $(id).addEventListener('input', refresh));
 document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   b.dataset.preset.split(',').forEach((v, i) => $(COLORS[i]).value = v);
   refresh();
@@ -118,6 +130,7 @@ $('go').onclick = async () => {
     const body = {source: $('src').value.trim(), at: parseFloat($('at').value) || 0,
                   l1: $('l1').value.trim(), l2: $('l2').value.trim(), layout: $('layout').value};
     COLORS.forEach(k => body[k] = $(k).value);
+    body.font = $('font').value;
     const r = await post('cover', body);
     $('pvTag').textContent = '✅ ไฟล์จริงที่บันทึกแล้ว';
     $('msg').className = 'msg ok'; $('msg').textContent = '✅ บันทึกแล้ว: ' + r.file;

@@ -209,6 +209,7 @@ class CoverRequest(BaseModel):
     s1: str = "#ffffff"
     c2: str = "#ffffff"
     s2: str = "#111111"
+    font: str = ""
     layout: str = "cover-a"
 
 
@@ -250,7 +251,7 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     if bad:
         raise HTTPException(400, f"colour must look like #ff7d00: {bad}")
     cover = json.dumps({"l1": body.l1, "l2": body.l2, "bg": "preview-bg.jpg",
-                        "c1": body.c1, "s1": body.s1, "c2": body.c2, "s2": body.s2}, ensure_ascii=False)
+                        "c1": body.c1, "s1": body.s1, "c2": body.c2, "s2": body.s2, "font": body.font}, ensure_ascii=False)
     page, n = re.subn(r"const COVER = \{.*?\};", lambda _: f"const COVER = {cover};", page, count=1)
     if not n:
         raise HTTPException(500, "template has no COVER line")
@@ -729,6 +730,19 @@ def job(name: str) -> dict[str, Any]:
         return {"job": name, "status": "idle", "log": ""}
     j = _jobs[name]
     return {"job": name, "status": j["status"], "log": j["log"][-6000:]}
+
+
+@router.get("/fonts")
+def fonts() -> dict[str, Any]:
+    """Font families installed on this machine (what the browser and the renderer can use by name)."""
+    ps = ("Add-Type -AssemblyName System.Drawing; [Console]::OutputEncoding=[Text.Encoding]::UTF8; "
+          "(New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    names = sorted({n.strip() for n in r.stdout.splitlines() if n.strip()}, key=str.lower)
+    if not names:
+        raise HTTPException(500, "could not read installed fonts: " + r.stderr.strip()[-200:])
+    return {"fonts": names}
 
 
 @router.get("/update-check")
