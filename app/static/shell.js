@@ -24,6 +24,7 @@
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
     '<div class="sb-group">ไฟล์ดิบ</div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
+    `<a class="sb-item" href="#" id="sbBug"><svg viewBox="0 0 24 24"><path d="M8 8a4 4 0 018 0v6a4 4 0 01-8 0z"/><path d="M4 12h4M16 12h4M5 6l3 2M19 6l-3 2M5 19l3-2M19 19l-3-2"/></svg><span>แจ้งปัญหา</span></a>` +
     `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html">${svg('settings')}<span>ตั้งค่า</span></a>` +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
   document.body.prepend(aside);
@@ -71,6 +72,64 @@
     } catch (e) { box.innerHTML = '<div class="sb-empty">❌ อ่านรายการงานไม่ได้</div>'; }
   };
   window.ckLoadProjects();
+  // light refresh: coming back to the window re-reads the project list (work done in CapCut / Studio / chat)
+  window.addEventListener('focus', () => window.ckLoadProjects());
+  // a new version installed while this page was open: one small bar to reload, nothing reloads by itself
+  let seenCommit = null;
+  setInterval(() => fetch('/api/kit/version').then(r => r.json()).then(v => {
+    if (seenCommit === null) { seenCommit = v.commit; return; }
+    if (v.commit !== seenCommit && !document.getElementById('ckReload')) {
+      const bar = document.createElement('div');
+      bar.id = 'ckReload';
+      bar.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:200;background:#1d2236;border:1px solid #7c5cff;' +
+        'border-radius:10px;padding:8px 12px;color:#f1f4fb;font-size:13.5px;display:flex;gap:10px;align-items:center';
+      bar.innerHTML = 'หน้านี้มีเวอร์ชันใหม่ <button style="background:#7c5cff;color:#fff;border:0;border-radius:7px;padding:4px 12px;cursor:pointer;font:inherit">รีเฟรช</button>';
+      bar.querySelector('button').onclick = () => location.reload();
+      document.body.appendChild(bar);
+    }
+  }).catch(() => {}), 30000);
+  // bug report: keeps the last errors seen on the page so the report says what actually broke
+  const errs = [];
+  window.addEventListener('error', e => errs.push(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+  window.addEventListener('unhandledrejection', e => errs.push('promise: ' + ((e.reason && e.reason.message) || e.reason)));
+  const ce = console.error;
+  console.error = (...a) => { errs.push(a.map(String).join(' ').slice(0, 300)); ce.apply(console, a); };
+  new MutationObserver(() => {   // red ❌ messages the pages show to people
+    document.querySelectorAll('#toast, .msg, .busy, #result').forEach(el => {
+      const t = (el.textContent || '').trim();
+      if (t.startsWith('❌') && errs[errs.length - 1] !== t) errs.push(t.slice(0, 300));
+    });
+  }).observe(document.body, {subtree: true, childList: true, characterData: true});
+  document.getElementById('sbBug').onclick = e => {
+    e.preventDefault();
+    if (document.getElementById('ckBug')) return;
+    const m = document.createElement('div');
+    m.id = 'ckBug';
+    m.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.55);display:grid;place-items:center';
+    m.innerHTML = `<div style="background:#141824;border:1px solid #262d40;border-radius:14px;padding:20px;width:min(520px,92vw);color:#f1f4fb">
+      <b style="font-size:17px">แจ้งปัญหา</b>
+      <div style="color:#828ca4;font-size:13px;margin:4px 0 10px">เล่าว่ากดอะไร แล้วเกิดอะไรขึ้น · ระบบแนบหน้าที่เปิดอยู่ เวอร์ชัน และ error ล่าสุด ${errs.length} รายการให้เอง</div>
+      <textarea rows="5" style="width:100%;background:#1b2030;color:#f1f4fb;border:1px solid #262d40;border-radius:10px;padding:10px;font:inherit" placeholder="เช่น กดส่งออก MP4 แล้วขึ้น error…"></textarea>
+      <div class="r" style="color:#828ca4;font-size:13px;min-height:18px;margin-top:6px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button class="x" style="background:#1b2030;color:#c5cde0;border:1px solid #262d40;border-radius:9px;padding:8px 14px;cursor:pointer;font:inherit">ปิด</button>
+        <button class="s" style="background:#7c5cff;color:#fff;border:0;border-radius:9px;padding:8px 14px;cursor:pointer;font:inherit;font-weight:600">ส่ง</button></div></div>`;
+    document.body.appendChild(m);
+    const ta = m.querySelector('textarea'), res = m.querySelector('.r');
+    ta.focus();
+    m.querySelector('.x').onclick = () => m.remove();
+    m.querySelector('.s').onclick = async () => {
+      try {
+        const r = await fetch('/api/kit/bug-report', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({text: ta.value, page: location.pathname + location.search, errors: errs})});
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || r.status);
+        res.innerHTML = '✅ บันทึกในเครื่องแล้ว · <a target="_blank" style="color:#9fb0ff">ส่งเข้า GitHub ของทีม</a> (กดแล้วกด Submit)';
+        res.querySelector('a').href = j.issue_url;
+        window.open(j.issue_url, '_blank');
+      } catch (err) { res.textContent = '❌ ' + err.message; }
+    };
+  };
   document.body.classList.add('shell');
   // repaint the active item when video-editor switches screens through the hash
   window.addEventListener('hashchange', () => {

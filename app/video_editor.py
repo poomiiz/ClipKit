@@ -424,6 +424,20 @@ def draft_transcribe(req: DraftPath) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"transcribe failed: {exc}") from exc
 
 
+@router.post("/draft/export")
+def draft_export(req: DraftPath) -> dict[str, Any]:
+    """MP4 straight from ClipKit (no CapCut): <output_dir>/exports/<project>.mp4"""
+    import kit_settings
+    import render
+    out = kit_settings._read_config().get("output_dir")
+    if not out:
+        raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
+    try:
+        return render.render_draft(req.path, str(Path(out) / "exports"))
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/draft/subs")
 def draft_subs(req: DraftSubsRequest) -> dict[str, Any]:
     try:

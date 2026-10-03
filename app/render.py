@@ -16,7 +16,7 @@ import capcut_edit
 from video_edit import FFMPEG, VideoEditError, probe
 
 US = 1_000_000
-CAPCUT_PX = 5.2  # pixels per CapCut font-size unit on a 1080-wide canvas (same number the editor preview uses)
+CAPCUT_PX = 5.2  # pixels per CapCut font-size unit per 1080 px of the canvas short side (same number the editor preview uses)
 FONTS = Path(__file__).resolve().parents[1] / "fonts"
 DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipKit so Thai always shapes
 
@@ -88,10 +88,10 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         fam, fdir = _font((st.get("font") or {}).get("path") or m.get("font_path"))
         family = family or fam
         font_files.add(fdir)
-        size = (m.get("font_size") or st.get("size") or 15) * CAPCUT_PX * (W / 1080) * s["clip"]["scale"]["x"]
+        size = (m.get("font_size") or st.get("size") or 15) * CAPCUT_PX * (min(W, H) / 1080) * s["clip"]["scale"]["x"]
         fill = ((st.get("fill") or {}).get("content") or {}).get("solid", {}).get("color", [1, 1, 1])
         strokes = st.get("strokes") or []
-        outline = size * strokes[0].get("width", 0) * 2.2 if strokes else 0
+        outline = size * strokes[0].get("width", 0) * 0.6 if strokes else 0  # measured by eye against CapCut
         ocol = strokes[0]["content"]["solid"]["color"] if strokes else [0, 0, 0]
         x = W / 2 + s["clip"]["transform"].get("x", 0) * W / 2
         y = H / 2 - s["clip"]["transform"]["y"] * H / 2
