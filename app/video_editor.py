@@ -435,6 +435,27 @@ def draft_subs_fill(req: FillGapsRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+class TextPlace(BaseModel):
+    id: str
+    x: float = Field(ge=-1.5, le=1.5)
+    y: float = Field(ge=-1.5, le=1.5)
+    rotation: float = Field(default=0.0, ge=-180, le=180)
+    size: float | None = Field(default=None, ge=2, le=60)
+
+
+class TextLayoutRequest(BaseModel):
+    path: str
+    items: list[TextPlace]
+
+
+@router.post("/draft/layout")
+def draft_layout(req: TextLayoutRequest) -> dict[str, Any]:
+    try:
+        return capcut_edit.set_text_layout(req.path, [i.model_dump() for i in req.items])
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/draft/style")
 def draft_style(req: DraftStyleRequest) -> dict[str, Any]:
     try:
