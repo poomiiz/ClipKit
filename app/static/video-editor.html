@@ -427,8 +427,8 @@
   .clip-right #storyPlan .story .hint { display: none; }
   .clip-left video { width: 100%; max-height: 46vh; border-radius: 12px; background: #000; display: block; margin-bottom: 4px; }
   .clip-right .card + .card { margin-top: 14px; }
-  .make-wrap { max-width: 620px; margin: 22px auto 0; text-align: center; }
-  .make-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .make-wrap { max-width: 860px; margin: 22px auto 0; text-align: center; }
+  .make-pair { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .make-pair b { font-size: 17px; white-space: nowrap; }
   .make-pair button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; text-align: center; }
   .make-pair small { font-size: 12.5px; font-weight: 400; opacity: .8; }
@@ -538,8 +538,9 @@
     </div>
     <div class="make-wrap">
       <div class="make-pair">
-        <button class="primary" onclick="makeChosen('capcut')"><b>🎞️ ClipKit + CapCut</b><small id="ccNote">ตัด ใส่ซับ แล้วเกลาต่อใน CapCut</small></button>
-        <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ ClipKit + HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว ส่งออก MP4</small></button>
+        <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
+        <button class="ghost" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">สร้างโปรเจกต์ แล้วเปิด CapCut</small></button>
+        <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว</small></button>
       </div>
       <div class="hint" style="margin-top:8px">ขนาดภาพ HyperFrames
         <select id="hfShape" style="margin-left:6px">
@@ -1607,8 +1608,13 @@ const WZ = [
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
   {key: 'cover', label: '🏷️ ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
    main: [['🖼️ ทำปก', () => { const src = (state.draft.sources || [])[0] || ''; location.href = '/cover.html?src=' + encodeURIComponent(src) + '&l1=' + encodeURIComponent(state.draft.name); }]]},
-  {key: 'export', label: '📤 ส่งออก', help: 'เปิดโปรเจกต์ใน CapCut แล้วกด Ctrl+E ใน CapCut เพื่อส่งออก MP4 (ตรวจรอบสุดท้ายก่อนส่ง)',
-   main: [['📤 เปิดใน CapCut เพื่อส่งออก', async () => { await kit('draft-open', state.draft.path); }]]},
+  {key: 'export', label: '📤 ส่งออก', help: 'ส่งออก MP4 จาก ClipKit ได้เลย (ตัด + ซับตามที่ปรับไว้) · อยากเกลาเพิ่ม เปิดใน CapCut แล้วกด Ctrl+E ที่นั่น',
+   main: [['🎬 ส่งออก MP4', async () => {
+     draftSays('<span class="spin"></span> กำลังส่งออก MP4… (คลิป 1–2 นาที ราว 1 นาที)', '');
+     try { const r = await api('draft/export', {path: state.draft.path});
+       draftSays('✅ ได้ไฟล์แล้ว: ' + r.file + (r.skipped_tracks ? ` · ⚠️ ข้าม ${r.skipped_tracks} แทร็กที่เพิ่มใน CapCut (ภาพประกอบ/เพลง) รอบนี้ยังไม่รวม` : ''), 'ok');
+     } catch (e) { draftSays('❌ ' + e.message, 'err'); throw e; } }],
+          ['🎞️ เปิดใน CapCut', async () => { await kit('draft-open', state.draft.path); }, 'ghost']]},
 ];
 let wzAt = 0;
 function wzMark(key) { const d = state.draft; const t = guideDone(d); t[key] = true; try { localStorage.setItem(guideKey(d), JSON.stringify(t)); } catch {} }
@@ -1666,7 +1672,7 @@ async function makeDraft(open = true) {
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
     if (i < 0) throw new Error('สร้างแล้วแต่หาโปรเจกต์ในรายการไม่เจอ: ' + r.draft_name);
     if (open) openDraft(i);
-    return r.draft_name;
+    return drafts[i];
   } catch (e) {
     out.textContent = '❌ ' + e.message;
     if (!open) throw e;
@@ -1755,16 +1761,24 @@ const chosenStories = () => [...document.querySelectorAll('#storyPlan .story inp
 function storyNotes() {
   const n = chosenStories().length;
   const t = !storyList.length || !n ? '' : n === storyList.length && n > 1 ? `ทำทุกเรื่อง (${n} โปรเจกต์)` : n === 1 ? `ทำเรื่อง ${chosenStories()[0] + 1}` : `ทำ ${n} เรื่องที่เลือก`;
-  document.getElementById('ccNote').textContent = t || 'ตัด ใส่ซับ แล้วเกลาต่อใน CapCut';
-  document.getElementById('hfNote').textContent = t || 'ตัวหนังสือเคลื่อนไหว ส่งออก MP4';
+  document.getElementById('ckNote').textContent = t || 'ทำในแอปนี้จนได้ MP4';
+  document.getElementById('ccNote').textContent = t || 'สร้างโปรเจกต์ แล้วเปิด CapCut';
+  document.getElementById('hfNote').textContent = t || 'ตัวหนังสือเคลื่อนไหว';
 }
 // bottom buttons: no stories ticked = the whole clip; one = make it and open it; several = make them one by one
 async function makeChosen(kind) {
   const list = storyList.length ? chosenStories() : [];
-  if (!list.length) return kind === 'capcut' ? makeDraft() : makeHyperframes();
+  if (!list.length) {
+    if (kind === 'hyperframes') return makeHyperframes();
+    if (kind === 'clipkit') return makeDraft();
+    const d = await makeDraft(false).catch(() => null);
+    if (d) await kit('draft-open', d.path);
+    return;
+  }
   const nameBox = document.getElementById('pname');
   const base = nameBox.value.trim().replace(/ - \d+ .*$/, '') || state.file.name.replace(/\.[^.]+$/, '');
-  const done = [];
+  const done = [], made = [];
+  let lastCapcut = null;
   const out = document.getElementById('result');
   out.scrollIntoView({block: 'center'});
   try {
@@ -1773,13 +1787,29 @@ async function makeChosen(kind) {
       nameBox.value = base + ' - ' + (i + 1) + ' ' + st.title;
       state.range = {start: st.start, end: st.end};
       const single = list.length === 1;
-      if (!single) out.innerHTML = `<span class="spin"></span> กำลังทำเรื่อง ${i + 1} (${done.length + 1}/${list.length}) ด้วย ${kind === 'capcut' ? 'CapCut' : 'HyperFrames'}…`;
-      if (kind === 'capcut') await makeDraft(single);
-      else await makeHyperframes(single);
+      const say = step => { if (!single) out.innerHTML = `<span class="spin"></span> เรื่อง ${i + 1} (${done.length + 1}/${list.length}) · ${step}…`; };
+      say('สร้างโปรเจกต์');
+      if (kind === 'hyperframes') await makeHyperframes(single);
+      else if (kind === 'clipkit' && single) await makeDraft(true);
+      else if (kind === 'clipkit') {   // several stories: subtitles + MP4 without stopping at the workbench
+        const d = await makeDraft(false);
+        say('ถอดเสียงใส่ซับ');
+        const got = await api('draft/transcribe', {path: d.path});
+        await api('draft/subs', {path: d.path, subs: got.subtitles});
+        await api('draft/subs-lang', {path: d.path, lang: 'th'});
+        say('ส่งออก MP4');
+        const mp4 = await api('draft/export', {path: d.path});
+        made.push(mp4.file);
+      } else {
+        const d = await makeDraft(false);
+        lastCapcut = d;
+      }
       done.push(i + 1);
     }
-    if (list.length > 1) out.textContent =
-      `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากหน้าแรก`;
+    if (list.length > 1) out.textContent = made.length
+      ? `✅ ได้ MP4 ${made.length} ไฟล์ (เรื่อง ${done.join(', ')}) · อยู่ที่ ${made[0].replace(/[\/][^\/]*$/, '')}`
+      : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
+    if (lastCapcut) await kit('draft-open', lastCapcut.path);
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
@@ -2308,7 +2338,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 </script>
-<script src="/shell.js?v=5"></script>
+<script src="/shell.js?v=6"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

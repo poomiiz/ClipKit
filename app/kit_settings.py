@@ -637,6 +637,45 @@ def _raw_of(folder: Path, sources: list[str]) -> str:
     return str(max(vids, key=lambda p: p.stat().st_size)) if vids else ""
 
 
+class BugReport(BaseModel):
+    text: str
+    page: str = ""
+    errors: list[str] = []
+
+
+@router.post("/bug-report")
+def bug_report(body: BugReport) -> dict[str, Any]:
+    """Keep the report on this machine and hand back a GitHub issue link with the same text."""
+    import platform
+    import urllib.parse
+    if not body.text.strip():
+        raise HTTPException(400, "เขียนอาการก่อน")
+    v = version()
+    report = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "text": body.text.strip(), "page": body.page,
+              "version": v.get("version"), "commit": v.get("commit"), "machine": platform.node(),
+              "errors": body.errors[-10:]}
+    folder = KIT / "bug_reports"
+    folder.mkdir(exist_ok=True)
+    f = folder / f"{time.strftime('%Y%m%d-%H%M%S')}.json"
+    f.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    md = (f"{report['text']}
+
+- page: {report['page']}
+- version: {report['version']} ({report['commit']})
+"
+          f"- machine: {report['machine']}
+- time: {report['time']}
+
+errors:
+```
+" + "
+".join(report["errors"]) + "
+```")
+    title = report["text"].splitlines()[0][:80]
+    url = "https://github.com/poomiiz/ClipKit/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
+    return {"saved": str(f), "issue_url": url}
+
+
 @router.get("/raw-groups")
 def raw_groups() -> dict[str, Any]:
     """Every project grouped under the raw file it was cut from (newest group first)."""
