@@ -21,11 +21,11 @@ CONFIG = KIT / "config.json"
 EXAMPLE = KIT / "config.example.json"
 
 # keys the settings page may edit; everything else in config.json is kept untouched
-FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx", "output_dir"]
+FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx", "output_dir", "models_dir"]
 TEXT_KEYS = ["card_font", "envato_backend", "whisper_device", "whisper_model", "bot_api_url", "workspace"]
 # standard layout under one workspace folder: every machine in the team looks the same
 WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stock_music": "stock\\music",
-                    "sfx": "sfx", "output_dir": "output"}
+                    "sfx": "sfx", "output_dir": "output", "models_dir": "models"}
 
 
 def capcut_default_drafts() -> str:
@@ -186,9 +186,9 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
                            env=env, timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if p.returncode != 0 or not (project / "index.html").is_file():
             raise HTTPException(500, "hyperframes init failed: " + (p.stderr or p.stdout).strip()[-600:])
-    old = _hf_preview.get("proc")
-    if old and old.poll() is None:
-        old.terminate()
+    (project / "clipkit.json").write_text(json.dumps({"raw": body.file, "start": body.start, "end": body.end},
+                                                     ensure_ascii=False), encoding="utf-8")
+    _stop_studio()
     _hf_preview["proc"] = subprocess.Popen(
         [npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT), "--no-open"],
         cwd=str(project), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -612,6 +612,45 @@ def _project(path: str) -> tuple[str, Path]:
     raise HTTPException(400, f"not a ClipKit project folder: {path}")
 
 
+def _stop_studio() -> None:
+    # npx starts node underneath: kill the whole tree, or the studio keeps the project files open
+    old = _hf_preview.get("proc")
+    if old and old.poll() is None:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(old.pid)], capture_output=True)
+        old.wait(timeout=10)
+
+
+VIDEO_EXT = {".mp4", ".mov", ".mkv", ".m4v", ".avi", ".webm"}
+
+
+def _raw_of(folder: Path, sources: list[str]) -> str:
+    """The raw file a project came from: clipkit.json when ClipKit made it, else its biggest video source."""
+    meta = folder / "clipkit.json"
+    if meta.is_file():
+        return json.loads(meta.read_text(encoding="utf-8"))["raw"]
+    vids = [Path(s) for s in sources if Path(s).suffix.lower() in VIDEO_EXT and Path(s).is_file()]
+    return str(max(vids, key=lambda p: p.stat().st_size)) if vids else ""
+
+
+@router.get("/raw-groups")
+def raw_groups() -> dict[str, Any]:
+    """Every project grouped under the raw file it was cut from (newest group first)."""
+    import capcut_edit
+    groups: dict[str, dict[str, Any]] = {}
+    items = [("capcut", d) for d in capcut_edit.list_drafts()] + [("hyperframes", p) for p in hf_projects()["projects"]]
+    for kind, d in items:
+        raw = _raw_of(Path(d["path"]), d.get("sources") or [])
+        key = str(Path(raw)).lower() if raw else ""
+        g = groups.setdefault(key, {"raw": raw, "name": Path(raw).stem if raw else "ไม่ทราบไฟล์ดิบ",
+                                    "exists": bool(raw) and Path(raw).is_file(), "modified": 0, "projects": []})
+        g["projects"].append({"kind": kind, "name": d["name"], "path": d["path"], "modified": d.get("modified") or 0})
+        g["modified"] = max(g["modified"], d.get("modified") or 0)
+    out = sorted(groups.values(), key=lambda g: (g["raw"] == "", -g["modified"]))
+    for g in out:
+        g["projects"].sort(key=lambda x: -x["modified"])
+    return {"groups": out}
+
+
 def _draft_dir(path: str) -> Path:
     return _project(path)[1]
 
@@ -694,9 +733,7 @@ def _open_hf_studio(project: Path) -> dict[str, str]:
     npx = shutil.which("npx")
     if not npx:
         raise HTTPException(400, "Node.js (npx) is not installed - run setup")
-    old = _hf_preview.get("proc")
-    if old and old.poll() is None:
-        old.terminate()
+    _stop_studio()
     env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
     _hf_preview["proc"] = subprocess.Popen([npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT),
                                             "--no-open", "--foreground"], cwd=str(project), env=env,
@@ -717,6 +754,8 @@ def draft_delete(body: DraftPath) -> dict[str, str]:
     """Move one CapCut project folder to the Recycle Bin (restorable), never a permanent delete."""
     p = _draft_dir(body.path)
     import os
+    if (p / "index.html").is_file():
+        _stop_studio()
     ps = ("Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory("
           "$env:CLIPKIT_TARGET, 'OnlyErrorDialogs', 'SendToRecycleBin')")
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,

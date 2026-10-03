@@ -74,3 +74,12 @@ body.shell { padding-left: var(--sb-w); font-family: "Segoe UI", "Leelawadee UI"
 .sb-proj .k.hyperframes { background: rgba(16,185,129,.15); color: #34d399; }
 .sb-empty { color: #5d667d; font-size: 12.5px; padding: 6px 8px; }
 @media (max-width: 720px) { .sb-projects { display: none; } }
+.sb-raw-h { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 8px; }
+.sb-raw-h:hover { background: var(--sb-hover); }
+.sb-raw-h .tw { background: none; border: 0; color: #6b7590; cursor: pointer; width: 18px; padding: 0; font-size: 12px; transition: transform .15s; }
+.sb-raw.open .tw { transform: rotate(90deg); }
+.sb-raw-h .rn { flex: 1; min-width: 0; color: #d6dbe8; text-decoration: none; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-raw-h .rn.gone { color: #6b7590; font-weight: 400; }
+.sb-raw-h .cnt { font-size: 11px; color: #6b7590; }
+.sb-raw-b { display: none; padding-left: 18px; }
+.sb-raw.open .sb-raw-b { display: block; }

@@ -241,13 +241,14 @@ def _get_model(model_size: str | None = None):
 
     if _model is None or _model[0] != wanted:
         name, device, compute = wanted
+        root = kitconfig._load().get("models_dir") or None  # chosen drive; None = the default cache on C:
         try:
-            _model = (wanted, WhisperModel(name, device=device, compute_type=compute))
+            _model = (wanted, WhisperModel(name, device=device, compute_type=compute, download_root=root))
         except Exception as exc:
             if device == "cpu":
                 raise VideoEditError(f"cannot load speech model {name}: {exc}") from exc
             fallback = (WHISPER_CPU_FALLBACK, "cpu", "int8")
-            _model = (fallback, WhisperModel(fallback[0], device="cpu", compute_type="int8"))
+            _model = (fallback, WhisperModel(fallback[0], device="cpu", compute_type="int8", download_root=root))
     return _model[1], "/".join(_model[0])
 
 
