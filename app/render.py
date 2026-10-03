@@ -145,11 +145,22 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
             vout = "[vf]"
         else:
             vout = "[vo]"
-        cmd = [FFMPEG, "-y", "-i", src, "-filter_complex", graph, "-map", vout, "-map", "[ac]",
+        # motion clips (transparent MOV) on top, each from its own moment; scaled to the canvas height
+        ins = []
+        olist = folder / "clipkit_overlays.json"
+        for k, o in enumerate(json.loads(olist.read_text(encoding="utf-8")) if olist.is_file() else []):
+            if not Path(o["file"]).is_file():
+                raise VideoEditError(f"motion file missing: {o['file']}")
+            ins += ["-i", o["file"]]
+            s0 = float(o["start"])
+            graph += (f";[{k + 1}:v]scale=-2:{H},setpts=PTS-STARTPTS+{s0:.3f}/TB[m{k}];"
+                      f"{vout}[m{k}]overlay=(W-w)/2:0:eof_action=pass:enable='between(t,{s0:.3f},{s0 + float(o['duration']):.3f})'[o{k}]")
+            vout = f"[o{k}]"
+        cmd = [FFMPEG, "-y", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[ac]",
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
         r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
-    return {"file": str(target), "subtitles": len(events), "pieces": len(segs), "skipped_tracks": skipped,
+    return {"file": str(target), "subtitles": len(events), "motions": len(ins) // 2, "pieces": len(segs), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}

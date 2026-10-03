@@ -481,6 +481,11 @@
   .proj-tabs button.on { background: #7c5cff; color: #fff; border-color: #7c5cff; }
   .proj .badge.capcut { background: #2a3150; color: #c9d3ff; }
   .proj .badge.clipkit { background: #7c5cff; color: #fff; }
+  .ov-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .ov-row { display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 8px; background: var(--card2, #1b2030); font-size: 13.5px; }
+  .ov-row .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-row.on { outline: 1px solid #7c5cff; }
+  .ov-row button { white-space: nowrap; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -621,6 +626,14 @@
       <!-- Column 1: Subtitles & Visuals -->
       <div class="tool-column">
         
+        <!-- Motion on top: click a line, pick a look; it renders and sits at that moment -->
+        <div class="tool-card" id="c-overlay">
+          <div class="tc-head"><div class="icon">⚡</div><div class="titles">
+            <h3>ใส่โมชั่น</h3><p>กดปุ่มที่ประโยคไหน ระบบทำตัวหนังสือเคลื่อนไหวจากประโยคนั้นแล้ววางตรงเวลานั้นให้ (ราว 30 วินาทีต่อชิ้น)</p></div></div>
+          <div id="ovList" class="ov-list"><div class="hint">กำลังอ่านซับ…</div></div>
+          <div class="busy" id="ovBusy"></div>
+        </div>
+
         <!-- Style Card with 9:16 Mockup -->
         <div class="tool-card" id="c-style">
           <div class="tc-head">
@@ -1606,7 +1619,7 @@ const WZ = [
    main: [['✂️ ตัดช่วงเงียบ', () => draftTrim(true)], ['🔍 ดูก่อนว่าจะตัดตรงไหน', () => draftTrim(false), 'ghost']],
    show: ['filmstripCard', 'c-grade']},
   {key: 'text', label: '🅰️ ตัวหนังสือ', help: 'สไตล์ซับ จัดวางข้อความ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
-   main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')]], show: ['c-style', 'c-layout', 'c-anim', 'c-motion']},
+   main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')]], show: ['c-overlay', 'c-style', 'c-layout', 'c-anim']},
   {key: 'music', label: '🎵 เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
   {key: 'broll', label: '🖼️ ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
@@ -1652,6 +1665,7 @@ function renderGuide(d) {
   });
   const take = id => document.getElementById(id);
   (w.show || []).forEach(id => take(id) && document.getElementById('wzShow').appendChild(take(id)));
+  if ((w.show || []).includes('c-overlay')) ovLoad();
   (w.more || []).forEach(id => take(id) && document.getElementById('wzMore').appendChild(take(id)));
   const moreBox = document.getElementById('wzMoreBox');
   moreBox.style.display = 'none';
@@ -2204,6 +2218,43 @@ document.addEventListener('keydown', e => {
   if (ctrl && k === 'v' && lySel >= 0 && lyClip) { e.preventDefault(); Object.assign(LY[lySel], lyClip); layoutList(); return; }
   if (ctrl && k === 's') { e.preventDefault(); layoutSave(); }
 });
+// motion on top of the clip: one row per subtitle line, a button per look, a ✓ where one is placed
+async function ovLoad() {
+  const box = document.getElementById('ovList');
+  if (!box || !state.draft) return;
+  try {
+    const r = await fetch('/api/video/draft/overlays?path=' + encodeURIComponent(state.draft.path)).then(x => x.json());
+    if (!r.subs) throw new Error(r.detail || 'อ่านซับไม่ได้');
+    if (!r.subs.length) { box.innerHTML = '<div class="hint">ยังไม่มีซับ · ใส่ซับก่อน (แท็บ 🎙️ ซับ)</div>'; return; }
+    box.innerHTML = '';
+    r.subs.forEach(s => {
+      const on = r.overlays.find(o => Math.abs(o.start - s.start) < 0.05);
+      const row = document.createElement('div');
+      row.className = 'ov-row' + (on ? ' on' : '');
+      row.innerHTML = `<span class="hint">${s.start.toFixed(1)}s</span><span class="tx"></span>`;
+      row.querySelector('.tx').textContent = s.text;
+      if (on) {
+        const b = document.createElement('button');
+        b.className = 'small'; b.textContent = '✓ ' + r.templates[on.template] + ' · เอาออก';
+        b.onclick = async () => { await api('draft/overlay-remove', {path: state.draft.path, start: s.start}); ovLoad(); };
+        row.appendChild(b);
+      } else Object.entries(r.templates).forEach(([k, label]) => {
+        const b = document.createElement('button');
+        b.className = 'small'; b.textContent = '+ ' + label;
+        b.onclick = async () => {
+          const busy = document.getElementById('ovBusy');
+          busy.innerHTML = '<span class="spin"></span> กำลังทำโมชั่น "' + label + '"…';
+          box.querySelectorAll('button').forEach(x => x.disabled = true);
+          try { await api('draft/overlay', {path: state.draft.path, template: k, start: s.start, end: s.end, text: s.text}); busy.textContent = '✅ วางแล้ว · กดส่งออก MP4 เพื่อดูผล'; }
+          catch (e) { busy.textContent = '❌ ' + e.message; }
+          ovLoad();
+        };
+        row.appendChild(b);
+      });
+      box.appendChild(row);
+    });
+  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+}
 async function kit(path, draftPath, extra) {
   try {
     const r = await fetch('/api/kit/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'},
