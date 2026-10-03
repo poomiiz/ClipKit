@@ -48,7 +48,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   <div class="tabs" id="tabs">
     <button data-go="machine">เครื่อง</button>
     <button data-go="folders">โฟลเดอร์</button>
-    <button data-go="account">บัญชีและตัวเลือก</button>
+    <button data-go="account">ตัวเลือก</button>
   </div>
 
   <div class="card" data-tab="machine">
@@ -61,6 +61,13 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
       <button class="ghost" id="bDoctorAsr" style="margin-top:8px">ทดสอบ</button></details>
   </div>
 
+  <div class="card" data-tab="machine">
+    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">บัญชี Envato</h2>
+      <p class="sub" style="margin:2px 0 0">ล็อกอินบัญชีบริษัทครั้งเดียว ใช้หาภาพประกอบ · โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง</p></div>
+      <button id="bLogin">ล็อกอิน Envato</button></div>
+    <span class="msg" id="mLogin"></span>
+  </div>
+
   <div class="card" data-tab="folders">
     <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">โฟลเดอร์</h2>
       <p class="sub" style="margin:2px 0 0">เลือกโฟลเดอร์หลักครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยให้ครบ</p></div>
@@ -70,13 +77,9 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
 
   <div class="card" data-tab="account">
-    <h2>บัญชี Envato</h2>
-    <p class="sub">ล็อกอินบัญชีบริษัทครั้งเดียว ใช้หาภาพประกอบ · โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง</p>
-    <div class="row"><button id="bLogin">ล็อกอิน Envato</button><span class="msg" id="mLogin"></span></div>
-    <h2 style="margin-top:22px">ตัวเลือก</h2>
+    <h2>ตัวเลือก</h2>
     <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ (เร็ว)</option><option value="cpu">CPU (ช้า ใช้เมื่อไม่มีการ์ดจอ)</option></select></div>
     <div class="row"><label>หาภาพผ่าน</label><select id="o_envato_backend"><option value="local">เครื่องนี้</option><option value="bot">บอทกลางของบริษัท</option></select></div>
-    <div class="row"><label>ฟอนต์ภาพตัวอย่าง</label><input id="o_card_font" placeholder="ไม่บังคับ เช่น DB Heavent Bd v3.2.1"></div>
     <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
   </div>
 </main>
@@ -154,14 +157,14 @@ async function startJob(path, btn, msgId, logId, busyText) {
 
 async function loadConfig() {
   const c = await api('config');
-  for (const k of ['envato_backend', 'whisper_device', 'card_font']) if (c.options[k]) $('o_' + k).value = c.options[k];
+  for (const k of ['envato_backend', 'whisper_device']) if (c.options[k]) $('o_' + k).value = c.options[k];
   $('ws').value = c.options.workspace || '';
   renderTree(c.folders);
   if (!c.exists) say('mSave', 'ยังไม่มีไฟล์ตั้งค่า — ตรวจค่าแล้วกดบันทึก', false);
 }
 async function saveConfig() {
   const values = {};
-  ['envato_backend', 'whisper_device', 'card_font'].forEach(k => values[k] = $('o_' + k).value.trim());
+  ['envato_backend', 'whisper_device'].forEach(k => values[k] = $('o_' + k).value.trim());
   try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
   catch (e) { say('mSave', '❌ ' + e.message, false); }
 }
