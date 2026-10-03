@@ -13,7 +13,7 @@
   const svg = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
   const NAV = [
     // starting or continuing a clip lives on the home tiles; the sidebar only moves between pages
-    ['', [['home', 'หน้าแรก', '/video-editor.html'], ['settings', 'ตั้งค่า', '/settings.html']]],
+    ['', [['home', 'หน้าแรก', '/video-editor.html']]],
   ];
   const here = location.pathname + location.hash;
   const isOn = href => href === here || (href === location.pathname && !location.hash && !href.includes('#'));
@@ -23,8 +23,32 @@
       <span class="sb-name">ClipKit<small>Video → CapCut</small></span></a>` +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
+    '<div class="sb-group">โปรเจกต์</div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
+    `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html">${svg('settings')}<span>ตั้งค่า</span></a>` +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
   document.body.prepend(aside);
+  // every project, newest first; the editor page opens it in place, other pages go to the editor first
+  window.ckLoadProjects = async () => {
+    const box = document.getElementById('sbProjects');
+    try {
+      const [cc, hf] = await Promise.all([fetch('/api/video/drafts').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+        fetch('/api/kit/hf-projects').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })]);
+      const all = (cc.drafts || []).map(d => ({...d, kind: 'capcut'})).concat((hf.projects || []).map(p => ({...p, kind: 'hyperframes'})))
+        .sort((x, y) => (y.modified || 0) - (x.modified || 0));
+      box.innerHTML = all.length ? '' : '<div class="sb-empty">ยังไม่มีโปรเจกต์</div>';
+      all.forEach(d => {
+        const a = document.createElement('a');
+        a.className = 'sb-proj';
+        a.href = '/video-editor.html?open=' + encodeURIComponent(d.path);
+        a.title = d.name;
+        a.innerHTML = `<span class="k ${d.kind}">${d.kind === 'capcut' ? 'CC' : 'HF'}</span><span class="n"></span>`;
+        a.querySelector('.n').textContent = d.name;
+        a.onclick = e => { if (window.ckOpenProject) { e.preventDefault(); window.ckOpenProject(d.path); } };
+        box.appendChild(a);
+      });
+    } catch (e) { box.innerHTML = '<div class="sb-empty">❌ อ่านรายชื่อโปรเจกต์ไม่ได้</div>'; }
+  };
+  window.ckLoadProjects();
   document.body.classList.add('shell');
   // repaint the active item when video-editor switches screens through the hash
   window.addEventListener('hashchange', () => {
