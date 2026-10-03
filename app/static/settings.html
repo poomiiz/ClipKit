@@ -64,10 +64,10 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 
   <div class="card" data-tab="folders">
     <h2>โฟลเดอร์งาน</h2>
-    <p class="sub">เลือกโฟลเดอร์ทำงานครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยมาตรฐานให้เอง (ทุกเครื่องในทีมจะเหมือนกัน)</p>
-    <div class="row"><label>โฟลเดอร์ทำงาน</label><input id="ws" placeholder="เช่น D:\ClipKit"><button class="ghost" id="bWsPick">เลือก</button></div>
+    <p class="sub">เลือกโฟลเดอร์หลักครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยข้างล่างให้เอง ถ้าอยากใช้โฟลเดอร์อื่นแยกเป็นอย่าง ๆ กด "แก้ไข" ทีละแถว</p>
+    <div class="row"><label>โฟลเดอร์หลัก</label><input id="ws" placeholder="เช่น D:\ClipKit"><button class="ghost" id="bWsPick">เลือก</button></div>
     <div class="row"><button id="bWs">ใช้โฟลเดอร์นี้</button><span class="msg" id="mWs"></span></div>
-    <div class="checks" id="wsTree"></div>
+    <div class="checks" id="wsTree" style="grid-template-columns:1fr"></div>
   </div>
 
   <div class="card" data-tab="options">
@@ -101,12 +101,12 @@ function showTab(t) {
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { history.replaceState(null, '', '#' + b.dataset.go); showTab(b.dataset.go); });
 showTab(location.hash.slice(1));
-const FOLDER_LABELS = {work_root:'ฟุตเทจดิบ', stock_video:'วิดีโอจาก Envato', stock_music:'เพลง', sfx:'เสียงประกอบ (SFX)', output_dir:'คลิปที่ส่งออก', capcut_drafts:'โปรเจกต์ CapCut (CapCut Drafts)'};
+const FOLDER_LABELS = {work_root:'วิดีโอดิบที่ถ่ายมา', capcut_drafts:'โปรเจกต์ CapCut', stock_video:'ภาพประกอบจาก Envato', stock_music:'เพลงประกอบ', sfx:'เสียงเอฟเฟกต์', output_dir:'ไฟล์ที่ทำเสร็จ (ปก, ตัวหนังสือ)'};
 function renderTree(folders) {
   $('wsTree').innerHTML = Object.keys(FOLDER_LABELS).map(k => {
     const v = folders[k] || '';
-    return `<div class="chk" style="align-items:center"><i class="dot ${v ? 'OK' : 'WARN'}" style="margin-top:0"></i><b>${FOLDER_LABELS[k]}</b>
-      <span style="flex:1">${v || 'ยังไม่ได้ตั้ง'}</span><button class="ghost" style="padding:4px 12px;font-size:13px" data-edit="${k}">แก้ไข</button></div>`;
+    return `<div class="chk" style="align-items:center"><i class="dot ${v ? 'OK' : 'WARN'}" style="margin-top:0"></i>
+      <div style="flex:1;min-width:0"><b style="display:block;width:auto">${FOLDER_LABELS[k]}</b><span style="font-size:13px">${v || 'ยังไม่ได้เลือก'}</span></div><button class="ghost" style="padding:4px 12px;font-size:13px" data-edit="${k}">แก้ไข</button></div>`;
   }).join('');
   // แก้ไข = pick another folder for just this row and save it straight away
   $('wsTree').querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => {
