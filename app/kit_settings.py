@@ -426,6 +426,20 @@ def frame(source: str, at: float = 0.0):
     return Response(p.stdout, media_type="image/jpeg")
 
 
+VIDEO_TYPES = {".mov": "video/quicktime", ".mp4": "video/mp4", ".m4v": "video/mp4", ".mkv": "video/x-matroska",
+               ".webm": "video/webm"}
+
+
+@router.get("/media")
+def media(path: str):
+    """Play a local clip in the editor (FileResponse answers Range requests, so seeking works)."""
+    from fastapi.responses import FileResponse
+    p = Path(path)
+    if p.suffix.lower() not in VIDEO_TYPES or not p.is_file():
+        raise HTTPException(404, f"not a video file: {path}")
+    return FileResponse(p, media_type=VIDEO_TYPES[p.suffix.lower()])
+
+
 @router.get("/cover-frame/{name}")
 def cover_frame(name: str):
     from fastapi.responses import FileResponse
