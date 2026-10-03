@@ -434,6 +434,23 @@
   .make-pair .ghost:hover, #planStoriesBtn:hover { border-color: #7c5cff; }
   #planStoriesBtn { padding: 10px 16px; width: 100%; }
   #s-clip { max-width: 1100px; }
+  .wz-steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 16px; }
+  .wz-step { padding: 7px 14px; border-radius: 99px; font-size: 13.5px; background: var(--card2); color: var(--txt-sub);
+    border: 1px solid var(--line); cursor: pointer; }
+  .wz-step.done { color: var(--ok); }
+  .wz-step.on { background: var(--acc); color: #fff; border-color: var(--acc); }
+  .wz-body { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .wz-body { grid-template-columns: 1fr; } }
+  .wz-left { position: sticky; top: 70px; }
+  .wz-left .preview { margin: 0; }
+  .wz-main { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+  .wz-main button { padding: 12px 20px; font-size: 15px; }
+  #wzShow .tool-card, #wzMore .tool-card, #wzMore .filmstrip-card { margin: 12px 0 0; }
+  #wzMoreBox { margin-top: 14px; }
+  #wzMoreBox summary { cursor: pointer; color: var(--txt-sub); font-weight: 600; }
+  .wz-nav { display: flex; justify-content: space-between; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
+  #s-draft #c-style > .hint.text-center { display: none; }
+  body:has(#s-draft.on) #stepper { display: none !important; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=2">
 </head>
@@ -526,92 +543,30 @@
         <br>⚠️ ปิด CapCut ก่อนกดแก้ทุกครั้ง
       </div>
 
-      <!-- Guided steps: one obvious next action -->
-      <div id="guide" class="guide"></div>
-
-      <!-- Every tool, folded away for people who know what they want -->
-      <details id="allTools" style="margin-top:14px">
-      <summary style="cursor:pointer;color:var(--txt-sub);font-weight:600">🧰 เครื่องมือทั้งหมด</summary>
-      <div class="workflow-deck" style="margin-top:10px">
-        
-        <!-- Column 1: Subtitles -->
-        <div class="deck-group">
-          <div class="deck-head"><span class="dot purple"></span> 💬 ซับไตเติล</div>
-          <div class="deck-btns grid-2x2">
-            <div class="act-btn featured" onclick="draftTranscribe()" title="ถอดเสียงอัตโนมัติด้วย Whisper GPU">
-              <span class="btn-ico">🎙️</span>
-              <span class="btn-text">ถอดเสียงใส่ซับ</span>
-            </div>
-            <div class="act-btn" onclick="fillSubsAction()" title="ตรวจและถอดเฉพาะคลิปที่เพิ่งตัดเพิ่มใหม่">
-              <span class="btn-ico">🩹</span>
-              <span class="btn-text">เติมซับที่ขาด</span>
-            </div>
-            <div class="act-btn" onclick="openSubs()" title="แก้คำผิด / ไฮไลต์ประโยคสำคัญ">
-              <span class="btn-ico">✍️</span>
-              <span class="btn-text">ตรวจแก้ซับ</span>
-            </div>
-            <div class="act-btn" onclick="jump('c-style')" title="ขนาด, ฟอนต์, ขอบดำ, สี, ตำแหน่ง">
-              <span class="btn-ico">🅰️</span>
-              <span class="btn-text">ปรับสไตล์ซับ</span>
-            </div>
-          </div>
+      <!-- one step at a time: stepper on top, clip preview left, only this step's controls right -->
+      <div class="wz-steps" id="wzSteps"></div>
+      <div class="wz-body">
+        <div class="wz-left" id="wzLeft"></div>
+        <div class="wz-right">
+          <h3 id="wzTitle" style="margin:0 0 4px"></h3>
+          <div class="hint" id="wzHelp"></div>
+          <div class="wz-main" id="wzMain"></div>
+          <div id="wzShow"></div>
+          <details id="wzMoreBox"><summary>ปรับเพิ่ม</summary><div id="wzMore"></div></details>
+          <div class="wz-nav"><button class="ghost" id="wzPrev">← ก่อนหน้า</button><button id="wzNext">ถัดไป →</button></div>
         </div>
-
-        <div class="deck-divider"></div>
-
-        <!-- Column 2: Cut & Color -->
-        <div class="deck-group">
-          <div class="deck-head"><span class="dot rose"></span> ✂️ ตัดต่อ & ปรับภาพ</div>
-          <div class="deck-btns grid-stacked">
-            <div class="act-btn" onclick="jump('c-trim')" title="ตรวจหา Dead Air และตัดรวดเดียว">
-              <span class="btn-ico">✂️</span>
-              <span class="btn-text">ตัดช่วงเงียบอัตโนมัติ</span>
-            </div>
-            <div class="act-btn" onclick="jump('c-grade')" title="ดึง Color Preset จากคลิปที่ทำแล้ว">
-              <span class="btn-ico">🎨</span>
-              <span class="btn-text">ก๊อปเกรดสี</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="deck-divider"></div>
-
-        <!-- Column 3: Audio & FX -->
-        <div class="deck-group">
-          <div class="deck-head"><span class="dot cyan"></span> ✨ เสียง & ลูกเล่น</div>
-          <div class="deck-btns grid-fx">
-            <div class="act-btn" onclick="jump('c-anim')" title="เพิ่มโมชันขยับและ Sound FX">
-              <span class="btn-ico">✨</span>
-              <span class="btn-text">อนิเมชัน + Pop</span>
-            </div>
-            <div class="act-btn" onclick="jump('c-motion')" title="หัวคลิปและคำโปรยแบบเคลื่อนไหว">
-              <span class="btn-ico">🔤</span>
-              <span class="btn-text">ตัวหนังสือเคลื่อนไหว</span>
-            </div>
-            <div class="act-btn" onclick="jump('c-music')" title="เลือกเพลงจากคลังและปรับระดับเสียง">
-              <span class="btn-ico">🎵</span>
-              <span class="btn-text">เพลง BGM</span>
-            </div>
-            <div class="act-btn span-2" onclick="openStock()" title="บอทช่วยค้นหาคลิปเสริมจากคลัง Envato">
-              <span class="btn-ico">🔍</span>
-              <span class="btn-text">หาฟุตเทจ Envato</span>
-            </div>
-          </div>
-        </div>
-
       </div>
-      </details>
-
+      <div id="wzHold" style="display:none"></div>
       <div class="busy" id="dtBusy"></div>
       <div class="hint" id="subsSummary"></div>
       <div class="hint" id="draftInfo" style="display:none"></div>
     </div>
 
-    <details class="advanced-tools" id="advancedTools">
-      <summary>⚙️ ปรับละเอียด / ดูไทม์ไลน์</summary>
+    <details class="advanced-tools" id="advancedTools" style="display:none">
+      <summary>tools</summary>
       <div class="advanced-body">
     <!-- Timeline Filmstrip -->
-    <div class="filmstrip-card">
+    <div class="filmstrip-card" id="filmstripCard">
       <div class="filmstrip-head">
         <span class="filmstrip-title">🎬 ท่อนในไทม์ไลน์ (Timeline Cuts)</span>
         <span class="chip" id="stripNote">กำลังอ่านข้อมูล…</span>
@@ -1586,28 +1541,59 @@ const GUIDE = [
 function guideKey(d) { return 'ck-guide:' + d.path; }
 function guideDone(d) { try { return JSON.parse(localStorage.getItem(guideKey(d)) || '{}'); } catch { return {}; } }
 function openAllTools() { const t = document.getElementById('allTools'); if (t) t.open = true; }
+// steps of the workbench: main = the one obvious action, show = cards needed to act, more = folded extras
+const WZ = [
+  {key: 'subs', label: 'ถอดเสียง', help: 'ฟังเสียงแล้วใส่ซับให้อัตโนมัติ ตรวจแก้คำผิดได้หลังจากนั้น',
+   main: [['🎙️ ถอดเสียงใส่ซับ', () => draftTranscribe()], ['✍️ ตรวจแก้คำผิด', () => openSubs(), 'ghost']], more: ['c-fill']},
+  {key: 'trim', label: 'ตัดช่วงเงียบ', help: 'ตัดช่วงที่ไม่มีเสียงพูดออก ซับเลื่อนตามให้เอง',
+   main: [['✂️ ตัดช่วงเงียบ', () => draftTrim(true)], ['🔍 ดูก่อนว่าจะตัดตรงไหน', () => draftTrim(false), 'ghost']],
+   more: ['filmstripCard', 'c-grade']},
+  {key: 'text', label: 'ซับและตัวหนังสือ', help: 'สไตล์ซับ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
+   main: [['💾 ใช้สไตล์ซับนี้', () => draftStyle()]], show: ['c-style'], more: ['c-anim', 'c-motion']},
+  {key: 'music', label: 'เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
+  {key: 'broll', label: 'ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
+   main: [['🔍 หาภาพประกอบ', () => openStock()]]},
+  {key: 'cover', label: 'ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
+   main: [['🖼️ ทำปก', () => { const src = (state.draft.sources || [])[0] || ''; location.href = '/cover.html?src=' + encodeURIComponent(src) + '&l1=' + encodeURIComponent(state.draft.name); }]]},
+];
+let wzAt = 0;
+function wzMark(key) { const d = state.draft; const t = guideDone(d); t[key] = true; try { localStorage.setItem(guideKey(d), JSON.stringify(t)); } catch {} }
 function renderGuide(d) {
-  const box = document.getElementById('guide');
-  if (!box) return;
+  if (!document.getElementById('wzSteps')) return;
+  const left = document.getElementById('wzLeft'), pv = document.getElementById('preview');
+  if (pv && pv.parentNode !== left) left.appendChild(pv);
   const ticks = guideDone(d);
-  const isDone = g => !!ticks[g.key] || (g.auto && g.auto(d));
-  const next = GUIDE.find(g => !isDone(g));
-  box.innerHTML = '<div style="font-weight:700;margin-bottom:8px">ทำตามลำดับนี้</div>' + GUIDE.map((g, i) => {
-    const done = isDone(g), cur = g === next;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin:5px 0;border-radius:12px;
-              background:${cur ? 'var(--acc-glow)' : 'var(--card2)'};border:1px solid ${cur ? 'var(--acc)' : 'var(--line)'}">
-      <span style="width:24px;text-align:center">${done ? '✅' : i + 1}</span>
-      <span style="flex:1;${done ? 'color:var(--mut)' : ''}">${g.label}</span>
-      <button class="small ${cur ? 'primary' : ''}" data-run="${g.key}">${done ? 'ทำอีกครั้ง' : cur ? 'ทำขั้นนี้' : 'ทำ'}</button>
-      <button class="small" data-tick="${g.key}" title="ทำเสร็จแล้ว">${ticks[g.key] ? '↺' : '✓'}</button>
-    </div>`;
-  }).join('') + (next ? '' : '<div class="hint" style="margin-top:8px">🎉 ครบทุกขั้น เปิดใน CapCut เพื่อเกลาและส่งออกได้เลย</div>');
-  box.querySelectorAll('[data-run]').forEach(b => b.onclick = () => GUIDE.find(g => g.key === b.dataset.run).run());
-  box.querySelectorAll('[data-tick]').forEach(b => b.onclick = () => {
-    const t = guideDone(d); t[b.dataset.tick] = !t[b.dataset.tick];
-    try { localStorage.setItem(guideKey(d), JSON.stringify(t)); } catch {}
-    renderGuide(d);
+  const done = w => !!ticks[w.key] || (w.key === 'subs' && d.subtitles > 0);
+  if (renderGuide.opened !== d.path) {   // opening a project: start at its first unfinished step
+    renderGuide.opened = d.path;
+    wzAt = Math.max(0, WZ.findIndex(w => !done(w)));
+  }
+  document.getElementById('wzSteps').innerHTML = WZ.map((w, i) =>
+    `<button class="wz-step${i === wzAt ? ' on' : ''}${done(w) ? ' done' : ''}" data-i="${i}">${done(w) ? '✓' : i + 1} ${w.label}</button>`).join('');
+  document.querySelectorAll('.wz-step').forEach(b => b.onclick = () => { wzAt = +b.dataset.i; renderGuide(d); });
+  const w = WZ[wzAt], hold = document.getElementById('wzHold');
+  ['wzShow', 'wzMore'].forEach(id => [...document.getElementById(id).children].forEach(c => hold.appendChild(c)));
+  document.getElementById('wzTitle').textContent = (wzAt + 1) + '. ' + w.label;
+  document.getElementById('wzHelp').textContent = w.help;
+  const main = document.getElementById('wzMain');
+  main.innerHTML = '';
+  (w.main || []).forEach(([text, fn, cls]) => {
+    const b = document.createElement('button');
+    b.textContent = text;
+    b.className = cls || 'primary';
+    b.onclick = async () => { await fn(); if (!cls) { wzMark(w.key); renderGuide(state.draft); } };
+    main.appendChild(b);
   });
+  const take = id => document.getElementById(id);
+  (w.show || []).forEach(id => take(id) && document.getElementById('wzShow').appendChild(take(id)));
+  (w.more || []).forEach(id => take(id) && document.getElementById('wzMore').appendChild(take(id)));
+  const moreBox = document.getElementById('wzMoreBox');
+  moreBox.style.display = (w.more || []).length ? '' : 'none';
+  moreBox.open = false;
+  document.getElementById('wzPrev').style.visibility = wzAt ? '' : 'hidden';
+  document.getElementById('wzNext').textContent = wzAt < WZ.length - 1 ? 'ถัดไป →' : '✓ เสร็จ';
+  document.getElementById('wzPrev').onclick = () => { wzAt--; renderGuide(d); };
+  document.getElementById('wzNext').onclick = () => { wzMark(w.key); if (wzAt < WZ.length - 1) wzAt++; renderGuide(state.draft); };
 }
 
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
