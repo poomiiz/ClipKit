@@ -570,6 +570,45 @@ def locate(body: LocateRequest) -> dict[str, Any]:
     return {"path": str(p), "kind": "folder" if p.is_dir() else "file"}
 
 
+class DraftPath(BaseModel):
+    path: str
+
+
+def _draft_dir(path: str) -> Path:
+    """Only folders directly inside the configured CapCut drafts folder may be opened or removed."""
+    root = Path(_read_config().get("capcut_drafts") or "")
+    p = Path(path)
+    if not root.is_dir() or p.parent.resolve() != root.resolve() or not (p / "draft_content.json").is_file():
+        raise HTTPException(400, f"not a CapCut project in the drafts folder: {path}")
+    return p
+
+
+@router.post("/draft-open")
+def draft_open(body: DraftPath) -> dict[str, str]:
+    """Bring up CapCut (it opens on its project list; CapCut has no command line to open one project)."""
+    import os
+    _draft_dir(body.path)
+    exe = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "Apps" / "CapCut.exe"
+    if not exe.is_file():
+        raise HTTPException(400, f"CapCut not found at {exe}")
+    subprocess.Popen([str(exe)])
+    return {"opened": "CapCut"}
+
+
+@router.post("/draft-delete")
+def draft_delete(body: DraftPath) -> dict[str, str]:
+    """Move one CapCut project folder to the Recycle Bin (restorable), never a permanent delete."""
+    p = _draft_dir(body.path)
+    import os
+    ps = ("Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory("
+          "$env:CLIPKIT_TARGET, 'OnlyErrorDialogs', 'SendToRecycleBin')")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=120, env={**os.environ, "CLIPKIT_TARGET": str(p)})
+    if r.returncode != 0 or p.exists():
+        raise HTTPException(500, "could not move to Recycle Bin: " + (r.stderr or r.stdout).strip()[-300:])
+    return {"recycled": str(p)}
+
+
 @router.post("/setup")
 def run_setup() -> dict[str, Any]:
     return _start("setup", ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",

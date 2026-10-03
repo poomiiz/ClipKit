@@ -46,5 +46,6 @@ $s.IconLocation = "C:\Windows\System32\imageres.dll,184"
 $s.Save()
 Write-Host "Desktop icon created: $lnk"
 
+python "$root\scripts\fetch_model.py"
 python "$root\scripts\doctor.py"
 Write-Host "Envato: run 'python scripts\envato.py login' once and sign in (each download uses a licence on that account)."
