@@ -47,49 +47,37 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
   <div class="tabs" id="tabs">
     <button data-go="machine">เครื่อง</button>
-    <button data-go="folders">โฟลเดอร์งาน</button>
-    <button data-go="options">ตัวเลือก</button>
-    <button data-go="envato">Envato</button>
-    <button data-go="update">อัปเดต</button>
+    <button data-go="folders">โฟลเดอร์</button>
+    <button data-go="account">บัญชีและตัวเลือก</button>
   </div>
 
   <div class="card" data-tab="machine">
-    <h2>ตรวจเครื่อง</h2>
-    <p class="sub">เช็กว่าเครื่องพร้อมใช้ทุกอย่าง · เขียว = พร้อม · เหลือง = เตือน (ใช้งานได้) · แดง = ต้องแก้</p>
-    <div class="row"><button id="bDoctor">ตรวจเครื่อง</button><button class="ghost" id="bDoctorAsr">ตรวจ + ทดสอบถอดเสียง</button><button class="ghost" id="bSetup" title="ลง Python, ffmpeg, Chrome และโปรแกรมเสริมที่ขาด · กดซ้ำได้ · ครั้งแรก 5–15 นาที">ติดตั้งโปรแกรมที่ขาด</button><span class="msg" id="mDoctor"></span><span class="msg" id="mSetup"></span></div>
+    <div class="row" style="justify-content:space-between"><h2 id="mDoctor" style="margin:0">กำลังตรวจเครื่อง…</h2>
+      <span><button class="ghost" id="bDoctor">ตรวจอีกครั้ง</button> <button id="bSetup" style="display:none">ติดตั้งที่ขาด</button></span></div>
     <div class="checks" id="checks"></div>
+    <span class="msg" id="mSetup"></span>
     <pre id="logSetup"></pre>
+    <details style="margin-top:12px"><summary style="cursor:pointer;color:var(--mut);font-size:13px">ทดสอบถอดเสียงจริง (ราว 1 นาที)</summary>
+      <button class="ghost" id="bDoctorAsr" style="margin-top:8px">ทดสอบ</button></details>
   </div>
-
 
   <div class="card" data-tab="folders">
-    <h2>โฟลเดอร์งาน</h2>
-    <p class="sub">เลือกโฟลเดอร์หลักครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยข้างล่างให้เอง ถ้าอยากใช้โฟลเดอร์อื่นแยกเป็นอย่าง ๆ กด "แก้ไข" ทีละแถว</p>
-    <div class="row"><label>โฟลเดอร์หลัก</label><input id="ws" placeholder="เช่น D:\ClipKit"><button class="ghost" id="bWsPick">เลือก</button></div>
-    <div class="row"><button id="bWs">ใช้โฟลเดอร์นี้</button><span class="msg" id="mWs"></span></div>
-    <div class="checks" id="wsTree" style="grid-template-columns:1fr"></div>
+    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">โฟลเดอร์</h2>
+      <p class="sub" style="margin:2px 0 0">เลือกโฟลเดอร์หลักครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยให้ครบ</p></div>
+      <button id="bWsPick">เลือกโฟลเดอร์หลัก</button></div>
+    <input id="ws" type="hidden"><span class="msg" id="mWs"></span>
+    <div class="checks" id="wsTree" style="grid-template-columns:1fr;margin-top:14px"></div>
   </div>
 
-  <div class="card" data-tab="options">
-    <h2>ตัวเลือก</h2>
-    <p class="sub">วิธีหาภาพ ตัวถอดเสียง และฟอนต์ของภาพตัวอย่าง</p>
-    <div class="row"><label>หาภาพ Envato ผ่าน</label><select id="o_envato_backend"><option value="local">Chrome ของเครื่องนี้</option><option value="bot">บอทกลาง (เครื่องหลัก)</option></select></div>
-    <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ NVIDIA (เร็ว)</option><option value="cpu">CPU (ช้า)</option></select></div>
-    <div class="row"><label>ฟอนต์ภาพตัวอย่าง (ไม่บังคับ)</label><input id="o_card_font" placeholder="ชื่อฟอนต์ที่ลงในเครื่อง เช่น DB Heavent Bd v3.2.1"></div>
+  <div class="card" data-tab="account">
+    <h2>บัญชี Envato</h2>
+    <p class="sub">ล็อกอินบัญชีบริษัทครั้งเดียว ใช้หาภาพประกอบ · โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง</p>
+    <div class="row"><button id="bLogin">ล็อกอิน Envato</button><span class="msg" id="mLogin"></span></div>
+    <h2 style="margin-top:22px">ตัวเลือก</h2>
+    <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ (เร็ว)</option><option value="cpu">CPU (ช้า ใช้เมื่อไม่มีการ์ดจอ)</option></select></div>
+    <div class="row"><label>หาภาพผ่าน</label><select id="o_envato_backend"><option value="local">เครื่องนี้</option><option value="bot">บอทกลางของบริษัท</option></select></div>
+    <div class="row"><label>ฟอนต์ภาพตัวอย่าง</label><input id="o_card_font" placeholder="ไม่บังคับ เช่น DB Heavent Bd v3.2.1"></div>
     <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
-  </div>
-
-  <div class="card" data-tab="envato">
-    <h2>ล็อกอิน Envato</h2>
-    <p class="sub">เปิด Chrome ให้ล็อกอินบัญชีบริษัทครั้งเดียว แล้วปิดหน้าต่าง · ทุกครั้งที่โหลดภาพ = ใช้สิทธิ์ 1 ครั้ง</p>
-    <div class="row"><button id="bLogin">เปิดหน้าล็อกอิน Envato</button><span class="msg" id="mLogin"></span></div>
-  </div>
-
-  <div class="card" data-tab="update">
-    <h2>อัปเดต ClipKit</h2>
-    <p class="sub">ดึงเวอร์ชันล่าสุดจาก GitHub (สกิล เครื่องมือ สต๊อกโมชัน) · <span class="ver" id="ver"></span></p>
-    <div class="row"><button id="bUpdate">อัปเดต</button><span class="msg" id="mUpdate"></span></div>
-    <pre id="logUpdate"></pre>
   </div>
 </main>
 <script>
@@ -133,8 +121,14 @@ async function runDoctor(asr) {
   say('mDoctor', asr ? 'กำลังตรวจ + ทดสอบถอดเสียง (อาจนานถึง 1 นาที)…' : 'กำลังตรวจ…');
   try {
     const r = await api('doctor' + (asr ? '?asr=true' : ''));
-    $('checks').innerHTML = r.checks.map(c => `<div class="chk"><i class="dot ${c.state}"></i><b>${c.name}</b><span>${c.detail || ''}</span></div>`).join('');
-    say('mDoctor', r.ok ? '✅ เครื่องพร้อมใช้งาน' : '⚠ มีรายการที่ต้องแก้ (สีแดง)', r.ok);
+    const TH = {'python': 'Python', 'python packages': 'ส่วนเสริมของโปรแกรม', 'ffmpeg': 'ตัวแปลงวิดีโอ', 'config + folders': 'โฟลเดอร์งาน',
+                'GPU': 'การ์ดจอ', 'speech model': 'ตัวถอดเสียง', 'disk space': 'พื้นที่ดิสก์', 'preview font': 'ฟอนต์ภาพตัวอย่าง',
+                'speech-to-text': 'ทดสอบถอดเสียง'};
+    const short = c => c.state === 'OK' ? 'พร้อม' : (c.detail || '');
+    $('checks').innerHTML = r.checks.map(c => `<div class="chk" title="${(c.detail || '').replace(/"/g, '&quot;')}"><i class="dot ${c.state}"></i><b>${TH[c.name] || c.name}</b><span>${short(c)}</span></div>`).join('');
+    const bad = r.checks.some(c => c.state === 'FAIL');
+    $('bSetup').style.display = bad ? '' : 'none';
+    say('mDoctor', bad ? '⚠ มีรายการที่ต้องแก้' : '✅ เครื่องพร้อมใช้งาน', !bad);
   } catch (e) { say('mDoctor', '❌ ' + e.message, false); }
   b1.disabled = b2.disabled = false;
 }
@@ -172,14 +166,13 @@ async function saveConfig() {
   catch (e) { say('mSave', '❌ ' + e.message, false); }
 }
 
+// pick the main folder and apply it at once (creates the standard sub-folders)
 $('bWsPick').onclick = async () => {
   const r = await api('browse?start=' + encodeURIComponent($('ws').value), {method:'POST'});
-  if (r.path) $('ws').value = r.path;
-};
-$('bWs').onclick = async () => {
+  if (!r.path) return;
   try {
-    const r = await api('workspace', {method:'POST', body:{root: $('ws').value.trim()}});
-    say('mWs', '✅ สร้างโฟลเดอร์และบันทึกแล้ว' + (r.capcut_drafts ? '' : ' · ยังหาโฟลเดอร์ CapCut ไม่เจอ กดแก้ไขที่แถว CapCut'), true);
+    const w = await api('workspace', {method:'POST', body:{root: r.path}});
+    say('mWs', '✅ ใช้ ' + r.path + ' แล้ว' + (w.capcut_drafts ? '' : ' · ยังหาโฟลเดอร์ CapCut ไม่เจอ กดแก้ไขที่แถว CapCut'), true);
     await loadConfig();
   } catch (e) { say('mWs', '❌ ' + e.message, false); }
 };
@@ -188,9 +181,7 @@ $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
 $('bSave').onclick = saveConfig;
 $('bLogin').onclick = () => startJob('envato-login', $('bLogin'), 'mLogin', null, 'เปิด Chrome แล้ว — ล็อกอินให้เสร็จแล้วปิดหน้าต่าง');
-$('bUpdate').onclick = async () => { await startJob('update', $('bUpdate'), 'mUpdate', 'logUpdate', 'กำลังอัปเดต…'); showVersion(); };
-async function showVersion() { try { const v = await api('version'); $('ver').textContent = 'เวอร์ชันนี้ ' + v.version + ' · ' + v.commit; } catch {} }
-loadConfig(); showVersion(); runDoctor(false);
+loadConfig(); runDoctor(false);
 </script>
 <script src="/shell.js?v=3"></script>
 </body>
