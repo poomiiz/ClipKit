@@ -589,6 +589,7 @@
           <div id="wzShow"></div>
           <details id="wzMoreBox"><summary>ปรับเพิ่ม</summary><div id="wzMore"></div></details>
           <div class="wz-nav"><button class="ghost" id="wzPrev">← ก่อนหน้า</button><button id="wzNext">ถัดไป →</button></div>
+          <div class="hint" style="margin-top:10px">คีย์ลัด: 1–7 สลับเครื่องมือ · Enter ปุ่มหลัก · Ctrl+E ส่งออก · ↑↓ เลือกข้อความ · Ctrl+C / Ctrl+V คัดลอกตำแหน่งข้อความ · Ctrl+S บันทึกตำแหน่ง</div>
         </div>
       </div>
       <div id="wzHold" style="display:none"></div>
@@ -1594,18 +1595,20 @@ function guideDone(d) { try { return JSON.parse(localStorage.getItem(guideKey(d)
 function openAllTools() { const t = document.getElementById('allTools'); if (t) t.open = true; }
 // steps of the workbench: main = the one obvious action, show = cards needed to act, more = folded extras
 const WZ = [
-  {key: 'subs', label: 'ถอดเสียง', help: 'ฟังเสียงแล้วใส่ซับให้อัตโนมัติ ตรวจแก้คำผิดได้หลังจากนั้น',
-   main: [['🎙️ ถอดเสียงใส่ซับ', () => draftTranscribe()], ['✍️ ตรวจแก้คำผิด', () => openSubs(), 'ghost']], more: ['c-fill']},
-  {key: 'trim', label: 'ตัดช่วงเงียบ', help: 'ตัดช่วงที่ไม่มีเสียงพูดออก ซับเลื่อนตามให้เอง',
+  {key: 'subs', label: '🎙️ ซับ', help: 'ฟังเสียงแล้วใส่ซับให้อัตโนมัติ ตรวจแก้คำผิดได้หลังจากนั้น',
+   main: [['🎙️ ถอดเสียงใส่ซับ', () => draftTranscribe()], ['✍️ ตรวจแก้คำผิด', () => openSubs(), 'ghost']], show: ['c-fill']},
+  {key: 'trim', label: '✂️ ตัด', help: 'ตัดช่วงที่ไม่มีเสียงพูดออก ซับเลื่อนตามให้เอง',
    main: [['✂️ ตัดช่วงเงียบ', () => draftTrim(true)], ['🔍 ดูก่อนว่าจะตัดตรงไหน', () => draftTrim(false), 'ghost']],
-   more: ['filmstripCard', 'c-grade']},
-  {key: 'text', label: 'ซับและตัวหนังสือ', help: 'สไตล์ซับ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
-   main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')], ['💾 ใช้สไตล์ซับที่ปรับเอง', () => draftStyle(), 'ghost']], show: ['c-layout'], more: ['c-style', 'c-anim', 'c-motion']},
-  {key: 'music', label: 'เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
-  {key: 'broll', label: 'ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
+   show: ['filmstripCard', 'c-grade']},
+  {key: 'text', label: '🅰️ ตัวหนังสือ', help: 'สไตล์ซับ จัดวางข้อความ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
+   main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')]], show: ['c-style', 'c-layout', 'c-anim', 'c-motion']},
+  {key: 'music', label: '🎵 เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
+  {key: 'broll', label: '🖼️ ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
-  {key: 'cover', label: 'ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
+  {key: 'cover', label: '🏷️ ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
    main: [['🖼️ ทำปก', () => { const src = (state.draft.sources || [])[0] || ''; location.href = '/cover.html?src=' + encodeURIComponent(src) + '&l1=' + encodeURIComponent(state.draft.name); }]]},
+  {key: 'export', label: '📤 ส่งออก', help: 'เปิดโปรเจกต์ใน CapCut แล้วกด Ctrl+E ใน CapCut เพื่อส่งออก MP4 (ตรวจรอบสุดท้ายก่อนส่ง)',
+   main: [['📤 เปิดใน CapCut เพื่อส่งออก', async () => { await kit('draft-open', state.draft.path); }]]},
 ];
 let wzAt = 0;
 function wzMark(key) { const d = state.draft; const t = guideDone(d); t[key] = true; try { localStorage.setItem(guideKey(d), JSON.stringify(t)); } catch {} }
@@ -1620,11 +1623,11 @@ function renderGuide(d) {
     wzAt = Math.max(0, WZ.findIndex(w => !done(w)));
   }
   document.getElementById('wzSteps').innerHTML = WZ.map((w, i) =>
-    `<button class="wz-step${i === wzAt ? ' on' : ''}${done(w) ? ' done' : ''}" data-i="${i}">${done(w) ? '✓' : i + 1} ${w.label}</button>`).join('');
+    `<button class="wz-step${i === wzAt ? ' on' : ''}${done(w) ? ' done' : ''}" data-i="${i}" title="กด ${i + 1}">${w.label}${done(w) ? ' ✓' : ''}</button>`).join('');
   document.querySelectorAll('.wz-step').forEach(b => b.onclick = () => { wzAt = +b.dataset.i; renderGuide(d); });
   const w = WZ[wzAt], hold = document.getElementById('wzHold');
   ['wzShow', 'wzMore'].forEach(id => [...document.getElementById(id).children].forEach(c => hold.appendChild(c)));
-  document.getElementById('wzTitle').textContent = (wzAt + 1) + '. ' + w.label;
+  document.getElementById('wzTitle').textContent = w.label;
   document.getElementById('wzHelp').textContent = w.help;
   const main = document.getElementById('wzMain');
   main.innerHTML = '';
@@ -1639,7 +1642,7 @@ function renderGuide(d) {
   (w.show || []).forEach(id => take(id) && document.getElementById('wzShow').appendChild(take(id)));
   (w.more || []).forEach(id => take(id) && document.getElementById('wzMore').appendChild(take(id)));
   const moreBox = document.getElementById('wzMoreBox');
-  moreBox.style.display = (w.more || []).length ? '' : 'none';
+  moreBox.style.display = 'none';
   moreBox.open = false;
   document.getElementById('wzPrev').style.visibility = wzAt ? '' : 'hidden';
   document.getElementById('wzNext').textContent = wzAt < WZ.length - 1 ? 'ถัดไป →' : '✓ เสร็จ';
@@ -2134,6 +2137,28 @@ async function delSelected() {
   area.addEventListener('click', e => { if (eatClick) { e.stopPropagation(); e.preventDefault(); eatClick = false; } }, true);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && selSet.size) clearSel(); });
 })();
+let lyClip = null;
+document.addEventListener('keydown', e => {
+  if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  const scr = document.querySelector('.screen.on')?.id, k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey;
+  if (scr === 's-home') {
+    const cards = [...document.querySelectorAll('#homeDrafts .proj')];
+    if (ctrl && k === 'a') { e.preventDefault(); cards.forEach(c => selSet.add(c)); showSel(); }
+    else if (k === 'delete' && selSet.size) { e.preventDefault(); delSelected(); }
+    else if (k === 'enter' && selSet.size === 1) { e.preventDefault(); [...selSet][0].querySelector('[data-a=open]').click(); }
+    return;
+  }
+  if (scr !== 's-draft' || !state.draft) return;
+  if (!ctrl && /^[1-7]$/.test(e.key) && WZ[+e.key - 1]) { e.preventDefault(); wzAt = +e.key - 1; renderGuide(state.draft); return; }
+  if (ctrl && k === 'e') { e.preventDefault(); wzAt = WZ.findIndex(w => w.key === 'export'); renderGuide(state.draft); return; }
+  if (k === 'enter' && !ctrl) { const b = document.querySelector('#wzMain button'); if (b) { e.preventDefault(); b.click(); } return; }
+  // subtitle layout: pick lines with the arrows, copy one line's place and paste it onto another
+  if (!LY.length) return;
+  if (k === 'arrowdown' || k === 'arrowup') { e.preventDefault(); lySel = Math.max(0, Math.min(LY.length - 1, lySel + (k === 'arrowdown' ? 1 : -1))); layoutList(); return; }
+  if (ctrl && k === 'c' && lySel >= 0) { const t = LY[lySel]; lyClip = {x: t.x, y: t.y, rotation: t.rotation, size: t.size}; toast('คัดลอกตำแหน่งข้อความแล้ว'); return; }
+  if (ctrl && k === 'v' && lySel >= 0 && lyClip) { e.preventDefault(); Object.assign(LY[lySel], lyClip); layoutList(); return; }
+  if (ctrl && k === 's') { e.preventDefault(); layoutSave(); }
+});
 async function kit(path, draftPath, extra) {
   try {
     const r = await fetch('/api/kit/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'},
