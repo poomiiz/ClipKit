@@ -13,4 +13,9 @@ if (-not $up) {
         try { $up = (Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2).StatusCode -eq 200 } catch {}
     }
 }
-Start-Process $url
+# open as its own app window (no address bar or tabs) so it feels like a program, not a web page
+$chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($chrome) { Start-Process $chrome -ArgumentList "--app=$url", "--window-size=1320,860" }
+else { Start-Process $url }
