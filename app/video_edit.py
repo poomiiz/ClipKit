@@ -403,7 +403,7 @@ def crop_clip(vw: int, vh: int, W: int, H: int, focus: tuple[float, float]) -> d
     return {"scale": round(cover / fit, 4), "x": round(ox / (W / 2), 4), "y": round(oy / (H / 2), 4)}
 
 
-def find_focus(path: str, start: float = 0.0, end: float | None = None, frames: int = 8) -> dict[str, Any]:
+def find_focus(path: str, start: float = 0.0, end: float | None = None, frames: int = 16) -> dict[str, Any]:
     """Where the speaker is: the median centre of the biggest face over a few frames (0-1 of the frame)."""
     import statistics
     import tempfile
