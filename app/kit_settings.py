@@ -618,6 +618,11 @@ def _stop_studio() -> None:
     if old and old.poll() is None:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(old.pid)], capture_output=True)
         old.wait(timeout=10)
+    # studios left from earlier runs (the old code stopped only npx, so node kept running and kept the files
+    # open): stop every HyperFrames preview process, nothing else
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match "
+          "'hyperframes' -and $_.CommandLine -match ' preview ' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=30)
 
 
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".m4v", ".avi", ".webm"}
