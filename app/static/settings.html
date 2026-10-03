@@ -65,10 +65,6 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
       <p class="sub" style="margin:2px 0 0">ล็อกอินบัญชีบริษัทครั้งเดียว ใช้หาภาพประกอบ · โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง</p></div>
       <button id="bLogin">ล็อกอิน Envato</button></div>
     <span class="msg" id="mLogin"></span>
-    <div class="row" style="justify-content:space-between;margin-top:16px"><div><h2 style="margin:0">บัญชี Claude</h2>
-      <p class="sub" style="margin:2px 0 0">ใช้แบ่งเรื่องและแปลซับเป็นภาษาอังกฤษ · ล็อกอินบัญชี Claude ของตัวเองครั้งเดียว</p></div>
-      <button id="bClaude">ล็อกอิน Claude</button></div>
-    <span class="msg" id="mClaude"></span>
   </div>
 
   <div class="card" data-tab="folders">
@@ -186,11 +182,6 @@ $('bDoctor').onclick = () => runDoctor(false);
 $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
 $('bSave').onclick = saveConfig;
-$('bClaude').onclick = async () => {
-  try { await api('claude-login', {method: 'POST'}); say('mClaude', 'เปิดหน้าต่างแล้ว ล็อกอินในเบราว์เซอร์ให้เสร็จ แล้วกดตรวจอีกครั้ง'); }
-  catch (e) { say('mClaude', '❌ ' + e.message, false); }
-};
-$('bLogin').onclick = () => startJob('envato-login', $('bLogin'), 'mLogin', null, 'เปิด Chrome แล้ว — ล็อกอินให้เสร็จแล้วปิดหน้าต่าง');
 loadConfig(); runDoctor(false);
 </script>
 <script src="/shell.js?v=4"></script>
