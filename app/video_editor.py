@@ -1113,3 +1113,58 @@ def draft_auto_cover(req: DraftPath) -> dict[str, Any]:
         return {"file": auto_cover(req.path)}
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+
+def _hf_key(path: str) -> str:
+    import base64
+    return base64.urlsafe_b64encode(path.encode("utf-8")).decode().rstrip("=")
+
+
+@router.post("/draft/hf-build")
+def draft_hf_build(req: DraftPath) -> dict[str, Any]:
+    """Write the project as a HyperFrames composition; the editor's player shows it live."""
+    import hf_build
+    try:
+        hf_build.build(req.path)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"url": f"/api/video/hfp/{_hf_key(req.path)}/index.html"}
+
+
+@router.get("/hfp/{key}/{file:path}")
+def hf_page(key: str, file: str) -> FileResponse:
+    """The composition folder for the live player (index.html and its media/)."""
+    import base64
+    from urllib.parse import unquote
+    root = (Path(base64.urlsafe_b64decode(key + "=" * (-len(key) % 4)).decode("utf-8")) / "clipkit_hf").resolve()
+    f = (root / unquote(file)).resolve()
+    if root not in f.parents or not f.is_file():
+        raise HTTPException(404, "not in the composition")
+    return FileResponse(f, headers={"Cache-Control": "no-store"} if f.suffix == ".html" else None)
+
+
+@router.post("/draft/hf-export")
+def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
+    """MP4 from the same composition the player shows (hyperframes render)."""
+    import shutil
+    import time as _t
+    import hf_build
+    import kit_settings
+    cfg = kit_settings._read_config()
+    out = cfg.get("output_dir") or cfg.get("work_root")
+    if not out:
+        raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
+    page = hf_build.build(req.path)
+    target = Path(out) / "exports" / f"{Path(req.path).name}{' - ตัวอย่าง' if req.preview else ''}.mp4"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    npx = shutil.which("npx")
+    t0 = _t.time()
+    args = [npx, "--yes", f"hyperframes@{kit_settings.HF_VERSION}", "render", "--quiet", "-o", str(target)]
+    if req.preview:
+        args += ["--quality", "draft"]
+    r = subprocess.run(args, cwd=str(page.parent), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}, timeout=3600)
+    if r.returncode != 0 or not target.is_file():
+        raise HTTPException(500, "render failed: " + (r.stderr or r.stdout).strip()[-800:])
+    return {"file": str(target), "seconds": round(_t.time() - t0, 1)}
