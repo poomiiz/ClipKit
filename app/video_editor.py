@@ -777,3 +777,40 @@ def draft_punch_request(req: DraftPath) -> dict[str, Any]:
     picked = json.loads(done.read_text(encoding="utf-8")) if done.is_file() else {}
     return {"command": video_edit.agent_command("punch", req.path), "lines": len(lines),
             "picked": sum(1 for t in lines if t in picked)}
+
+
+class FreeSearch(BaseModel):
+    query: str
+    count: int = Field(default=6, ge=1, le=20)
+    portrait: bool = True
+
+
+@router.post("/stock/free-search")
+def stock_free_search(req: FreeSearch) -> dict[str, Any]:
+    """Pexels + Pixabay hits (free for commercial use)."""
+    import free_stock
+    import kit_settings
+    try:
+        return free_stock.search(kit_settings._read_config(), req.query, req.count, req.portrait)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class FreeDownload(BaseModel):
+    source: str
+    id: str
+    file: str
+
+
+@router.post("/stock/free-download")
+def stock_free_download(req: FreeDownload) -> dict[str, Any]:
+    import free_stock
+    import kit_settings
+    cfg = kit_settings._read_config()
+    folder = cfg.get("stock_video") or cfg.get("output_dir") or cfg.get("work_root")
+    if not folder:
+        raise HTTPException(400, "ยังไม่ได้ตั้งโฟลเดอร์สต็อกวิดีโอ — ไปที่ ตั้งค่า > โฟลเดอร์")
+    try:
+        return {"path": free_stock.download(folder, req.source, req.id, req.file)}
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

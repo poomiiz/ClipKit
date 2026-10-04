@@ -491,6 +491,9 @@
     box-shadow: 0 0 0 9999px rgba(0,0,0,.55); touch-action: none; }
   .vbox { overflow: hidden; border-radius: 12px; }
   .shape-row { display: flex; gap: 8px; align-items: center; justify-content: center; margin-bottom: 10px; font-size: 14px; flex-wrap: wrap; }
+  .free-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .free-item { display: flex; flex-direction: column; gap: 4px; }
+  .free-item video { width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 10px; background: #000; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -1440,6 +1443,19 @@ async function runStockSearch() {
   if (!query) return;
   const busy = document.getElementById('stBusy');
   const out = document.getElementById('stockResult');
+  // free stock (Pexels + Pixabay) is the default; Envato only when Settings says so
+  const cfg = await fetch('/api/kit/config').then(r => r.json()).catch(() => ({options: {}}));
+  if ((cfg.options.stock_source || 'free') === 'free') {
+    busy.innerHTML = '<span class="spin"></span> กำลังค้น "' + query + '" ใน Pexels + Pixabay…';
+    out.innerHTML = '';
+    try {
+      const r = await api('stock/free-search', {query, count: 6});
+      busy.textContent = 'เจอ ' + r.items.length + ' คลิปฟรี' + (r.missing_keys.length ? ' · ยังไม่ใส่รหัส ' + r.missing_keys.join(', ') + ' (ตั้งค่า)' : '') +
+        (r.errors.length ? ' · ⚠️ ' + r.errors.join(' · ') : '');
+      renderFree(r.items);
+    } catch (e) { busy.textContent = '❌ ' + e.message; }
+    return;
+  }
   busy.innerHTML = '<span class="spin"></span> ส่งงานให้บอท…';
   out.innerHTML = '';
   try {
@@ -1461,7 +1477,28 @@ async function runStockSearch() {
   }
 }
 
+// free clips: hover to play, one click saves it into the stock folder (free/<source>-<id>.mp4)
+function renderFree(items) {
+  const out = document.getElementById('stockResult');
+  out.innerHTML = '';
+  out.className = 'free-grid';
+  items.forEach(it => {
+    const d = document.createElement('div');
+    d.className = 'free-item';
+    d.innerHTML = `<video muted loop playsinline preload="none" poster="${it.thumb}" src="${it.file}"></video>
+      <div class="hint">${it.source} · ${it.duration || '?'} วิ · ${it.width}×${it.height}</div><button class="small">⬇ ใช้คลิปนี้</button>`;
+    const v = d.querySelector('video');
+    d.onmouseenter = () => v.play().catch(() => {}); d.onmouseleave = () => v.pause();
+    d.querySelector('button').onclick = async e => {
+      const b = e.currentTarget; b.disabled = true; b.textContent = 'กำลังโหลด…';
+      try { const r = await api('stock/free-download', {source: it.source, id: it.id, file: it.file}); b.textContent = '✅ เก็บแล้ว'; b.title = r.path; }
+      catch (err) { b.textContent = '❌ ' + err.message; b.disabled = false; }
+    };
+    out.appendChild(d);
+  });
+}
 function renderStock(r) {
+  document.getElementById('stockResult').className = '';
   const out = document.getElementById('stockResult');
   out.innerHTML = '';
   if (r.screenshot) {
