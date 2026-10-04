@@ -98,6 +98,27 @@ def _shown(lead: str, punch: str, opts: dict | None, prev_white: str) -> tuple[s
     return (prev_white if look == "hold" else w), c, (RED if look == "red" else None)
 
 
+# the clip title over the first seconds, measured from P'Ohm's Nina 01-10: one or two lines, each line white,
+# orange or red (any mix: red/white, white/orange, orange/white ...), coloured text outlined white, white outlined black
+HOOK_COLORS = {"white": ([1, 1, 1], [0, 0, 0], 0.05), "orange": ([1, 0.49, 0], [1, 1, 1], 0.06), "red": (RED, [1, 1, 1], 0.06)}
+HOOK_DUR = 4.0
+
+
+def _hook(folder: Path) -> list[dict[str, Any]]:
+    """clipkit_hook.json = [{"text": ..., "color": "white|orange|red"}] (1-2 lines, written by the agent) as
+    lines to draw: text, size, y, fill, stroke, width. No file = no title; a broken file raises."""
+    raw = _json(folder / "clipkit_hook.json", None)
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 2 or any(
+            not isinstance(x, dict) or not str(x.get("text", "")).strip() or x.get("color") not in HOOK_COLORS for x in raw):
+        raise VideoEditError('clipkit_hook.json must be 1-2 lines of {"text": ..., "color": "white|orange|red"}')
+    place = [(36, -0.37)] if len(raw) == 1 else [(30, -0.31), (36, -0.43)]  # the second line bigger, as in Nina 07/08/10
+    return [{"text": x["text"].strip(), "size": s, "y": y, "fill": HOOK_COLORS[x["color"]][0],
+             "stroke": HOOK_COLORS[x["color"]][1], "width": HOOK_COLORS[x["color"]][2], "start": 0.0, "end": HOOK_DUR}
+            for x, (s, y) in zip(raw, place)]
+
+
 JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน"}
 
 
@@ -172,6 +193,8 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
         white, colour, rgb = _shown(lead, punch, opts, held["white"])
         held["white"] = white or held["white"]
+        if a < held.get("until", 0):  # the clip title owns the screen for its first seconds
+            white = colour = ""
         if marks is not None:  # moments for sound effects, b-roll, and the editor's timeline
             marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts))
             if colour:
@@ -319,7 +342,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     marks: list = []  # ("pop", t) at each punch, ("broll", a, b, query) where the agent asked for b-roll
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
-    held = {"white": ""}
+    hook = _hook(folder)
+    held = {"white": "", "until": HOOK_DUR if hook else 0}
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
@@ -360,9 +384,22 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         shown += 1
         pop = "\\fscx70\\fscy70\\t(0,120,\\fscx108\\fscy108)\\t(120,200,\\fscx100\\fscy100)" if anim == "pop" else ""
         for a, b, words in pieces:
+            if a < held["until"]:
+                continue
             events.append(f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
                           f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
                           f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}{pop}}}{words}")
+    if hook:
+        hfam, hfile = _font(None)
+        family = family or hfam
+        font_files.add(hfile)
+        kk = min(W, H) / 1080 * CAPCUT_PX
+        for n, h in enumerate(hook):
+            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * 0.9, True)
+            events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2:.0f})"
+                          f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"
+                          f"\\bord{px * h['width'] * 0.6 + 2:.1f}\\shad2\\fad(0,150)\\fscx120\\fscy120"
+                          f"\\t({n * 150},{n * 150 + 160},\\fscx100\\fscy100)}}" + lines[0])
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -448,6 +485,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
+                    "hook": hook,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},

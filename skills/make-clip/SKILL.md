@@ -72,7 +72,14 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    Skip abstract phrases; never two b-roll phrases in a row.
 4. Write `<folder>/clipkit_punch.json` as `{"<line text>": [[lead, punch] or [lead, punch, query], ...], ...}`
    covering every line.
-5. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
+5. Clip title (every clip has one, on screen for the first 4 s; the subtitles start after it): write
+   `<folder>/clipkit_hook.json` as 1-2 lines `[{"text": "เริ่มทำธุรกิจใหม่", "color": "red"},
+   {"text": "ทำสิ่งนี้ก่อน", "color": "white"}]`. Short punchy promise of the clip, ~8-16 letters per line, not a
+   sentence from the talk. Colours per line: `white`, `orange` or `red`, any mix (red/white, white/orange,
+   orange/white, one big red word...) - pick by the content: red for a warning or shock, orange for the promise.
+   From P'Ohm's Nina titles: "ธุรกิจสมัยนี้ / ไม่ต้องแย่งทำเลอีกแล้ว", "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้",
+   "เงิน 5 แสนก็ไม่เอา!", "Burn out".
+6. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 
 ### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
 Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on P'Ohm's machine.

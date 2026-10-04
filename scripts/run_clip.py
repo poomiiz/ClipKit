@@ -147,7 +147,7 @@ def main() -> int:
                 state[key] = make_project(raw, n, st, a.shape, a.look)
                 state_f.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
             path = state[key]
-            if not (Path(path) / "clipkit_punch.json").is_file():
+            if not all((Path(path) / f).is_file() for f in ("clipkit_punch.json", "clipkit_hook.json")):
                 waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
                 continue
             if a.insert:
