@@ -125,6 +125,8 @@ def build(path: str) -> Path:
             a, b = p["start"], p["end"]
             white, colour, rgb = render._shown(p["lead"], p["punch"], p.get("opts"), held)
             held = white or held
+            if t["hook"] and a < render.HOOK_DUR:  # the clip title owns the first seconds
+                continue
             lead_id = ""
             if white:
                 i = lead_id = text(white, *P["lead"], a, b, "up", one=bool(colour))
@@ -139,9 +141,15 @@ def build(path: str) -> Path:
                 text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b)
     else:
         for p in t["phrases"]:
+            if t["hook"] and p["start"] < render.HOOK_DUR:
+                continue
             i = text(p["lead"], 16, -0.6, [1, 1, 1], [0, 0, 0], 0.08, p["start"], p["end"])
             if look == "pop":
                 anim.append(f'tl.fromTo("#{i}",{{scale:0.7}},{{scale:1,duration:0.2,ease:"back.out(2)"}},{p["start"]:.3f});')
+    # clip title: each line punches in, the second a beat after the first
+    for n, h in enumerate(t["hook"]):
+        i = text(h["text"], h["size"], h["y"], h["fill"], h["stroke"], h["width"], h["start"], h["end"], one=True)
+        anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{n * 0.15:.2f});')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):
