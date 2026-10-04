@@ -27,23 +27,32 @@ def _local(out: Path, path: str, name: str | None = None) -> str:
     return "media/" + quote(dst.name)
 
 
-def _proxy(out: Path, src: str, a: float, b: float) -> tuple[str, float]:
-    """The used stretch of the raw clip as a light H.264 copy (raw files can be 4 GB HEVC that a browser may not
-    play): made once per range. Returns (relative src, offset of the copy's 0 inside the raw file)."""
+def _proxy(out: Path, src: str, segs: list[dict]) -> str:
+    """The kept pieces of the raw clip joined into one light H.264 file (raw files can be 4 GB HEVC a browser
+    may not play, and the renderer fails on dozens of clips cut from one file): made once per cut list."""
+    import hashlib
     import subprocess
-    a = max(0.0, a - 0.5)
-    dst = out / "media" / f"footage_{int(a * 1000)}_{int(b * 1000)}.mp4"
+    key = hashlib.md5(json.dumps([(s["media_start"], s["dur"]) for s in segs]).encode()).hexdigest()[:10]
+    dst = out / "media" / f"footage_{key}.mp4"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
         for old in dst.parent.glob("footage_*.mp4"):
-            old.unlink()
-        r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b + 0.5:.3f}", "-i", src,
-                            "-vf", "scale='min(1920,iw)':-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-                            "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", str(dst)],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+            try:
+                old.unlink()
+            except OSError:  # still open in the editor's player: removed on a later build
+                pass
+        a, b = min(s["media_start"] for s in segs), max(s["media_start"] + s["dur"] for s in segs)
+        parts = "".join(f"[0:v]trim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},setpts=PTS-STARTPTS[v{i}];"
+                        f"[0:a]atrim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},asetpts=PTS-STARTPTS[a{i}];"
+                        for i, s in enumerate(segs))
+        graph = parts + "".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[cv][ca];[cv]scale='min(1920,iw)':-2[sv]"
+        r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
+                            "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
+                            "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                            str(dst)], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode or not dst.is_file():
             raise render.VideoEditError("could not prepare the footage: " + r.stderr[-300:])
-    return "media/" + dst.name, a
+    return "media/" + dst.name
 
 
 def _css_color(rgb: list[float]) -> str:
@@ -64,21 +73,19 @@ def build(path: str) -> Path:
     out = Path(path) / "clipkit_hf"
     out.mkdir(exist_ok=True)
     segs = t["segments"]
-    foot, off = _proxy(out, t["source"], min(x["media_start"] for x in segs), max(x["media_start"] + x["dur"] for x in segs))
+    foot = _proxy(out, t["source"], segs)
 
     def nid(p: str) -> str:
         nonlocal n
         n += 1
         return f"{p}{n}"
 
-    # the talking footage: one clip per kept piece, placed exactly where the ffmpeg export puts it
-    for s in t["segments"]:
-        a, d, m = s["start"], s["dur"], s["media_start"]
-        els.append(f'<video id="{nid("v")}" class="clip cam" src="{foot}" muted playsinline data-start="{a:.3f}" '
-                   f'data-duration="{d:.3f}" data-media-start="{m - off:.3f}" data-track-index="0" style="position:absolute;'
-                   f'left:{fit["x"]}px;top:{fit["y"]}px;width:{fit["w"]}px;height:{fit["h"]}px;filter:{flt}"></video>')
-        els.append(f'<audio id="{nid("a")}" src="{foot}" data-start="{a:.3f}" data-duration="{d:.3f}" '
-                   f'data-media-start="{m - off:.3f}" data-track-index="1" data-volume="1"></audio>')
+    # the talking footage, already cut: one clip for the whole timeline
+    els.append(f'<video id="{nid("v")}" class="clip cam" src="{foot}" muted playsinline data-start="0" '
+               f'data-duration="{D:.3f}" data-media-start="0" data-track-index="0" style="position:absolute;'
+               f'left:{fit["x"]}px;top:{fit["y"]}px;width:{fit["w"]}px;height:{fit["h"]}px;filter:{flt}"></video>')
+    els.append(f'<audio id="{nid("a")}" src="{foot}" data-start="0" data-duration="{D:.3f}" '
+               f'data-media-start="0" data-track-index="1" data-volume="1"></audio>')
     # zoom cut: every other subtitle line punched in
     if st.get("zoomcut"):
         lines = sorted({(p["start"], p["end"], p["line"]) for p in t["phrases"]})
