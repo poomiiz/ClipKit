@@ -94,15 +94,9 @@ def build(path: str) -> Path:
                f'left:{fit["x"]}px;top:{fit["y"]}px;width:{fit["w"]}px;height:{fit["h"]}px;filter:{flt}"></video>')
     els.append(f'<audio id="{nid("a")}" src="{foot}" data-start="0" data-duration="{D:.3f}" '
                f'data-media-start="0" data-track-index="1" data-volume="1"></audio>')
-    # zoom cut: every other subtitle line punched in
-    if st.get("zoomcut"):
-        lines = sorted({(p["start"], p["end"], p["line"]) for p in t["phrases"]})
-        seen = []
-        for a, b, line in lines:
-            if line not in seen:
-                seen.append(line)
-                if len(seen) % 2 == 0:
-                    anim.append(f'tl.set(".cam",{{scale:1.12}},{a:.3f});tl.set(".cam",{{scale:1}},{b:.3f});')
+    # zoom cut: punched in between real cuts (render.zoom_spans), same as the ffmpeg export
+    for a, b in t["zoom"]:
+        anim.append(f'tl.set(".cam",{{scale:{render.ZOOM}}},{a:.3f});tl.set(".cam",{{scale:1}},{b:.3f});')
     # b-roll over the speaker
     for b in t["broll"]:
         if b.get("file"):

@@ -125,6 +125,24 @@ def _hook(folder: Path) -> list[dict[str, Any]]:
             for x, (s, g) in zip(raw, place)]
 
 
+ZOOM, ZOOM_GAP = 1.08, 2.5
+
+
+def zoom_spans(segs: list) -> list[tuple[float, float]]:
+    """Zoom cut: the punch-in changes only on a real cut (a removed pause), so the jump looks meant; it flips
+    100% <-> 108% at a cut only when the current framing has held for at least ZOOM_GAP s (no flicker on
+    breath cuts close together). Returns the zoomed-in spans in timeline seconds."""
+    starts = sorted(s["target_timerange"]["start"] / US for s in segs)
+    end = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"]) / US for s in segs)
+    out, zoomed, since = [], False, 0.0
+    for t in starts[1:] + [end]:
+        if t - since >= ZOOM_GAP or t == end:
+            if zoomed:
+                out.append((round(since, 3), round(t, 3)))
+            zoomed, since = not zoomed, t
+    return out
+
+
 JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน"}
 
 
@@ -424,12 +442,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     with tempfile.TemporaryDirectory() as tmp:
         base = "[vo]"
         if style.get("zoomcut"):
-            # jump-cut feel without new footage: every other subtitle line plays punched in (112%), a hard cut each time
-            beats = sorted((s["target_timerange"]["start"] / US, (s["target_timerange"]["start"] + s["target_timerange"]["duration"]) / US)
-                           for s in (text or {}).get("segments", []))
-            zin = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in beats[1::2]) or "0"
-            # a zoomed copy laid over the plain one only during those lines (zoompan dropped frames: 60 s -> 25 s)
-            zw, zh = round(W * 1.12 / 2) * 2, round(H * 1.12 / 2) * 2
+            zin = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in zoom_spans(segs)) or "0"
+            # a zoomed copy laid over the plain one only during those spans (zoompan dropped frames: 60 s -> 25 s)
+            zw, zh = round(W * ZOOM / 2) * 2, round(H * ZOOM / 2) * 2
             graph += (f";[vo]split[zp][zq];[zq]scale={zw}:{zh},crop={W}:{H}[zz];"
                       f"[zp][zz]overlay=0:0:enable='{zin}'[vz]")
             base = "[vz]"
@@ -502,7 +517,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
-                    "hook": hook, "caption_en": held["en"],
+                    "hook": hook, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
