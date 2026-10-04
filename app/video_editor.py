@@ -1160,7 +1160,7 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     target.parent.mkdir(parents=True, exist_ok=True)
     npx = shutil.which("npx")
     t0 = _t.time()
-    args = [npx, "--yes", f"hyperframes@{kit_settings.HF_VERSION}", "render", "--quiet", "-o", str(target)]
+    args = [npx, "--yes", f"hyperframes@{kit_settings.HF_VERSION}", "render", "--quiet", "--sdr", "--workers", "4", "-o", str(target)]  # SDR: social clips; HDR pre-extraction needs ~20 GB temp
     if req.preview:
         args += ["--quality", "draft"]
     r = subprocess.run(args, cwd=str(page.parent), capture_output=True, text=True, encoding="utf-8", errors="replace",

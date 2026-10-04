@@ -97,10 +97,11 @@ def build(path: str) -> Path:
 
     def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, cls: str = "") -> str:
         i = nid("t")
-        px = size * k
+        # same fitting as the ffmpeg export: one line when it fits, two balanced lines, then smaller
+        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * 0.9)
         els.append(f'<div id="{i}" class="clip txt {cls}" data-start="{a:.3f}" data-duration="{max(0.05, b - a):.3f}" data-track-index="3" '
                    f'style="top:{H / 2 - y * H / 2:.0f}px;font-size:{px:.0f}px;color:{_css_color(fill)};'
-                   f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{html.escape(words)}</div>')
+                   f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{"<br>".join(html.escape(x) for x in lines)}</div>')
         return i
 
     look = t["look"]
@@ -137,15 +138,18 @@ def build(path: str) -> Path:
                 els.append(f'<audio id="{nid("s")}" src="{_local(out, render._sfx("whoosh"))}" data-start="{max(0, b["start"] - 0.15):.3f}" '
                            f'data-duration="0.5" data-track-index="5" data-volume="{0.35 * fx["volume"]:.2f}"></audio>')
     font = _local(out, render.DEFAULT_FONT)
+    # the HyperFrames runtime (clip windows, media sync, seeking) for the live player; the renderer brings its own
+    runtime = _local(out, str(Path(__file__).with_name("hyperframe.runtime.iife.js")))
     page = f"""<!doctype html>
 <html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width={W}, height={H}">
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="{runtime}"></script>
 <style>
 @font-face{{font-family:"ClipKit Thai";src:url("{font}")}}
 *{{margin:0;padding:0;box-sizing:border-box}}
 html,body{{width:{W}px;height:{H}px;overflow:hidden;background:#000}}
 .cam{{transform-origin:{W / 2 - fit["x"]}px {H / 2 - fit["y"]}px}}
-.txt{{position:absolute;left:5%;width:90%;transform:translateY(-50%);text-align:center;font-family:"ClipKit Thai",sans-serif;
+.txt{{position:absolute;left:5%;width:90%;white-space:nowrap;transform:translateY(-50%);text-align:center;font-family:"ClipKit Thai",sans-serif;
   font-weight:700;line-height:1.25;paint-order:stroke fill;text-shadow:0 3px 8px rgba(0,0,0,.45)}}
 </style></head><body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="{D:.3f}" data-width="{W}" data-height="{H}">
