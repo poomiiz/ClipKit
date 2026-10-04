@@ -95,10 +95,10 @@ def build(path: str) -> Path:
                        f'data-duration="{b["dur"]:.3f}" data-media-start="0" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
 
-    def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0) -> str:
+    def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False) -> str:
         i = nid("t")
         # same fitting as the ffmpeg export: one line when it fits, two balanced lines, then smaller
-        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * 0.9)
+        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * 0.9, one)
         # a wrapped lead grows upward and a wrapped punch downward, so the pair never covers each other
         top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
         top = max(top, floor) if grow == "down" else top
@@ -117,11 +117,11 @@ def build(path: str) -> Path:
             a, b = p["start"], p["end"]
             lead_id = ""
             if p["lead"]:
-                i = lead_id = text(p["lead"], *P["lead"], a, b, "up")
+                i = lead_id = text(p["lead"], *P["lead"], a, b, "up", one=bool(p["punch"]))
                 anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
             if p["punch"]:
                 hit = min(b - 0.05, max(a + 0.2, a + 0.6)) if p["lead"] else a
-                i = text(p["punch"], *P["punch"], hit, b, "down", tops.get(lead_id, 0) + 8)
+                i = text(p["punch"], *P["punch"], hit, b, "down", tops.get(lead_id, 0) + 8, one=bool(p["lead"]))
                 anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
             if P["caption"]:
                 text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b)

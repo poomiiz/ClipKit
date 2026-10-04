@@ -30,14 +30,16 @@ def _font(path: str | None) -> tuple[str, Path]:
     return TTFont(str(f), fontNumber=0)["name"].getDebugName(1), f
 
 
-def _fit(text: str, font_file: Path, size: float, max_w: float) -> tuple[list[str], float]:
+def _fit(text: str, font_file: Path, size: float, max_w: float, one: bool = False) -> tuple[list[str], float]:
     """Keep a subtitle inside the frame: one line when it fits, else two lines split at the Thai word break
     that balances them best, and only if the longer of the two still overflows, a smaller size."""
     from PIL import ImageFont
     from pythainlp.tokenize import word_tokenize
     font = ImageFont.truetype(str(font_file), 100)
     width = lambda t: font.getlength(t) * size / 100  # noqa: E731
-    if "\n" in text:  # the editor already chose the line breaks
+    if one:  # white + colour pair: one line each so the screen never holds more than 2; smaller when long
+        lines = [text.replace("\n", " ")]
+    elif "\n" in text:  # the editor already chose the line breaks
         lines = text.split("\n")
     elif width(text) <= max_w:
         return [text], size
@@ -68,9 +70,9 @@ def _clock(spoken: list | None, length: float):
 # the sentence-pair look measured from P'Ohm's own CapCut edits (BPS3 01/07, Nina 02/08): each spoken phrase
 # becomes a short white lead line plus a bigger coloured punch line; Nina adds a small full caption at the bottom
 PAIR = {
-    "bps": {"lead": (25, -0.37, [1, 1, 1], [0, 0, 0], 0.03), "punch": (30, -0.50, [0.02, 0.07, 0.57], [1, 1, 1], 0.08),
+    "bps": {"lead": (22, -0.37, [1, 1, 1], [0, 0, 0], 0.03), "punch": (26, -0.50, [0.02, 0.07, 0.57], [1, 1, 1], 0.08),
             "caption": None},
-    "nina": {"lead": (25, -0.29, [1, 1, 1], [0, 0, 0], 0.05), "punch": (30, -0.44, [1, 0.49, 0], [0, 0, 0], 0.06),
+    "nina": {"lead": (22, -0.29, [1, 1, 1], [0, 0, 0], 0.05), "punch": (26, -0.44, [1, 0.49, 0], [0, 0, 0], 0.06),
              "caption": (8, -0.80, [1, 1, 1], [0, 0, 0], 0.08)},
 }
 
@@ -130,10 +132,10 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
             phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1], ""))
     k = min(W, H) / 1080 * CAPCUT_PX
 
-    def line(words: str, part: tuple, a: float, b: float, extra: str = "") -> str:
+    def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False) -> str:
         size, y, fill, stroke, width = part
         px = size * k
-        lines, px = _fit(words, font_file, px, W * 0.9)
+        lines, px = _fit(words, font_file, px, W * 0.9, one)
         return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{H / 2 - y * H / 2:.0f})\\fn{fam}"
                 f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
                 f"\\shad2{extra}}}" + "\\N".join(lines))
@@ -151,9 +153,9 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
             if query:
                 marks.append(("broll", a, b, query))
         if lead:
-            out.append(line(lead, look["lead"], a, b, "\\fad(80,0)"))
+            out.append(line(lead, look["lead"], a, b, "\\fad(80,0)", bool(punch)))
         if punch:
-            out.append(line(punch, look["punch"], hit if lead else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)"))
+            out.append(line(punch, look["punch"], hit if lead else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(lead)))
         if look["caption"]:
             out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
     return out
