@@ -808,7 +808,7 @@ class FreeSearch(BaseModel):
 
 @router.post("/stock/free-search")
 def stock_free_search(req: FreeSearch) -> dict[str, Any]:
-    """Pexels + Pixabay hits (free for commercial use)."""
+    """Pixabay hits (free for commercial use)."""
     import free_stock
     import kit_settings
     try:
@@ -839,7 +839,7 @@ def stock_free_download(req: FreeDownload) -> dict[str, Any]:
 
 def broll_fill(path: str) -> dict[str, Any]:
     """Free b-roll for the phrases the agent tagged with a search (3rd item in clipkit_punch.json):
-    the first Pixabay/Pexels hit for each search is saved and listed in clipkit_broll.json."""
+    the first Pixabay hit for each search is saved and listed in clipkit_broll.json."""
     import free_stock
     import kit_settings
     folder = Path(path)

@@ -13,7 +13,6 @@
   "whisper_model": "large-v3",
   "whisper_device": "cuda",
   "stock_source": "free",
-  "pexels_key": "",
   "pixabay_key": "",
   "envato_backend": "local",
   "_envato_backend_note": "local = this machine's Chrome via scripts/envato.py (run: python scripts/envato.py login once); bot = team bot on the bot host",

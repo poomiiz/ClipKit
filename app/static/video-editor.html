@@ -1463,10 +1463,10 @@ async function runStockSearch() {
   if (!query) return;
   const busy = document.getElementById('stBusy');
   const out = document.getElementById('stockResult');
-  // free stock (Pexels + Pixabay) is the default; Envato only when Settings says so
+  // free stock (Pixabay) is the default; Envato only when Settings says so
   const cfg = await fetch('/api/kit/config').then(r => r.json()).catch(() => ({options: {}}));
   if ((cfg.options.stock_source || 'free') === 'free') {
-    busy.innerHTML = '<span class="spin"></span> กำลังค้น "' + query + '" ใน Pexels + Pixabay…';
+    busy.innerHTML = '<span class="spin"></span> กำลังค้น "' + query + '" ใน Pixabay…';
     out.innerHTML = '';
     try {
       const r = await api('stock/free-search', {query, count: 6});
