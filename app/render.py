@@ -77,16 +77,38 @@ PAIR = {
 }
 
 
+RED = [0.93, 0.11, 0.11]
+
+
+def _shown(lead: str, punch: str, opts: dict | None, prev_white: str) -> tuple[str, str, list | None]:
+    """What a phrase puts on screen, from the agent's choice in clipkit_punch.json (4th item, optional), the
+    options measured from P'Ohm's Nina CapCut edits: "pair" white lead + coloured punch (default), "white" white
+    only, "color" coloured only, "red" punch in red for the strongest point, "hold" keeps the previous white line
+    while the coloured line changes (lists), "skip" no subtitle (filler). "show": [white, colour] = shorter
+    rewritten words on screen (timing still comes from the spoken words). Returns (white, colour, colour rgb)."""
+    o = opts or {}
+    w, c = o.get("show") or (lead, punch)
+    look = o.get("look", "pair")
+    if look == "skip":
+        return "", "", None
+    if look == "white":
+        return " ".join(x for x in (w, c) if x), "", None
+    if look == "color":
+        return "", " ".join(x for x in (w, c) if x), None
+    return (prev_white if look == "hold" else w), c, (RED if look == "red" else None)
+
+
 JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน"}
 
 
 def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
-          preset: str, picked: list | None = None, max_chars: int = 16, marks: list | None = None) -> list[str]:
+          preset: str, picked: list | None = None, max_chars: int = 16, marks: list | None = None, held: dict | None = None) -> list[str]:
     """Split a spoken line into phrases of about two seconds, each shown as lead + punch.
     picked = the agent's [[lead, punch], ...] for this line (the words that carry the point); without it the
     phrases break at breaths / ~16 letters / Thai joining words and the punch is the phrase's last words."""
     from pythainlp.tokenize import word_tokenize
     look = PAIR[preset]
+    held = held if held is not None else {"white": ""}  # a "hold" white line carries over into the next subtitle line
     flat = text.replace("\n", " ")
     at, total = _clock(spoken, t1 - t0), len(flat) or 1
     phrases = []  # (lead, punch, start, punch time, last word time)
@@ -98,10 +120,12 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         letters = [i for i, c in enumerate(flat) if not c.isspace()]
         when = lambda n: t0 + at(letters[min(n, len(letters) - 1)] / total)  # noqa: E731
         n = 0
-        for lead, punch, *query in picked:
+        for lead, punch, *rest in picked:
             a, hit = when(n), when(n + len(tight(lead)))
             n += len(tight(lead)) + len(tight(punch))
-            phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1), (query or [""])[0]))
+            query = next((x for x in rest if isinstance(x, str)), "")
+            opts = next((x for x in rest if isinstance(x, dict)), None)
+            phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1), query, opts))
     else:
         timed, pos = [], 0
         for tok in word_tokenize(flat, keep_whitespace=True):
@@ -129,7 +153,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
                 cut = i
                 if acc >= size * 0.4:
                     break
-            phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1], ""))
+            phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1], "", None))
     k = min(W, H) / 1080 * CAPCUT_PX
 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False) -> str:
@@ -141,21 +165,25 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
                 f"\\shad2{extra}}}" + "\\N".join(lines))
 
     out = []
-    for n, (lead, punch, a, hit, last, query) in enumerate(phrases):
+    for n, (lead, punch, a, hit, last, query, opts) in enumerate(phrases):
         # stays until the next phrase, but not through a long pause after its last word
         b = min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, last + 1.5)
         # the punch lands when it is said, but never leaves the lead alone on screen for long (slow talkers)
         hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
+        white, colour, rgb = _shown(lead, punch, opts, held["white"])
+        held["white"] = white or held["white"]
         if marks is not None:  # moments for sound effects, b-roll, and the editor's timeline
-            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query))
-            if punch:
-                marks.append(("pop", hit if lead else a))
+            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts))
+            if colour:
+                marks.append(("pop", hit if white else a))
             if query:
                 marks.append(("broll", a, b, query))
-        if lead:
-            out.append(line(lead, look["lead"], a, b, "\\fad(80,0)", bool(punch)))
-        if punch:
-            out.append(line(punch, look["punch"], hit if lead else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(lead)))
+        held_on = (opts or {}).get("look") == "hold"
+        if white:
+            out.append(line(white, look["lead"], a, b, "" if held_on else "\\fad(80,0)", bool(colour)))
+        if colour:
+            part = look["punch"] if rgb is None else look["punch"][:2] + (rgb,) + look["punch"][3:]
+            out.append(line(colour, part, hit if white else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(white)))
         if look["caption"]:
             out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
     return out
@@ -291,6 +319,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     marks: list = []  # ("pop", t) at each punch, ("broll", a, b, query) where the agent asked for b-roll
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
+    held = {"white": ""}
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
@@ -316,7 +345,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")), marks=marks)
+                            "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")), marks=marks, held=held)
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
@@ -420,7 +449,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
-                                 "query": m[7]} for m in marks if m[0] == "phrase"],
+                                 "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
                     "sfx": fx, "edited": placed is not None, "source": src, "src_w": info["width"], "src_h": info["height"],
                     "fit": {"w": vw, "h": vh, "x": ox, "y": oy},

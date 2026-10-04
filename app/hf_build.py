@@ -113,15 +113,20 @@ def build(path: str) -> Path:
     look = t["look"]
     if look in ("pair", "pair-nina"):
         P = render.PAIR["nina" if look == "pair-nina" else "bps"]
+        held = ""
         for p in t["phrases"]:
             a, b = p["start"], p["end"]
+            white, colour, rgb = render._shown(p["lead"], p["punch"], p.get("opts"), held)
+            held = white or held
             lead_id = ""
-            if p["lead"]:
-                i = lead_id = text(p["lead"], *P["lead"], a, b, "up", one=bool(p["punch"]))
-                anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
-            if p["punch"]:
-                hit = min(b - 0.05, max(a + 0.2, a + 0.6)) if p["lead"] else a
-                i = text(p["punch"], *P["punch"], hit, b, "down", tops.get(lead_id, 0) + 8, one=bool(p["lead"]))
+            if white:
+                i = lead_id = text(white, *P["lead"], a, b, "up", one=bool(colour))
+                if (p.get("opts") or {}).get("look") != "hold":
+                    anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
+            if colour:
+                hit = min(b - 0.05, max(a + 0.2, a + 0.6)) if white else a
+                part = P["punch"] if rgb is None else P["punch"][:2] + (rgb,) + P["punch"][3:]
+                i = text(colour, *part, hit, b, "down", tops.get(lead_id, 0) + 8, one=bool(white))
                 anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
             if P["caption"]:
                 text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b)

@@ -52,6 +52,20 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    "อะไรอย่างนี้", repeated words) and phrases with no point get white only: `[text, ""]`. Colour only the
    phrases that carry the message (a feeling, a number, a result, a key idea) - roughly half or fewer.
    The screen shows at most 2 lines: white 1 + colour 1, or one of them on 2 lines.
+   Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase, measured from P'Ohm's own
+   Nina 01-10 CapCut edits (Nina 07 is the worked example of this whole style):
+   - `pair` (default): white lead + coloured punch.
+   - `white`: white only - setups and questions ("จะแนะนำยังไง", "ธุรกิจเขาเป็นยังไง").
+   - `color`: coloured only - a short line that is all point.
+   - `red`: the colour line turns red - the one or two strongest points or the clip's question.
+   - `hold`: the previous white line stays while the coloured line changes - lists ("บางคนบอก" ->
+     "ทำแบรนด์ดิ้ง" / "ลงระบบ CRM" / "จ้างเซลส์มาขาย").
+   - `skip`: no subtitle - filler, repeats, false starts, the other person's "อืมๆ".
+   - `show`: the words on screen, rewritten short and clean the way P'Ohm does ("ไปจ้างพนักงานขายซิ" ->
+     "จ้างเซลส์มาขาย", "มันคือแบบกูต้องทำอะไร" -> "ต้องทำอะไรก่อน?"). Keep the meaning, drop slang and
+     filler, max ~15 letters per line. Lead + punch still hold the exact spoken text (they give the timing).
+   Example item: `["บางคนบอกต้องลง", "ระบบ Crm", {"look": "hold", "show": ["", "ลงระบบ CRM"]}]`;
+   with a b-roll search: `[lead, punch, "office team computer", {...}]`.
 3. B-roll: about one phrase in three that names something you can see (a product, food, a place, an action,
    an emotion on a face), add a third item: a short English stock-footage search, e.g.
    `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. Concrete nouns, 2-4 words, no brand names.

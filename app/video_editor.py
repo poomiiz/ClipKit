@@ -845,7 +845,7 @@ def broll_fill(path: str) -> dict[str, Any]:
     folder = Path(path)
     punch = folder / "clipkit_punch.json"
     queries = [p[2] for pairs in (json.loads(punch.read_text(encoding="utf-8")).values() if punch.is_file() else [])
-               for p in pairs if len(p) > 2 and p[2]]
+               for p in pairs if len(p) > 2 and isinstance(p[2], str) and p[2]]  # 4th item = display options
     out_file = folder / "clipkit_broll.json"
     chosen = json.loads(out_file.read_text(encoding="utf-8")) if out_file.is_file() else {}
     if not queries:
@@ -1017,7 +1017,7 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
 class PhraseEdit(BaseModel):
     path: str
     line: str                  # the subtitle line this phrase belongs to (current text)
-    pairs: list[list[str]]     # every phrase of that line after the edit: [lead, punch] or [lead, punch, query]
+    pairs: list[list[str | dict[str, Any]]]  # every phrase of that line: [lead, punch, query?, options?]
 
 
 @router.post("/draft/phrases")
