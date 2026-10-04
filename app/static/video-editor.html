@@ -644,6 +644,9 @@
             <button class="small" data-a="pop">เด้งเข้า</button>
             <button class="small" data-a="karaoke">ไล่สีทีละคำ</button></div>
           <div class="hint" id="saNote"></div>
+          <div id="saPunch" style="display:none;margin-top:8px">
+            <button class="small" onclick="punchAsk()">✨ ให้ Claude เลือกคำเน้น</button>
+            <div id="saPunchBox"></div></div>
         </div>
 
         <!-- Motion on top: click a line, pick a look; it renders and sits at that moment -->
@@ -2296,6 +2299,16 @@ document.addEventListener('keydown', e => {
   if (ctrl && k === 'v' && lySel >= 0 && lyClip) { e.preventDefault(); Object.assign(LY[lySel], lyClip); layoutList(); return; }
   if (ctrl && k === 's') { e.preventDefault(); layoutSave(); }
 });
+// the punch words that carry each phrase: the agent picks them (plugin model), the export uses them
+async function punchAsk() {
+  const box = document.getElementById('saPunchBox');
+  try {
+    const r = await api('draft/punch-request', {path: state.draft.path});
+    box.innerHTML = agentBox(r.command, r.picked === r.lines
+      ? `Claude เลือกคำเน้นครบ ${r.lines} บรรทัดแล้ว · กดส่งออก MP4 ได้เลย (ส่งคำสั่งซ้ำได้ถ้าแก้ซับ)`
+      : `ส่งคำสั่งนี้ให้ Claude ในแชต (เลือกแล้ว ${r.picked}/${r.lines} บรรทัด) · บรรทัดที่ยังไม่ได้เลือก ระบบเน้นคำท้ายช่วงให้แทน`);
+  } catch (e) { box.textContent = '❌ ' + e.message; }
+}
 async function saLoad(pick) {
   const p = state.draft.path;
   const r = pick ? await api('draft/sub-anim', {path: p, anim: pick})
@@ -2304,6 +2317,7 @@ async function saLoad(pick) {
     b.classList.toggle('primary', b.dataset.a === r.anim);
     b.onclick = () => saLoad(b.dataset.a);
   });
+  document.getElementById('saPunch').style.display = r.anim.startsWith('pair') ? '' : 'none';
   document.getElementById('saNote').textContent = r.anim === 'karaoke' && !r.has_word_times
     ? '⚠️ โปรเจกต์นี้ยังไม่มีเวลาของแต่ละคำ สีจะไล่ตามความยาวตัวอักษรแทน · กดถอดเสียงใหม่ (แท็บ 🎙️ ซับ) ให้ตรงเสียงพูด'
     : {none: 'ซับขึ้นนิ่งๆ', pop: 'แต่ละบรรทัดขยายเด้งเข้ามา', karaoke: 'คำที่กำลังพูดเปลี่ยนเป็นสีเหลือง',
