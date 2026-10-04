@@ -47,6 +47,11 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    carries the point (a feeling, a number, a result, a brand: "ถูกกดดัน", "20 ปี", "ไม่อิ่ม"), not just the
    last word. Lead + punch together must be that phrase's exact text (punch may come first: then lead is "").
    Every character of the line must be used once, in order (spaces may be dropped).
+   Keep each lead to about 15 Thai letters; split a longer phrase rather than letting the text shrink.
+   Not every phrase deserves a coloured punch. Filler and connective talk ("อืมๆ", "เออจริงๆ", "แบบว่า",
+   "อะไรอย่างนี้", repeated words) and phrases with no point get white only: `[text, ""]`. Colour only the
+   phrases that carry the message (a feeling, a number, a result, a key idea) - roughly half or fewer.
+   The screen shows at most 2 lines: white 1 + colour 1, or one of them on 2 lines.
 3. B-roll: about one phrase in three that names something you can see (a product, food, a place, an action,
    an emotion on a face), add a third item: a short English stock-footage search, e.g.
    `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. Concrete nouns, 2-4 words, no brand names.
