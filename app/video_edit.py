@@ -189,9 +189,9 @@ def detect_pauses(path: str, start: float, end: float,
         work.unlink(missing_ok=True)
 
 
-def quiet_spans(path: str, start: float, end: float, min_len: float = 0.25) -> list[dict[str, float]]:
+def quiet_spans(path: str, start: float, end: float, min_len: float = 0.30) -> list[dict[str, float]]:
     """Breaths and pauses under background noise (café, street), where a fixed silence gate finds nothing:
-    loudness per 20 ms against this clip's own noise floor (20th percentile + 4 dB). Clip-relative seconds."""
+    loudness per 20 ms against this clip's own noise floor (20th percentile + 2 dB). Clip-relative seconds."""
     import wave
     import numpy as np
     work = Path(os.environ.get("TEMP", "/tmp")) / f"ve_{uuid.uuid4().hex}.wav"
@@ -207,7 +207,7 @@ def quiet_spans(path: str, start: float, end: float, min_len: float = 0.25) -> l
         return []
     db = 20 * np.log10(np.sqrt((pcm[:len(pcm) // n * n].reshape(-1, n) ** 2).mean(1)) + 1e-9)
     db = np.convolve(db, np.ones(5) / 5, mode="same")  # 100 ms smoothing: no cuts inside a word's dip
-    quiet = db < np.percentile(db, 20) + 4
+    quiet = db < np.percentile(db, 20) + 2
     out, i = [], 0
     while i < len(quiet):
         if quiet[i]:

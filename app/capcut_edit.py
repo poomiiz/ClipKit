@@ -374,7 +374,7 @@ def set_text_layout(path: str, items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"name": folder.name, "placed": len(items)}
 
 
-WORD_PAD = 0.08  # silence left before and after a word at a cut
+WORD_PAD = 0.10  # silence left before and after a word at a cut
 
 
 def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
@@ -392,41 +392,19 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     cuts: list[dict[str, float]] = []
     total = sum(s["source_timerange"]["duration"] for s in video["segments"]) / US
     words_file = folder / "clipkit_words.json"
-    if words_file.is_file():
-        # the gaps between spoken words, like P'Ohm's own Nina cuts (breaths of 0.2-0.5 s gone, ~0.1 s left
-        # on each side); a sound gate misses them under café / street noise
-        said = json.loads(words_file.read_text(encoding="utf-8"))
-        spans = sorted((sub["start"] + a, sub["start"] + b) for sub in read_draft(path)["subtitles"]
-                       for a, b, _ in said.get(sub["text"], []))
-        if not spans:
-            raise VideoEditError("clipkit_words.json has no word times for this project's subtitles")
-        edges = [(0.0, spans[0][0])] + [(spans[i][1], spans[i + 1][0]) for i in range(len(spans) - 1)] + [(spans[-1][1], total)]
-        # plus the breaths inside a line (the transcriber stretches words over them), heard against the noise floor
-        cursor = 0.0
-        for segment in video["segments"]:
-            start = segment["source_timerange"]["start"] / US
-            length = segment["source_timerange"]["duration"] / US
-            edges += [(cursor + q["start"], cursor + q["end"]) for q in quiet_spans(source, start, start + length)]
-            cursor += length
-        merged: list[list[float]] = []
-        for a, b in sorted(edges):
-            if merged and a <= merged[-1][1]:
-                merged[-1][1] = max(merged[-1][1], b)
-            else:
-                merged.append([a, b])
-        for a, b in merged:
-            if b - a - 2 * WORD_PAD >= 0.15:  # P'Ohm's smallest cut in Nina 07
-                cuts.append({"start": round(a + WORD_PAD, 2), "end": round(b - WORD_PAD, 2), "gain": round(b - a - 2 * WORD_PAD, 2)})
-    else:
-        cursor = 0.0
-        for segment in video["segments"]:
-            start = segment["source_timerange"]["start"] / US
-            length = segment["source_timerange"]["duration"] / US
-            for cut in suggest_cuts(detect_pauses(source, start, start + length), keep, min_gain):
-                cuts.append({"start": round(cursor + cut["start"], 2),
-                             "end": round(cursor + cut["end"], 2),
-                             "gain": cut["gain"]})
-            cursor += length
+    # breaths and pauses against the clip's own noise floor (a fixed silence gate finds nothing under café
+    # noise), ~0.1 s left each side. Tuned on Nina 07's footage: 41 cuts / 20 s out of 118 s with every word
+    # still there on re-transcription - P'Ohm's own edit of the same talk has 40.
+    cursor = 0.0
+    for segment in video["segments"]:
+        start = segment["source_timerange"]["start"] / US
+        length = segment["source_timerange"]["duration"] / US
+        for q in quiet_spans(source, start, start + length):
+            if q["length"] - 2 * WORD_PAD >= 0.1:
+                cuts.append({"start": round(cursor + q["start"] + WORD_PAD, 2), "end": round(cursor + q["end"] - WORD_PAD, 2),
+                             "gain": round(q["length"] - 2 * WORD_PAD, 2)})
+        cursor += length
+    said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
     removed = round(sum(c["gain"] for c in cuts), 2)
 
     preview = {"name": folder.name, "length": round(total, 2), "cuts": cuts,
