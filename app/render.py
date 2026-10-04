@@ -90,7 +90,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     phrases = []  # (lead, punch, start, punch time, last word time)
     if picked:
         tight = lambda t: "".join(t.split())  # noqa: E731  (spaces may be dropped, nothing else)
-        if tight("".join(a + b for a, b in picked)) != tight(flat):
+        if tight("".join(p[0] + p[1] for p in picked)) != tight(flat):
             raise VideoEditError(f"clipkit_punch.json does not match the subtitle line: {flat}")
         # time of a position in the line, counting letters only (the agent may have dropped spaces)
         letters = [i for i, c in enumerate(flat) if not c.isspace()]
