@@ -95,26 +95,33 @@ def build(path: str) -> Path:
                        f'data-duration="{b["dur"]:.3f}" data-media-start="0" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
 
-    def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, cls: str = "") -> str:
+    def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0) -> str:
         i = nid("t")
         # same fitting as the ffmpeg export: one line when it fits, two balanced lines, then smaller
         lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * 0.9)
-        els.append(f'<div id="{i}" class="clip txt {cls}" data-start="{a:.3f}" data-duration="{max(0.05, b - a):.3f}" data-track-index="3" '
-                   f'style="top:{H / 2 - y * H / 2:.0f}px;font-size:{px:.0f}px;color:{_css_color(fill)};'
+        # a wrapped lead grows upward and a wrapped punch downward, so the pair never covers each other
+        top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
+        top = max(top, floor) if grow == "down" else top
+        shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
+        tops[i] = top
+        els.append(f'<div id="{i}" class="clip txt" data-start="{a:.3f}" data-duration="{max(0.05, b - a):.3f}" data-track-index="3" '
+                   f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;color:{_css_color(fill)};'
                    f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{"<br>".join(html.escape(x) for x in lines)}</div>')
         return i
 
+    tops: dict[str, float] = {}
     look = t["look"]
     if look in ("pair", "pair-nina"):
         P = render.PAIR["nina" if look == "pair-nina" else "bps"]
         for p in t["phrases"]:
             a, b = p["start"], p["end"]
+            lead_id = ""
             if p["lead"]:
-                i = text(p["lead"], *P["lead"], a, b)
+                i = lead_id = text(p["lead"], *P["lead"], a, b, "up")
                 anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
             if p["punch"]:
                 hit = min(b - 0.05, max(a + 0.2, a + 0.6)) if p["lead"] else a
-                i = text(p["punch"], *P["punch"], hit, b)
+                i = text(p["punch"], *P["punch"], hit, b, "down", tops.get(lead_id, 0) + 8)
                 anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
             if P["caption"]:
                 text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b)
