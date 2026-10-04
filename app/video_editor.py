@@ -741,3 +741,26 @@ def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
     items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]
     (Path(req.path) / OVERLAYS).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"overlays": items}
+
+
+class SubAnimRequest(BaseModel):
+    path: str
+    anim: str = Field(pattern="^(none|pop|karaoke)$")
+
+
+@router.post("/draft/sub-anim")
+def draft_sub_anim(req: SubAnimRequest) -> dict[str, Any]:
+    """How subtitles move in the MP4 export: still, pop in, or the spoken word lit up."""
+    f = Path(req.path) / "clipkit_style.json"
+    style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    style["anim"] = req.anim
+    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    words = Path(req.path) / "clipkit_words.json"
+    return {"anim": req.anim, "has_word_times": words.is_file()}
+
+
+@router.get("/draft/sub-anim")
+def draft_sub_anim_get(path: str = Query(...)) -> dict[str, Any]:
+    f = Path(path) / "clipkit_style.json"
+    return {"anim": (json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}).get("anim", "none"),
+            "has_word_times": (Path(path) / "clipkit_words.json").is_file()}
