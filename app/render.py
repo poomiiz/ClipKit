@@ -142,7 +142,8 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     for n, (lead, punch, a, hit, last) in enumerate(phrases):
         # stays until the next phrase, but not through a long pause after its last word
         b = min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, last + 1.5)
-        hit = min(b - 0.05, max(a + 0.2, hit))  # the punch lands when it is said
+        # the punch lands when it is said, but never leaves the lead alone on screen for long (slow talkers)
+        hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
         if lead:
             out.append(line(lead, look["lead"], a, b, "\\fad(80,0)"))
         if punch:
