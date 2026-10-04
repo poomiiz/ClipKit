@@ -345,23 +345,27 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
         def add(*args: str) -> int:
             ins.extend(args)
             return sum(1 for x in ins if x == "-i")
-        # b-roll: the free clip the agent's search found, over the speaker for the phrase (max 2.2 s),
-        # never closer than 5 s to the previous one; the voice keeps going underneath
-        broll = _json(folder / "clipkit_broll.json", {})
-        last_b, used_b = -99.0, []
-        for k, (_, a, b, q) in enumerate(m for m in marks if m[0] == "broll"):
-            if q not in broll or a - last_b < 5:
-                continue
-            f = broll[q]["file"]
-            if not Path(f).is_file():
-                raise VideoEditError(f"b-roll file missing: {f}")
-            n = add("-i", f)
-            e = min(b, a + 2.2)
+        # b-roll: the editor's own list once reviewed (clipkit_placed.json); before that, the free clip the agent's
+        # search found, over the speaker for the phrase (max 2.2 s), never closer than 5 s to the previous one
+        placed = _json(folder / "clipkit_placed.json", None)
+        if placed is None:
+            found, plan, last_b = _json(folder / "clipkit_broll.json", {}), [], -99.0
+            for _, a, b, q in (m for m in marks if m[0] == "broll"):
+                if q in found and a - last_b >= 5:
+                    plan.append({"start": round(a, 2), "dur": round(min(b, a + 2.2) - a, 2), "file": found[q]["file"],
+                                 "query": q, "thumb": found[q].get("thumb", "")})
+                    last_b = a
+        else:
+            plan = placed.get("broll", [])
+        for k, it in enumerate(plan):
+            if not Path(it["file"]).is_file():
+                raise VideoEditError(f"b-roll file missing: {it['file']}")
+            n = add("-i", it["file"])
+            a, e = float(it["start"]), float(it["start"]) + float(it["dur"])
             graph += (f";[{n}:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                       f"trim=0:{e - a:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB[br{k}];"
                       f"{base}[br{k}]overlay=0:0:eof_action=pass:enable='between(t,{a:.3f},{e:.3f})'[bo{k}]")
-            base, last_b = f"[bo{k}]", a
-            used_b.append((a, q))
+            base = f"[bo{k}]"
         if events:
             fam0 = family or _font(None)[0]
             (Path(tmp) / "subs.ass").write_text(
@@ -396,21 +400,26 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
 
         # sound: a quiet music bed, a pop on each punch, a whoosh as b-roll comes in
         length = sum(s["target_timerange"]["duration"] for s in segs) / US
-        mix, music_file = ["[voice]"], _music(style)
+        mus = (placed or {}).get("music")  # the editor's pick: {"file": path or "", "volume": 0-1}
+        mix, music_file = ["[voice]"], (mus["file"] or None) if mus is not None else _music(style)
+        if music_file and not Path(music_file).is_file():
+            raise VideoEditError(f"music file missing: {music_file}")
+        music_vol = mus.get("volume", 0.12) if mus is not None else style.get("music_volume", 0.12)
+        fx = (placed or {}).get("sfx", {"on": style.get("sfx", True), "volume": 1.0})
         graph += ";[ac]asplit=2[voice][key]"
         if music_file:
             n = add("-stream_loop", "-1", "-i", music_file)
             # one low steady level under the voice (P'Ohm: no pumping up and down)
-            graph += (f";[{n}:a]atrim=0:{length:.3f},volume={style.get('music_volume', 0.12)},"
+            graph += (f";[{n}:a]atrim=0:{length:.3f},volume={music_vol},"
                       f"afade=t=out:st={max(0, length - 1.5):.3f}:d=1.5[mus]")
             mix.append("[mus]")
         graph += ";[key]anullsink"
-        sfx = [("pop", m[1]) for m in marks if m[0] == "pop"] + [("whoosh", a - 0.15) for a, _ in used_b]
-        if style.get("sfx", True):
+        sfx = [("pop", m[1]) for m in marks if m[0] == "pop"] + [("whoosh", float(it["start"]) - 0.15) for it in plan]
+        if fx["on"]:
             for k, (kind, t) in enumerate(sfx):
                 n = add("-i", str(_sfx(kind)))
                 ms = max(0, round(t * 1000))
-                graph += f";[{n}:a]adelay={ms}|{ms},volume={0.5 if kind == 'pop' else 0.35}[s{k}]"
+                graph += f";[{n}:a]adelay={ms}|{ms},volume={(0.5 if kind == 'pop' else 0.35) * fx['volume']:.3f}[s{k}]"
                 mix.append(f"[s{k}]")
         graph += f";{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first[aout]"
         cmd = [FFMPEG, "-y", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
@@ -420,7 +429,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
     return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
-            "broll": [q for _, q in used_b], "music": Path(music_file).name if music_file else None,
-            "sfx": len(sfx) if style.get("sfx", True) else 0, "preview": preview,
+            "broll": [it["query"] for it in plan], "broll_items": plan, "music": Path(music_file).name if music_file else None,
+            "music_file": music_file or "", "music_volume": music_vol, "sfx_on": fx["on"], "sfx_volume": fx["volume"],
+            "sfx": len(sfx) if fx["on"] else 0, "preview": preview,
             "karaoke_estimated": estimated, "pieces": len(segs), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}

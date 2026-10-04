@@ -500,6 +500,18 @@
   .libs { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
   .lib-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 10px; background: var(--card2, #1b2030); font-size: 13.5px; }
   .lib-row .hint { word-break: break-all; }
+  #rvEdit h4 { margin: 14px 0 6px; font-size: 14px; }
+  .pl-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 10px; background: var(--card2, #1b2030); margin-bottom: 6px; font-size: 13.5px; }
+  .pl-row > img, .pl-ph { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; display: grid; place-items: center; background: #000; }
+  .pl-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .pl-q { width: 100%; }
+  .pl-alt { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pl-alt img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
+  .pl-alt img:hover { border-color: #7c5cff; }
+  .pl-btns { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+  .pl-btns span { display: flex; gap: 4px; }
+  .pl-music { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pl-music select { flex: 1; min-width: 200px; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -650,6 +662,11 @@
           <video id="rvVideo" controls style="display:none;width:100%;max-height:60vh;border-radius:12px;background:#000"></video>
           <div id="rvSteps" class="hint"></div>
           <div id="rvAgent"></div>
+          <div id="rvDirty" class="hint" style="display:none;color:#f59e0b">มีการแก้ที่ยังไม่อยู่ในตัวอย่าง · กด "ทำตัวอย่างใหม่"</div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin:8px 0">
+            <button class="small primary" onclick="rePreview()">🔄 ทำตัวอย่างใหม่</button>
+            <button class="small" onclick="plReset()">↺ ให้ระบบเลือกใหม่</button></div>
+          <div id="rvEdit"></div>
           <div class="libs" id="rvLibs"></div>
         </div>
 
@@ -1800,7 +1817,7 @@ function renderGuide(d) {
   const take = id => document.getElementById(id);
   (w.show || []).forEach(id => take(id) && document.getElementById('wzShow').appendChild(take(id)));
   if ((w.show || []).includes('c-overlay')) { ovLoad(); saLoad(); }
-  if ((w.show || []).includes('c-review')) libsLoad();
+  if ((w.show || []).includes('c-review')) { libsLoad(); plLoad(); }
   (w.more || []).forEach(id => take(id) && document.getElementById('wzMore').appendChild(take(id)));
   const moreBox = document.getElementById('wzMoreBox');
   moreBox.style.display = 'none';
@@ -2388,6 +2405,128 @@ async function libsLoad() {
     box.appendChild(row);
   });
 }
+// review list: every b-roll point, the music and the effects the tool put in; change any of them, then re-preview
+let PL = null, PLSUBS = [], PLMUSIC = null;
+const mmss2 = t => Math.floor(t / 60) + ':' + (t % 60).toFixed(1).padStart(4, '0');
+async function plLoad() {
+  const box = document.getElementById('rvEdit');
+  const r = await fetch('/api/video/draft/placed?path=' + encodeURIComponent(state.draft.path)).then(x => x.json()).catch(() => null);
+  if (!r) { box.textContent = '❌ อ่านรายการไม่ได้'; return; }
+  PL = r.placed; PLSUBS = r.subs;
+  if (!PL) { box.innerHTML = '<div class="hint">กด "ทำให้ครบ + ดูตัวอย่าง" ก่อน แล้วรายการภาพประกอบ เพลง และเอฟเฟกต์จะขึ้นที่นี่ให้แก้</div>'; return; }
+  if (!PLMUSIC) PLMUSIC = api('music').then(d => d.music || []).catch(() => []);
+  plDraw();
+}
+async function plSave() {
+  try { await api('draft/placed', {path: state.draft.path, ...PL}); document.getElementById('rvDirty').style.display = ''; }
+  catch (e) { toast('❌ ' + e.message); }
+}
+function plDraw() {
+  const box = document.getElementById('rvEdit');
+  box.innerHTML = '<h4>🖼️ ภาพประกอบ</h4>';
+  PL.broll.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'pl-row';
+    row.innerHTML = `${it.thumb ? `<img src="${it.thumb}">` : '<div class="pl-ph">🎞️</div>'}
+      <div class="pl-mid"><b>${mmss2(it.start)}</b> · ${it.dur.toFixed(1)} วิ
+        <input class="pl-q" placeholder="คำค้นภาษาอังกฤษ"><div class="pl-alt"></div></div>
+      <div class="pl-btns"><button class="small" data-a="find">เปลี่ยนภาพ</button><button class="small" data-a="file">ไฟล์ของเรา</button>
+        <span><button class="small" data-a="-">◀</button><button class="small" data-a="+">▶</button></span>
+        <select data-a="dur">${[1, 1.5, 2, 2.5, 3, 4].map(d => `<option ${Math.abs(d - it.dur) < 0.01 ? 'selected' : ''}>${d}</option>`).join('')}</select>
+        <button class="small del" data-a="del">ลบ</button></div>`;
+    const q = row.querySelector('.pl-q');
+    q.value = it.query || '';
+    q.onchange = () => { it.query = q.value.trim(); plSave(); };
+    row.querySelector('[data-a=del]').onclick = () => { PL.broll.splice(i, 1); plSave(); plDraw(); };
+    row.querySelector('[data-a="-"]').onclick = () => { it.start = Math.max(0, +(it.start - 0.5).toFixed(2)); plSave(); plDraw(); };
+    row.querySelector('[data-a="+"]').onclick = () => { it.start = +(it.start + 0.5).toFixed(2); plSave(); plDraw(); };
+    row.querySelector('[data-a=dur]').onchange = e => { it.dur = +e.target.value; plSave(); plDraw(); };
+    row.querySelector('[data-a=file]').onclick = async () => {
+      const r = await fetch('/api/kit/browse-file', {method: 'POST'}).then(x => x.json());
+      if (!r.path) return;
+      it.file = r.path; it.thumb = ''; it.query = it.query || '(ไฟล์ของเรา)'; plSave(); plDraw();
+    };
+    row.querySelector('[data-a=find]').onclick = async () => {
+      const alt = row.querySelector('.pl-alt');
+      if (!q.value.trim()) { alt.textContent = 'พิมพ์คำค้นก่อน'; return; }
+      alt.innerHTML = '<span class="spin"></span>';
+      try {
+        const r = await api('stock/free-search', {query: q.value.trim(), count: 6});
+        alt.innerHTML = '';
+        r.items.forEach(x => {
+          const im = document.createElement('img');
+          im.src = x.thumb; im.title = x.title;
+          im.onclick = async () => {
+            alt.innerHTML = '<span class="spin"></span> กำลังโหลด…';
+            const d = await api('stock/free-download', {source: x.source, id: x.id, file: x.file});
+            Object.assign(it, {file: d.path, thumb: x.thumb, query: q.value.trim()}); plSave(); plDraw();
+          };
+          alt.appendChild(im);
+        });
+        if (!r.items.length) alt.textContent = 'ไม่เจอ ลองคำอื่น';
+      } catch (e) { alt.textContent = '❌ ' + e.message; }
+    };
+    box.appendChild(row);
+  });
+  const add = document.createElement('div');
+  add.className = 'pl-add';
+  add.innerHTML = `<select><option value="">+ เพิ่มภาพประกอบที่ประโยค…</option>${PLSUBS.map((x, k) =>
+    `<option value="${k}">${mmss2(x.start)} ${x.text.slice(0, 40).replace(/</g, '')}</option>`).join('')}</select>`;
+  add.querySelector('select').onchange = async e => {
+    if (e.target.value === '') return;
+    const sub = PLSUBS[+e.target.value];
+    const r = await fetch('/api/kit/browse-file', {method: 'POST'}).then(x => x.json()).catch(() => ({}));
+    if (!r.path) { e.target.value = ''; toast('เลือกไฟล์ภาพประกอบ หรือเพิ่มแล้วกด "เปลี่ยนภาพ" เพื่อค้นใน Pixabay'); return; }
+    PL.broll.push({start: sub.start, dur: 2, file: r.path, query: '(ไฟล์ของเรา)', thumb: ''});
+    PL.broll.sort((a, b) => a.start - b.start); plSave(); plDraw();
+  };
+  box.appendChild(add);
+
+  const m = document.createElement('div');
+  m.innerHTML = `<h4>🎵 เพลง</h4><div class="pl-music"><select></select><button class="small" data-a="mfile">ไฟล์ของเรา</button>
+    <label class="hint">ดัง <input type="range" min="0" max="0.4" step="0.01"> <span></span></label></div>
+    <audio controls style="width:100%;margin-top:6px"></audio>
+    <h4>🔊 เสียงเอฟเฟกต์</h4><label class="hint"><input type="checkbox"> ใส่เสียง pop ตอนคำเน้น และ whoosh ตอนภาพประกอบเข้า</label>
+    <label class="hint">ดัง <input type="range" min="0" max="2" step="0.1"></label>`;
+  const sel = m.querySelector('select'), au = m.querySelector('audio');
+  const [mvol, svol] = m.querySelectorAll('input[type=range]');
+  const listen = f => { au.src = f ? '/api/kit/media?path=' + encodeURIComponent(f) : ''; };
+  PLMUSIC.then(list => {
+    const opts = [['', '— ไม่มีเพลง —'], ...list.map(x => [x.path, x.name.replace(/\.[^.]+$/, '') + (x.moods.length ? ' · ' + x.moods.join(' ') : '')])];
+    if (PL.music.file && !list.some(x => x.path === PL.music.file)) opts.push([PL.music.file, '(ไฟล์ของเรา) ' + PL.music.file.split(/[\\/]/).pop()]);
+    sel.innerHTML = opts.map(([v, t]) => `<option value="${v.replace(/"/g, '&quot;')}">${t.replace(/</g, '')}</option>`).join('');
+    sel.value = PL.music.file || '';
+    listen(PL.music.file);
+  });
+  sel.onchange = () => { PL.music.file = sel.value; listen(sel.value); plSave(); };
+  m.querySelector('[data-a=mfile]').onclick = async () => {
+    const r = await fetch('/api/kit/browse-file', {method: 'POST'}).then(x => x.json()).catch(() => ({}));
+    if (!r.path) return;
+    PL.music.file = r.path; plSave(); plDraw();
+  };
+  mvol.value = PL.music.volume; m.querySelector('.pl-music span').textContent = Math.round(PL.music.volume * 100) + '%';
+  mvol.oninput = () => { m.querySelector('.pl-music span').textContent = Math.round(mvol.value * 100) + '%'; au.volume = Math.min(1, mvol.value * 4); };
+  mvol.onchange = () => { PL.music.volume = +mvol.value; plSave(); };
+  const fxOn = m.querySelector('input[type=checkbox]');
+  fxOn.checked = PL.sfx.on; fxOn.onchange = () => { PL.sfx.on = fxOn.checked; plSave(); };
+  svol.value = PL.sfx.volume; svol.onchange = () => { PL.sfx.volume = +svol.value; plSave(); };
+  box.appendChild(m);
+}
+async function rePreview() {
+  const busy = document.getElementById('rvBusy'), v = document.getElementById('rvVideo');
+  busy.innerHTML = '<span class="spin"></span> กำลังทำตัวอย่างใหม่… (ราว 40 วินาที)';
+  try {
+    const r = await api('draft/export', {path: state.draft.path, preview: true});
+    v.src = '/api/kit/media?path=' + encodeURIComponent(r.file) + '&t=' + Date.now(); v.style.display = 'block';
+    busy.textContent = '✅ ตัวอย่างใหม่พร้อมแล้ว';
+    document.getElementById('rvDirty').style.display = 'none';
+  } catch (e) { busy.textContent = '❌ ' + e.message; }
+}
+async function plReset() {
+  if (!confirm('ล้างที่แก้ไว้ทั้งหมด แล้วให้ระบบเลือกภาพประกอบและเพลงใหม่?')) return;
+  await api('draft/placed', {path: state.draft.path, broll: [], music: {file: '', volume: 0.12}, sfx: {on: true, volume: 1}, reset: true});
+  await autoRun();
+}
 async function autoRun() {
   const busy = document.getElementById('rvBusy'), v = document.getElementById('rvVideo');
   busy.innerHTML = '<span class="spin"></span> กำลังทำทุกขั้น… (ถอดเสียง ตัด ซับ ภาพประกอบ เพลง เอฟเฟกต์ · ราว 1–3 นาที)';
@@ -2404,6 +2543,7 @@ async function autoRun() {
     document.getElementById('rvAgent').innerHTML = r.punch_picked ? '' :
       agentBox(r.agent_command, 'อยากได้คำเน้นที่ตรงใจความ + ภาพประกอบ ส่งคำสั่งนี้ให้ Claude แล้วกด "ทำให้ครบ" อีกครั้ง');
     renderGuide(state.draft);
+    plLoad();
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 async function saLoad(pick) {

@@ -924,7 +924,65 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         if not out:
             raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
         r = render.render_draft(req.path, str(Path(out) / "exports"), preview=True)
+        placed = Path(req.path) / "clipkit_placed.json"
+        if not placed.is_file():  # what the tool chose becomes the list the editor reviews and changes
+            placed.write_text(json.dumps({"broll": r["broll_items"],
+                                          "music": {"file": r["music_file"], "volume": r["music_volume"]},
+                                          "sfx": {"on": r["sfx_on"], "volume": r["sfx_volume"]}},
+                                         ensure_ascii=False, indent=1), encoding="utf-8")
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail="; ".join(steps + [str(exc)])) from exc
     return {"steps": steps, "preview": r, "trim": t, "agent_command": video_edit.agent_command("punch", req.path),
             "punch_picked": (Path(req.path) / "clipkit_punch.json").is_file()}
+
+
+
+@router.get("/draft/placed")
+def draft_placed(path: str = Query(...)) -> dict[str, Any]:
+    """The b-roll / music / effects list the editor reviews, plus the subtitle lines to add a b-roll at."""
+    f = Path(path) / "clipkit_placed.json"
+    subs = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in capcut_edit.read_draft(path)["subtitles"]]
+    return {"placed": json.loads(f.read_text(encoding="utf-8")) if f.is_file() else None, "subs": subs}
+
+
+class BrollItem(BaseModel):
+    start: float = Field(ge=0)
+    dur: float = Field(gt=0.2, le=10)
+    file: str
+    query: str = ""
+    thumb: str = ""
+
+
+class MusicPick(BaseModel):
+    file: str = ""  # "" = no music
+    volume: float = Field(default=0.12, ge=0, le=1)
+
+
+class SfxPick(BaseModel):
+    on: bool = True
+    volume: float = Field(default=1.0, ge=0, le=2)
+
+
+class PlacedRequest(BaseModel):
+    path: str
+    broll: list[BrollItem]
+    music: MusicPick
+    sfx: SfxPick
+    reset: bool = False  # True = forget the edits, let the tool choose again
+
+
+@router.post("/draft/placed")
+def draft_placed_save(req: PlacedRequest) -> dict[str, Any]:
+    f = Path(req.path) / "clipkit_placed.json"
+    if req.reset:
+        f.unlink(missing_ok=True)
+        return {"placed": None}
+    for it in req.broll:
+        if not Path(it.file).is_file():
+            raise HTTPException(400, f"ไม่พบไฟล์ภาพประกอบ: {it.file}")
+    if req.music.file and not Path(req.music.file).is_file():
+        raise HTTPException(400, f"ไม่พบไฟล์เพลง: {req.music.file}")
+    data = {"broll": [b.model_dump() for b in sorted(req.broll, key=lambda b: b.start)],
+            "music": req.music.model_dump(), "sfx": req.sfx.model_dump()}
+    f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"placed": data}
