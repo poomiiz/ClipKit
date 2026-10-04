@@ -924,6 +924,9 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         if not out:
             raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
         r = render.render_draft(req.path, str(Path(out) / "exports"), preview=True)
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        if not style.get("cover") or not Path(style["cover"]).is_file():
+            steps.append("ทำปกจากชื่อเรื่องแล้ว" if auto_cover(req.path) else "")
         placed = Path(req.path) / "clipkit_placed.json"
         if not placed.is_file():  # what the tool chose becomes the list the editor reviews and changes
             placed.write_text(json.dumps({"broll": r["broll_items"],
@@ -1068,3 +1071,45 @@ def draft_auto_color(req: DraftPath) -> dict[str, Any]:
     style["color"] = color
     f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return {"color": color, "measured_luma": round(y, 3)}
+
+
+
+class LineTime(BaseModel):
+    path: str
+    line: str
+    start: float = Field(ge=0)
+    end: float
+
+
+@router.post("/draft/line-time")
+def draft_line_time(req: LineTime) -> dict[str, Any]:
+    try:
+        return capcut_edit.set_line_time(req.path, req.line, req.start, req.end)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+def auto_cover(path: str) -> str:
+    """A cover from the story title on the frame where the speaker's face is biggest; kept in clipkit_style.json."""
+    import re
+    import kit_settings
+    meta = json.loads((Path(path) / "clipkit.json").read_text(encoding="utf-8")) if (Path(path) / "clipkit.json").is_file() else {}
+    raw = meta.get("raw") or capcut_edit.read_draft(path)["source"]
+    start, end = meta.get("start") or 0, meta.get("end")
+    f = video_edit.find_focus(raw, start, end, frames=8)
+    title = re.sub(r"^.* - \d+ ", "", Path(path).name).strip() or Path(path).name
+    l1, l2 = _split2(title) if len(title) > 14 else (title, "")
+    r = kit_settings.make_cover(kit_settings.CoverRequest(source=raw, at=f.get("best_at", start + 1), l1=l1, l2=l2))
+    sf = Path(path) / "clipkit_style.json"
+    style = json.loads(sf.read_text(encoding="utf-8")) if sf.is_file() else {}
+    style["cover"] = r["file"]
+    sf.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    return r["file"]
+
+
+@router.post("/draft/auto-cover")
+def draft_auto_cover(req: DraftPath) -> dict[str, Any]:
+    try:
+        return {"file": auto_cover(req.path)}
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc

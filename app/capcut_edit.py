@@ -1055,6 +1055,22 @@ def fill_subtitle_gaps(path: str, min_gap: float = 1.0, preview: bool = False,
     return result
 
 
+def set_line_time(path: str, text: str, start: float, end: float) -> dict[str, Any]:
+    """Move / stretch one subtitle line on the timeline (the timeline editor)."""
+    if end - start < 0.3:
+        raise VideoEditError("a subtitle line must last at least 0.3 s")
+    folder = Path(path)
+    draft = _load(folder)
+    index = _index(draft)
+    for seg in (_text_track(draft) or {}).get("segments", []):
+        m = index.get(seg["material_id"], (None, None))[1]
+        if m and json.loads(m["content"]).get("text") == text:
+            seg["target_timerange"] = {"start": int(round(start * US)), "duration": int(round((end - start) * US))}
+            _save(folder, draft, "linetime")
+            return {"start": start, "end": end}
+    raise VideoEditError(f"subtitle line not found: {text}")
+
+
 def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
     """Change one subtitle line's words (the timeline editor). The ClipKit side files keyed by the line text
     (word times, punch picks) are moved to the new text so they stay attached."""
