@@ -104,7 +104,7 @@ def build(path: str) -> Path:
         top = max(top, floor) if grow == "down" else top
         shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
         tops[i] = top
-        els.append(f'<div id="{i}" class="clip txt" data-start="{a:.3f}" data-duration="{max(0.05, b - a):.3f}" data-track-index="3" '
+        els.append(f'<div id="{i}" class="clip txt" data-start="{a:.3f}" data-duration="{max(0.05, b - a - 0.034):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
                    f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;color:{_css_color(fill)};'
                    f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{"<br>".join(html.escape(x) for x in lines)}</div>')
         return i

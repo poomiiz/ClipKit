@@ -32,6 +32,7 @@ import video_editor as ve  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
+sys.stdout.reconfigure(encoding="utf-8")  # Thai titles when the output goes to a file or another program
 
 
 def say(**kw) -> None:

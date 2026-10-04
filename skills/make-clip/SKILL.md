@@ -7,6 +7,23 @@ description: One-request runner for a whole short clip - "ทำคลิปน�
 
 Run from the ClipKit folder. Stop and report `Blocked` with the exact error if any command fails - never skip a step or guess a value.
 
+## One command: "ตัดคลิปนี้" / "ทำคลิปสั้นจากไฟล์นี้" (no ClipKit window needed)
+```
+python scripts/run_clip.py "<video>" [--max 120] [--all] [--insert] [--export]
+```
+It transcribes, splits into stories, makes one project per story (face crop, subtitles, silences trimmed,
+subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the HyperFrames page, and writes
+`<video> - ClipKit.html` with one Envato search link per b-roll spot. Rerunning skips every finished step.
+1. Run it. Output is one JSON line per step.
+2. `{"WAIT": ...}` (exit 2) = a thinking step is yours: do the pasted command(s) below (`แบ่งเรื่อง`, then
+   `เลือกคำเน้น` for each project), keep stories within `--max` seconds, then run the same command again.
+3. Pilot rule: without `--all` only story 1 is built. Send the person the HTML file and wait for their OK
+   before `--all`.
+4. Envato: the person opens the links, downloads into each project's `clipkit_insert` folder (name starts with
+   the link number, e.g. `2 coffee.mp4`), then you run with `--insert`. Never log in to Envato for them.
+5. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
+Needs: `python scripts/doctor.py` all OK, Node (for `npx hyperframes`), `pixabay_key` in config.json (optional).
+
 ## Commands pasted from the ClipKit app
 The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
 
