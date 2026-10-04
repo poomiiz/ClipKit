@@ -1051,26 +1051,48 @@ def draft_look(req: LookRequest) -> dict[str, Any]:
     return {"style": style}
 
 
-@router.post("/draft/auto-color")
-def draft_auto_color(req: DraftPath) -> dict[str, Any]:
-    """A first colour pick from the footage itself: brightness towards a mid level, a little more colour."""
+def auto_color(path: str) -> dict[str, Any]:
+    """A first colour pick from the footage itself, over 6 frames of the clip: white balance (grey-world, 60 %
+    of the way, so warm indoor light stays a little warm), brightness towards a mid level, contrast up when the
+    picture is flat, a little more colour. The temperature slider (warmth) stays the person's."""
     import subprocess as sp
-    d = capcut_edit.read_draft(req.path)
-    src = d["source"]
-    r = sp.run([video_edit.FFMPEG, "-v", "error", "-ss", str(max(1.0, d["duration"] / 2)), "-i", src, "-frames:v", "1",
-                "-vf", "scale=160:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG", "-f", "null", "-"],
-               capture_output=True, text=True, encoding="utf-8", errors="replace")
-    import re
-    m = re.search(r"YAVG=([\d.]+)", r.stderr + r.stdout)
-    if not m:
-        raise HTTPException(500, "อ่านความสว่างของภาพไม่ได้: " + (r.stderr or "")[-200:])
-    y = float(m.group(1)) / 255
-    color = {"brightness": round(max(-0.12, min(0.12, 0.47 - y)) * 0.6, 3), "contrast": 1.05, "saturation": 1.12, "warmth": 0.0}
-    f = Path(req.path) / "clipkit_style.json"
+    import numpy as np
+    d = capcut_edit.read_draft(path)
+    src, info = d["source"], video_edit.probe(d["source"])
+    segs = capcut_edit._video_track(capcut_edit._load(Path(path)))["segments"]
+    a = segs[0]["source_timerange"]["start"] / video_edit.US
+    z = (segs[-1]["source_timerange"]["start"] + segs[-1]["source_timerange"]["duration"]) / video_edit.US
+    px = []
+    for k in range(6):
+        r = sp.run([video_edit.FFMPEG, "-v", "error", "-ss", f"{a + (z - a) * (k + 0.5) / 6:.2f}", "-i", src, "-frames:v", "1",
+                    "-vf", "scale=96:-2", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True)
+        if r.returncode or not r.stdout:
+            raise VideoEditError("อ่านสีของภาพไม่ได้: " + r.stderr.decode("utf-8", "replace")[-200:])
+        px.append(np.frombuffer(r.stdout, np.uint8).reshape(-1, 3) / 255)
+    p = np.concatenate(px)
+    luma = p @ [0.299, 0.587, 0.114]
+    mean = p.mean(0)
+    gains = [round(float(np.clip(1 + (mean.mean() / m - 1) * 0.6, 0.85, 1.15)), 3) for m in mean]
+    spread = float(np.percentile(luma, 95) - np.percentile(luma, 5))
+    y = float(luma.mean())
+    color = {"r": gains[0], "g": gains[1], "b": gains[2],
+             "brightness": round(max(-0.12, min(0.12, 0.47 - y)) * 0.6, 3),
+             "contrast": round(min(1.2, max(1.0, 0.75 / max(spread, 0.1))), 3), "saturation": 1.1, "warmth": 0.0}
+    f = Path(path) / "clipkit_style.json"
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    color["warmth"] = float((style.get("color") or {}).get("warmth", 0))
     style["color"] = color
     f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
-    return {"color": color, "measured_luma": round(y, 3)}
+    return {"color": color, "measured_luma": round(y, 3), "measured_rgb": [round(float(x), 3) for x in mean],
+            "spread": round(spread, 3)}
+
+
+@router.post("/draft/auto-color")
+def draft_auto_color(req: DraftPath) -> dict[str, Any]:
+    try:
+        return auto_color(req.path)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 

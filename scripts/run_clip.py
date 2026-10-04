@@ -63,6 +63,7 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str) -> str:
     capcut_edit.subtitles_language(path, "th")
     capcut_edit.trim_pauses(path)
     (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "zoomcut": True}), encoding="utf-8")
+    ve.auto_color(path)
     return path
 
 

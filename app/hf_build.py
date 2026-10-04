@@ -66,8 +66,14 @@ def build(path: str) -> Path:
     k = min(W, H) / 1080 * render.CAPCUT_PX
     fit = t["fit"]
     c = st.get("color") or {}
-    flt = (f"brightness({1 + float(c.get('brightness', 0)) * 1.6:.3f}) contrast({float(c.get('contrast', 1)):.3f}) "
-           f"saturate({float(c.get('saturation', 1)):.3f}) sepia({max(0.0, float(c.get('warmth', 0))) * 0.8:.3f})") if c else "none"
+    w = float(c.get("warmth", 0))
+    # white balance gains and temperature as one per-channel matrix (SVG), then the CSS tone filters
+    wb = (float(c.get("r", 1)) * (1 + w * 0.5), float(c.get("g", 1)), float(c.get("b", 1)) * (1 - w * 0.5))
+    flt = (f"url(#wb) brightness({1 + float(c.get('brightness', 0)) * 1.6:.3f}) contrast({float(c.get('contrast', 1)):.3f}) "
+           f"saturate({float(c.get('saturation', 1)):.3f})") if c else "none"
+    svg = (f'<svg width="0" height="0" style="position:absolute"><filter id="wb" color-interpolation-filters="sRGB">'
+           f'<feColorMatrix type="matrix" values="{wb[0]:.3f} 0 0 0 0 0 {wb[1]:.3f} 0 0 0 0 0 {wb[2]:.3f} 0 0 0 0 0 1 0"/>'
+           f'</filter></svg>')
     els, anim = [], []
     n = 0
     out = Path(path) / "clipkit_hf"
@@ -182,6 +188,7 @@ html,body{{width:{W}px;height:{H}px;overflow:hidden;background:#000}}
 .txt{{position:absolute;left:5%;width:90%;white-space:nowrap;transform:translateY(-50%);text-align:center;font-family:"ClipKit Thai",sans-serif;
   font-weight:700;line-height:1.25;paint-order:stroke fill;text-shadow:0 3px 8px rgba(0,0,0,.45)}}
 </style></head><body>
+{svg}
 <div id="root" data-composition-id="main" data-start="0" data-duration="{D:.3f}" data-width="{W}" data-height="{H}">
 {chr(10).join(els)}
 </div>
