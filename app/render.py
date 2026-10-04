@@ -102,6 +102,10 @@ def _shown(lead: str, punch: str, opts: dict | None, prev_white: str) -> tuple[s
 # orange or red (any mix: red/white, white/orange, orange/white ...), coloured text outlined white, white outlined black
 HOOK_COLORS = {"white": ([1, 1, 1], [0, 0, 0], 0.05), "orange": ([1, 0.49, 0], [1, 1, 1], 0.06), "red": (RED, [1, 1, 1], 0.06)}
 HOOK_DUR = 4.0
+# skin smoothing like CapCut's "skin" slider (P'Ohm uses 0.6 on Nina 02/08/09): an edge-keeping (bilateral) blur
+# mixed over the footage at that strength
+SKIN_FILTER = "split[sk1][sk2];[sk2]bilateral=sigmaS=8:sigmaR=0.08[sk3];[sk1][sk3]blend=all_opacity={skin:.2f}"
+SKIN_DEFAULT = 0.6
 
 
 def _hook(folder: Path) -> list[dict[str, Any]]:
@@ -337,11 +341,15 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     # subtitle look chosen in the editor: none (still), pop (bounce in), karaoke (the spoken word lights up)
     style = _json(folder / "clipkit_style.json", {})
     # colour: the editor's sliders (or the auto pick) on the footage only, never on text or b-roll
+    skin = float(style.get("skin", 0))
+    if skin > 0:  # smoother skin: an edge-keeping blur mixed in (eyes, hair and text edges stay sharp)
+        graph = graph.replace("[vc]scale=", f"[vc]{SKIN_FILTER.format(skin=skin)}[vk];[vk]scale=", 1)
+    lab = "[vk]" if skin > 0 else "[vc]"
     c = style.get("color") or {}
     if c:
         w = float(c.get("warmth", 0))
         r, g, b = (float(c.get(k, 1)) for k in ("r", "g", "b"))  # white balance gains from the auto pick
-        graph = graph.replace("[vc]scale=", f"[vc]colorchannelmixer=rr={r:.3f}:gg={g:.3f}:bb={b:.3f},"
+        graph = graph.replace(f"{lab}scale=", f"{lab}colorchannelmixer=rr={r:.3f}:gg={g:.3f}:bb={b:.3f},"
                               f"eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
                               f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f},scale=", 1)
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])

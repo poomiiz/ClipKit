@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "app"))
 import capcut_edit  # noqa: E402
 import hf_build  # noqa: E402
 import kit_settings  # noqa: E402
+import render  # noqa: E402
 import video_edit  # noqa: E402
 import video_editor as ve  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -62,7 +63,7 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str) -> str:
     capcut_edit.set_subtitles(path, got["subtitles"])
     capcut_edit.subtitles_language(path, "th")
     capcut_edit.trim_pauses(path)
-    (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "zoomcut": True}), encoding="utf-8")
+    (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
     ve.auto_color(path)
     return path
 

@@ -916,6 +916,7 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
         style.setdefault("anim", req.look)
         style.setdefault("zoomcut", True)
+        style.setdefault("skin", render.SKIN_DEFAULT)
         f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
         b = broll_fill(req.path)
         steps.append(f"ภาพประกอบ {len(b['broll'])} จุด" if b["queries"] else "ภาพประกอบ: ยังไม่ได้ให้ Claude เลือกคำค้น")
