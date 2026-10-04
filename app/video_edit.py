@@ -425,7 +425,7 @@ def find_focus(path: str, start: float = 0.0, end: float | None = None, frames: 
     info = probe(path)
     end = min(end or info["duration"], info["duration"])
     det = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    xs, ys = [], []
+    xs, ys, best = [], [], (0, start)
     with tempfile.TemporaryDirectory() as tmp:
         for k in range(frames):
             t = start + (end - start) * (k + 0.5) / frames
@@ -438,12 +438,13 @@ def find_focus(path: str, start: float = 0.0, end: float | None = None, frames: 
             faces = det.detectMultiScale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 1.1, 6, minSize=(40, 40))
             if len(faces):
                 x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+                best = max(best, (w * h, t))
                 xs.append((x + w / 2) / img.shape[1])
                 ys.append((y + h / 2) / img.shape[0])
     if not xs:
         return {"found": False, "x": 0.5, "y": 0.5, "frames": frames}
     return {"found": True, "x": round(statistics.median(xs), 3), "y": round(statistics.median(ys), 3),
-            "faces": len(xs), "frames": frames}
+            "faces": len(xs), "frames": frames, "best_at": round(best[1], 2)}
 
 
 def create_capcut_draft(video_path: str, project_name: str,
