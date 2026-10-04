@@ -889,3 +889,42 @@ def draft_broll_remove(req: BrollRemove) -> dict[str, Any]:
     chosen.pop(req.query, None)
     f.write_text(json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"broll": chosen}
+
+
+class AutoRequest(BaseModel):
+    path: str
+    look: str = Field(default="pair", pattern="^(pair|pair-nina|karaoke|pop|none)$")
+
+
+@router.post("/draft/auto")
+def draft_auto(req: AutoRequest) -> dict[str, Any]:
+    """Every step in one go, ending in a quick preview for a person to review before the real export:
+    subtitles (if none yet) -> silence trimmed -> subtitle look + zoom cut -> b-roll (where the agent asked)
+    -> music + sound effects -> half-size preview MP4."""
+    import kit_settings
+    import render
+    steps = []
+    try:
+        if not capcut_edit.read_draft(req.path)["subtitles"]:
+            got = capcut_edit.transcribe_draft(req.path)
+            capcut_edit.set_subtitles(req.path, got["subtitles"])
+            capcut_edit.subtitles_language(req.path, "th")
+            steps.append(f"ถอดเสียงใส่ซับ {got['count']} บรรทัด")
+        t = capcut_edit.trim_pauses(req.path)
+        steps.append("ตัดช่วงเงียบแล้ว")
+        f = Path(req.path) / "clipkit_style.json"
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        style.setdefault("anim", req.look)
+        style.setdefault("zoomcut", True)
+        f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+        b = broll_fill(req.path)
+        steps.append(f"ภาพประกอบ {len(b['broll'])} จุด" if b["queries"] else "ภาพประกอบ: ยังไม่ได้ให้ Claude เลือกคำค้น")
+        cfg = kit_settings._read_config()
+        out = cfg.get("output_dir") or cfg.get("work_root")
+        if not out:
+            raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
+        r = render.render_draft(req.path, str(Path(out) / "exports"), preview=True)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail="; ".join(steps + [str(exc)])) from exc
+    return {"steps": steps, "preview": r, "trim": t, "agent_command": video_edit.agent_command("punch", req.path),
+            "punch_picked": (Path(req.path) / "clipkit_punch.json").is_file()}
