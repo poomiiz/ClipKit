@@ -233,7 +233,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
                      f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}]")
         labels.append(f"[v{i}][a{i}]")
     graph = ";".join(parts) + ";" + "".join(labels) + f"concat=n={len(segs)}:v=1:a=1[vc][ac];" + \
-        f"[vc]scale={vw}:{vh}[vs];color=black:s={W}x{H}[bg];[bg][vs]overlay={ox}:{oy}:shortest=1[vo]"
+        f"[vc]scale={vw}:{vh}[vs];color=black:s={W}x{H}:r={info.get("fps") or 30}[bg];[bg][vs]overlay={ox}:{oy}:shortest=1[vo]"
 
     # subtitles: one ASS event per line, positioned and tilted like the CapCut segment
     events, font_files, family = [], set(), None
@@ -298,9 +298,11 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
             # jump-cut feel without new footage: every other subtitle line plays punched in (112%), a hard cut each time
             beats = sorted((s["target_timerange"]["start"] / US, (s["target_timerange"]["start"] + s["target_timerange"]["duration"]) / US)
                            for s in (text or {}).get("segments", []))
-            zin = "+".join(f"between(it,{a:.3f},{b:.3f})" for a, b in beats[1::2]) or "0"
-            graph += (f";[vo]zoompan=z='if({zin},1.12,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-                      f":d=1:s={W}x{H}:fps={info.get('fps') or 30}[vz]")
+            zin = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in beats[1::2]) or "0"
+            # a zoomed copy laid over the plain one only during those lines (zoompan dropped frames: 60 s -> 25 s)
+            zw, zh = round(W * 1.12 / 2) * 2, round(H * 1.12 / 2) * 2
+            graph += (f";[vo]split[zp][zq];[zq]scale={zw}:{zh},crop={W}:{H}[zz];"
+                      f"[zp][zz]overlay=0:0:enable='{zin}'[vz]")
             base = "[vz]"
         if events:
             fam0 = family or _font(None)[0]
