@@ -1163,8 +1163,12 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     args = [npx, "--yes", f"hyperframes@{kit_settings.HF_VERSION}", "render", "--quiet", "--sdr", "--workers", "4", "-o", str(target)]  # SDR: social clips; HDR pre-extraction needs ~20 GB temp
     if req.preview:
         args += ["--quality", "draft"]
+    tmp = Path(out) / "exports" / ".render-tmp"  # frames go next to the exports, not onto a nearly full C: drive
+    tmp.mkdir(parents=True, exist_ok=True)
     r = subprocess.run(args, cwd=str(page.parent), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env={**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}, timeout=3600)
+                       env={**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1", "TEMP": str(tmp), "TMP": str(tmp)},
+                       timeout=3600)
+    shutil.rmtree(tmp, ignore_errors=True)
     if r.returncode != 0 or not target.is_file():
         raise HTTPException(500, "render failed: " + (r.stderr or r.stdout).strip()[-800:])
     return {"file": str(target), "seconds": round(_t.time() - t0, 1)}
