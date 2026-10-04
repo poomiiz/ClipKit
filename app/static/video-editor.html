@@ -408,7 +408,7 @@
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
   .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
   .proj { cursor: pointer; }
-  .proj .th { position: relative; aspect-ratio: 9/16; border-radius: 12px; background: #1b2030 center/cover; border: 1px solid #262d40;
+  .proj .th { position: relative; aspect-ratio: 1/1; border-radius: 12px; background: #1b2030 center/cover; border: 1px solid #262d40;
     display: grid; place-items: center; font-size: 28px; overflow: hidden; transition: border-color .15s; }
   .proj:hover .th { border-color: #7c5cff; }
   .proj .th img { width: 100%; height: 100%; object-fit: cover; }
@@ -494,6 +494,9 @@
   .free-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .free-item { display: flex; flex-direction: column; gap: 4px; }
   .free-item video { width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 10px; background: #000; }
+  .proj-head { flex-wrap: wrap; row-gap: 8px; }
+  .proj-head > b { white-space: nowrap; }
+  #projCount { white-space: nowrap; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -636,6 +639,16 @@
       <!-- Column 1: Subtitles & Visuals -->
       <div class="tool-column">
         
+        <!-- Review: the quick preview of everything the tool did, before the real export -->
+        <div class="tool-card" id="c-review">
+          <div class="tc-head"><div class="icon">👀</div><div class="titles">
+            <h3>รีวิวก่อนส่งออก</h3><p>ดูตัวอย่างให้ครบทั้งคลิป ถ้าต้องแก้ ไปแท็บนั้นแล้วกด "ทำให้ครบ" ใหม่</p></div></div>
+          <div id="rvBusy" class="busy"></div>
+          <video id="rvVideo" controls style="display:none;width:100%;max-height:60vh;border-radius:12px;background:#000"></video>
+          <div id="rvSteps" class="hint"></div>
+          <div id="rvAgent"></div>
+        </div>
+
         <!-- How subtitles move in the MP4 export -->
         <div class="tool-card" id="c-subanim">
           <div class="tc-head"><div class="icon">✨</div><div class="titles">
@@ -1741,8 +1754,9 @@ const WZ = [
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
   {key: 'cover', label: '🏷️ ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
    main: [['🖼️ ทำปก', () => { const src = (state.draft.sources || [])[0] || ''; location.href = '/cover.html?src=' + encodeURIComponent(src) + '&l1=' + encodeURIComponent(state.draft.name); }]]},
-  {key: 'export', label: '📤 ส่งออก', help: 'ส่งออก MP4 จาก ClipKit ได้เลย (ตัด + ซับตามที่ปรับไว้) · อยากเกลาเพิ่ม เปิดใน CapCut แล้วกด Ctrl+E ที่นั่น',
-   main: [['🎬 ส่งออก MP4', async () => {
+  {key: 'export', label: '📤 ส่งออก', help: 'กด "ทำให้ครบ" ระบบทำทุกขั้นแล้วได้ตัวอย่างให้ดู · ผ่านแล้วกด "ส่งออกตัวจริง" · อยากเกลาเพิ่ม เปิดใน CapCut',
+   show: ['c-review'],
+   main: [['⚡ ทำให้ครบ + ดูตัวอย่าง', () => autoRun()], ['🎬 ส่งออกตัวจริง', async () => {
      draftSays('<span class="spin"></span> กำลังส่งออก MP4… (คลิป 1–2 นาที ราว 1 นาที)', '');
      try { const r = await api('draft/export', {path: state.draft.path});
        draftSays('✅ ได้ไฟล์แล้ว: ' + r.file + (r.skipped_tracks ? ` · ⚠️ ข้าม ${r.skipped_tracks} แทร็กที่เพิ่มใน CapCut (ภาพประกอบ/เพลง) รอบนี้ยังไม่รวม` : ''), 'ok');
@@ -1928,18 +1942,14 @@ async function makeChosen(kind) {
       else if (single) await makeDraft(true);
       else if (kind === 'clipkit') {   // several stories: subtitles + MP4 without stopping at the workbench
         const d = await makeDraft(false);
-        say('ถอดเสียงใส่ซับ');
-        const got = await api('draft/transcribe', {path: d.path});
-        await api('draft/subs', {path: d.path, subs: got.subtitles});
-        await api('draft/subs-lang', {path: d.path, lang: 'th'});
-        say('ส่งออก MP4');
-        const mp4 = await api('draft/export', {path: d.path});
-        made.push(mp4.file);
+        say('ทำทุกขั้น (ซับ ตัด ภาพประกอบ เพลง) แล้วทำตัวอย่าง');
+        const r = await api('draft/auto', {path: d.path});
+        made.push(r.preview.file);
       } else await makeDraft(false);
       done.push(i + 1);
     }
     if (list.length > 1) out.textContent = made.length
-      ? `✅ ได้ MP4 ${made.length} ไฟล์ (เรื่อง ${done.join(', ')}) · อยู่ที่ ${made[0].replace(/[\\/][^\\/]*$/, '')}`
+      ? `✅ ได้ตัวอย่าง ${made.length} เรื่อง (เรื่อง ${done.join(', ')}) รอรีวิว · เปิดแต่ละโปรเจกต์จากแถบซ้าย แท็บ 📤 ส่งออก ดูแล้วกดส่งออกตัวจริง`
       : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
@@ -2348,6 +2358,25 @@ async function punchAsk() {
       ? `Claude เลือกคำเน้นครบ ${r.lines} บรรทัดแล้ว · กดส่งออก MP4 ได้เลย (ส่งคำสั่งซ้ำได้ถ้าแก้ซับ)`
       : `ส่งคำสั่งนี้ให้ Claude ในแชต (เลือกแล้ว ${r.picked}/${r.lines} บรรทัด) · บรรทัดที่ยังไม่ได้เลือก ระบบเน้นคำท้ายช่วงให้แทน`);
   } catch (e) { box.textContent = '❌ ' + e.message; }
+}
+// one button: subtitles, trim, look, zoom cut, b-roll, music, effects -> a preview to review
+async function autoRun() {
+  const busy = document.getElementById('rvBusy'), v = document.getElementById('rvVideo');
+  busy.innerHTML = '<span class="spin"></span> กำลังทำทุกขั้น… (ถอดเสียง ตัด ซับ ภาพประกอบ เพลง เอฟเฟกต์ · ราว 1–3 นาที)';
+  v.style.display = 'none';
+  try {
+    const r = await api('draft/auto', {path: state.draft.path});
+    busy.textContent = '✅ ตัวอย่างพร้อมแล้ว · ดูให้จบก่อนกด "ส่งออกตัวจริง"';
+    v.src = '/api/kit/media?path=' + encodeURIComponent(r.preview.file) + '&t=' + Date.now();
+    v.style.display = 'block';
+    const p = r.preview;
+    document.getElementById('rvSteps').textContent = [...r.steps, `ซับ ${p.subtitles} บรรทัด`,
+      `ภาพประกอบที่ใส่: ${p.broll.length ? p.broll.join(', ') : 'ไม่มี'}`, `เพลง: ${p.music || 'ไม่มี'}`,
+      `เสียงเอฟเฟกต์ ${p.sfx} จุด`, p.karaoke_estimated ? `⚠️ ${p.karaoke_estimated} บรรทัดไม่มีเวลาของคำ` : ''].filter(Boolean).join(' · ');
+    document.getElementById('rvAgent').innerHTML = r.punch_picked ? '' :
+      agentBox(r.agent_command, 'อยากได้คำเน้นที่ตรงใจความ + ภาพประกอบ ส่งคำสั่งนี้ให้ Claude แล้วกด "ทำให้ครบ" อีกครั้ง');
+    renderGuide(state.draft);
+  } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 async function saLoad(pick) {
   const p = state.draft.path;
