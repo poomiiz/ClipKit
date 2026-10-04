@@ -76,7 +76,7 @@ def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl
             a = at(pos / total) * 1000
             pos += len(tok)
             b = max(a + 80, at(pos / total) * 1000)
-            out.append(f"{{\\t({a:.0f},{a + 1:.0f},\\1c{hl})\\t({b:.0f},{b + 1:.0f},\\1c{base})}}{tok}" if tok.strip() else tok)
+            out.append(f"{{\\1c{base}\\t({a:.0f},{a + 1:.0f},\\1c{hl})\\t({b:.0f},{b + 1:.0f},\\1c{base})}}{tok}" if tok.strip() else tok)
         if li < len(lines) - 1:
             out.append("\\N")
     return "".join(out)
