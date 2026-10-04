@@ -343,8 +343,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     # colour: the editor's sliders (or the auto pick) on the footage only, never on text or b-roll
     skin = float(style.get("skin", 0))
     if skin > 0:  # smoother skin: an edge-keeping blur mixed in (eyes, hair and text edges stay sharp)
-        graph = graph.replace("[vc]scale=", f"[vc]{SKIN_FILTER.format(skin=skin)}[vk];[vk]scale=", 1)
-    lab = "[vk]" if skin > 0 else "[vc]"
+        graph = graph.replace("[vs];color=", f",{SKIN_FILTER.format(skin=skin)}[vs];color=", 1)  # after the size-down
+    lab = "[vc]"
     c = style.get("color") or {}
     if c:
         w = float(c.get("warmth", 0))

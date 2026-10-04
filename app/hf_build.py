@@ -33,7 +33,7 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
     live player shows it: made once per cut list and skin strength."""
     import hashlib
     import subprocess
-    key = hashlib.md5(json.dumps([[(s["media_start"], s["dur"]) for s in segs], round(skin, 2)]).encode()).hexdigest()[:10]
+    key = hashlib.md5(json.dumps([[(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, 2]).encode()).hexdigest()[:10]
     dst = out / "media" / f"footage_{key}.mp4"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
@@ -46,8 +46,8 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
         parts = "".join(f"[0:v]trim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},setpts=PTS-STARTPTS[v{i}];"
                         f"[0:a]atrim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},asetpts=PTS-STARTPTS[a{i}];"
                         for i, s in enumerate(segs))
-        graph = parts + "".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[cv][ca];" + \
-            (f"[cv]{render.SKIN_FILTER.format(skin=skin)}[ck];[ck]" if skin > 0 else "[cv]") + "scale='min(1920,iw)':-2[sv]"
+        graph = parts + "".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[cv][ca];[cv]scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))'" + \
+            (f",{render.SKIN_FILTER.format(skin=skin)}" if skin > 0 else "") + "[sv]"  # smoothing after the size-down: 4x less work
         r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
                             "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
                             "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
