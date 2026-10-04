@@ -7,6 +7,7 @@
 - Used by ClipKit:
   - `app/static/hyperframes-player.js` — the `<hyperframes-player>` web component, copied unchanged from
     `hyperframes/dist/hyperframes-player.global.js`.
+  - `app/hyperframe.runtime.iife.js` — the HyperFrames runtime, copied unchanged from `hyperframes/dist/`.
   - The `hyperframes` command line (installed from npm at run time) renders the editor's compositions to MP4.
 - ClipKit is not affiliated with HeyGen; "HyperFrames" and "HeyGen" are their names, not ClipKit's.
 

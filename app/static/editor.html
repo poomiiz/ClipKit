@@ -18,7 +18,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .top h1{font-size:16px;margin:0 8px 0 0;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,420px);gap:14px;padding:14px 16px;min-height:0}
 .player{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;background:#05070c;border-radius:14px;position:relative}
-.player video{max-width:100%;max-height:100%;border-radius:10px}
+.player hyperframes-player{border-radius:10px;overflow:hidden}
 .player .empty{color:var(--mut);text-align:center;padding:30px}
 .side{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:auto;min-height:0}
 .side h3{margin:0 0 8px;font-size:15px}.side h4{margin:16px 0 6px;font-size:13.5px;color:var(--sub)}
@@ -70,15 +70,14 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
     <button onclick="location.href='/video-editor.html'">‹</button>
     <h1 id="title">กำลังโหลด…</h1>
     <button class="pri" id="bAuto" title="ถอดเสียง ตัดเงียบ ซับ ภาพประกอบ เพลง เอฟเฟกต์ ให้ครบในครั้งเดียว">⚡ ทำให้ครบ</button>
-    <button id="bPrev" title="ทำวิดีโอตัวอย่างจากที่แก้ไว้">🔄 อัปเดตตัวอย่าง</button>
     <button id="bCover">🏷️ ปก</button>
     <button id="bExport" class="pri">🎬 ส่งออก</button>
     <button id="bCapcut" title="เกลาต่อในแอป CapCut">CapCut</button>
     <span class="busy" id="busy"></span>
   </div>
   <div class="mid">
-    <div class="player" id="player"><div class="empty" id="empty">ยังไม่มีตัวอย่าง<br>กด "⚡ ทำให้ครบ" ระบบจะทำให้ทุกขั้นแล้วขึ้นวิดีโอที่นี่</div>
-      <video id="v" controls style="display:none"></video></div>
+    <div class="player" id="player"><div class="empty" id="empty">กำลังเตรียมตัวเล่น…</div>
+      <hyperframes-player id="v" controls style="display:none;width:100%;height:100%"></hyperframes-player></div>
     <div class="side" id="side"></div>
   </div>
   <div class="tl">
@@ -110,17 +109,24 @@ async function load() {
   $('title').textContent = T.name;
   document.title = T.name + ' · ตัดต่อ';
   PL = {broll: T.broll.map(b => ({...b})), music: {...T.music}, sfx: {...T.sfx}};
-  if (T.preview_file) { setVideo(T.preview_file); }
   drawTL(); side();
+  live();
 }
-function setVideo(f) {
-  const v = $('v');
-  v.src = '/api/kit/media?path=' + encodeURIComponent(f) + '&t=' + Date.now();
-  v.style.display = 'block'; $('empty').style.display = 'none';
+let building = null, again = false;
+async function live() {
+  if (building) { again = true; return; }
+  const v = $('v'), at = v.currentTime || 0;
+  building = api('draft/hf-build', {path: PATH}).then(r => {
+    v.setAttribute('src', r.url + '?t=' + Date.now());
+    v.style.display = 'block'; $('empty').style.display = 'none';
+    v.addEventListener('ready', () => { try { v.seek(at); } catch {} }, {once: true});
+  }).catch(e => { $('empty').style.display = ''; $('empty').textContent = '❌ ' + e.message; })
+    .finally(() => { building = null; if (again) { again = false; live(); } });
+  return building;
 }
 // one save for b-roll / music / effects (the export follows this list exactly)
 async function savePL() {
-  try { await api('draft/placed', {path: PATH, ...PL, broll: PL.broll.filter(b => b.file)}); say('มีการแก้ · กด 🔄 อัปเดตตัวอย่าง'); }
+  try { await api('draft/placed', {path: PATH, ...PL, broll: PL.broll.filter(b => b.file)}); say(''); live(); }
   catch (e) { say('❌ ' + e.message); }
 }
 
@@ -198,17 +204,17 @@ function dragLine(d, p) {
       if (!d._moved) return;
       const start = resize ? sub.start : Math.max(0, +(sub.start + dt).toFixed(2));
       const end = resize ? Math.max(sub.start + 0.3, +(sub.end + dt).toFixed(2)) : +(sub.end + (start - sub.start)).toFixed(2);
-      try { await api('draft/line-time', {path: PATH, line: p.line, start, end}); await reload(); say('ย้ายซับแล้ว · กด 🔄 อัปเดตตัวอย่าง'); }
+      try { await api('draft/line-time', {path: PATH, line: p.line, start, end}); await reload(); say(''); }
       catch (err) { say('❌ ' + err.message); drawTL(); }
       setTimeout(() => d._moved = false, 0);
     };
     d.addEventListener('pointermove', move); d.addEventListener('pointerup', up);
   });
 }
-function seek(t) { const v = $('v'); if (v.src) v.currentTime = Math.max(0, t); placePH(t); }
+function seek(t) { const v = $('v'); try { v.seek(Math.max(0, t)); } catch {} placePH(t); }
 function placePH(t) { const p = $('ph'); if (p) p.style.left = t * PX + 'px'; $('tc').textContent = mm(t) + ' / ' + mm(T.duration).replace(/\.\d$/, ''); }
 function tick() { placePH($('v').currentTime || 0); }
-$('v').addEventListener('timeupdate', tick);
+(function loop() { if (T) tick(); requestAnimationFrame(loop); })();
 $('zoom').oninput = e => { PX = +e.target.value; drawTL(); };
 
 // ── right panel: the selected piece, or the whole clip's settings ──
@@ -241,13 +247,13 @@ function sideClip(s) {
     <div class="row"><label><input type="checkbox" id="fx" ${PL.sfx.on ? 'checked' : ''}> pop ตอนคำเน้น · whoosh ตอนภาพประกอบ</label></div>
     <div class="row"><label>ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>`;
   s.querySelectorAll('.look').forEach(b => b.onclick = async () => { await api('draft/look', {path: PATH, style: {anim: b.dataset.k}}); await reload(); });
-  $('zc').onchange = async e => { await api('draft/look', {path: PATH, style: {zoomcut: e.target.checked}}); T.style.zoomcut = e.target.checked; say('มีการแก้ · กด 🔄 อัปเดตตัวอย่าง'); };
+  $('zc').onchange = async e => { await api('draft/look', {path: PATH, style: {zoomcut: e.target.checked}}); T.style.zoomcut = e.target.checked; live(); };
   s.querySelectorAll('[data-c]').forEach(r => r.onchange = async () => {
     const color = {}; s.querySelectorAll('[data-c]').forEach(x => color[x.dataset.c] = +x.value);
-    await api('draft/look', {path: PATH, style: {color}}); T.style.color = color; say('มีการแก้ · กด 🔄 อัปเดตตัวอย่าง');
+    await api('draft/look', {path: PATH, style: {color}}); T.style.color = color; live();
   });
-  $('autoC').onclick = async () => { const r = await api('draft/auto-color', {path: PATH}); T.style.color = r.color; side(); say('ปรับสีอัตโนมัติแล้ว · กด 🔄 อัปเดตตัวอย่าง'); };
-  $('resetC').onclick = async () => { await api('draft/look', {path: PATH, style: {color: null}}); T.style.color = null; side(); say('มีการแก้ · กด 🔄 อัปเดตตัวอย่าง'); };
+  $('autoC').onclick = async () => { const r = await api('draft/auto-color', {path: PATH}); T.style.color = r.color; side(); live(); };
+  $('resetC').onclick = async () => { await api('draft/look', {path: PATH, style: {color: null}}); T.style.color = null; side(); live(); };
   $('cAuto').onclick = () => run(null, 'กำลังทำปก… (ราว 30 วิ)', async () => { const r = await api('draft/auto-cover', {path: PATH}); T.style.cover = r.file; side(); say('✅ ทำปกแล้ว: ' + esc(r.file)); });
   $('cEdit').onclick = () => { location.href = '/cover.html?' + new URLSearchParams({src: T.source || '', l1: T.name.replace(/^.* - \d+ /, '')}); };
   $('cp').onclick = () => navigator.clipboard.writeText(T.agent_command).then(() => $('cp').textContent = '✓ คัดลอกแล้ว');
@@ -267,12 +273,12 @@ function sidePhrase(s, p) {
   $('ps').onclick = async () => {
     const pairs = line.map(x => x === p ? [$('pl').value.trim(), $('pp').value.trim(), $('pq').value.trim()] : [x.lead, x.punch, x.query || ''])
       .map(a => a[2] ? a : a.slice(0, 2));
-    try { await api('draft/phrases', {path: PATH, line: p.line, pairs}); await reload(); say('บันทึกแล้ว · กด 🔄 อัปเดตตัวอย่าง'); }
+    try { await api('draft/phrases', {path: PATH, line: p.line, pairs}); await reload(); say('บันทึกแล้ว'); }
     catch (e) { say('❌ ' + e.message); }
   };
   $('pm').onclick = async () => {
     say('<span class="spin"></span> กำลังทำข้อความใหญ่… (ราว 30 วิ)');
-    try { await api('draft/overlay', {path: PATH, template: 'hook-title', start: p.start, end: p.end, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว · กด 🔄 อัปเดตตัวอย่าง'); }
+    try { await api('draft/overlay', {path: PATH, template: 'hook-title', start: p.start, end: p.end, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว'); }
     catch (e) { say('❌ ' + e.message); }
   };
 }
@@ -353,14 +359,11 @@ async function run(btn, text, fn) {
   document.querySelectorAll('.top button').forEach(b => b.disabled = false);
 }
 $('bAuto').onclick = () => run($('bAuto'), 'กำลังทำทุกขั้น… (1–3 นาที)', async () => {
-  const r = await api('draft/auto', {path: PATH}); setVideo(r.preview.file); await load(); say('✅ ' + r.steps.join(' · ') + ' · ดูตัวอย่าง แล้วแก้บนไทม์ไลน์ได้');
+  const r = await api('draft/auto', {path: PATH}); await load(); say('✅ ' + r.steps.filter(Boolean).join(' · ') + ' · แก้บนไทม์ไลน์ได้เลย เห็นผลทันที');
 });
-$('bPrev').onclick = () => run($('bPrev'), 'กำลังทำตัวอย่าง… (ราว 40 วิ)', async () => {
-  if (PL.broll.some(b => !b.file)) throw new Error('มีภาพประกอบที่ยังไม่ได้เลือกไฟล์');
-  const r = await api('draft/export', {path: PATH, preview: true}); setVideo(r.file); say('✅ ตัวอย่างอัปเดตแล้ว');
-});
+
 $('bExport').onclick = () => run($('bExport'), 'กำลังส่งออกตัวจริง…', async () => {
-  const r = await api('draft/export', {path: PATH}); say('✅ ได้ไฟล์แล้ว: ' + esc(r.file));
+  const r = await api('draft/hf-export', {path: PATH}); say('✅ ได้ไฟล์แล้ว (' + r.seconds + ' วิ): ' + esc(r.file));
 });
 $('bCapcut').onclick = () => fetch('/api/kit/draft-open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: PATH})});
 $('bCover').onclick = () => { SEL = null; drawTL(); side(); $('coverH').scrollIntoView({behavior: 'smooth'}); };
@@ -374,6 +377,7 @@ document.addEventListener('keydown', e => {
 });
 if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(e => say('❌ ' + e.message));
 </script>
+<script src="/hyperframes-player.js"></script>
 <script src="/shell.js?v=6"></script>
 </body>
 </html>
