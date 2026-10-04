@@ -260,7 +260,7 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
         raise HTTPException(400, f"colour must look like #ff7d00: {bad}")
     cover = json.dumps({"l1": body.l1, "l2": body.l2, "bg": "preview-bg.jpg",
                         "c1": body.c1, "s1": body.s1, "c2": body.c2, "s2": body.s2, "font": body.font}, ensure_ascii=False)
-    page, n = re.subn(r"const COVER = \{.*?\};", lambda _: f"const COVER = {cover};", page, count=1)
+    page, n = re.subn(r"const COVER = \{.*?\};", lambda _: f"const COVER = {cover};", page, count=1, flags=re.S)  # COVER spans several lines in the template
     if not n:
         raise HTTPException(500, "template has no COVER line")
     (work / "index.html").write_text(page, encoding="utf-8")
@@ -452,7 +452,7 @@ def frame(source: str, at: float = 0.0):
 
 VIDEO_TYPES = {".mov": "video/quicktime", ".mp4": "video/mp4", ".m4v": "video/mp4", ".mkv": "video/x-matroska",
                ".webm": "video/webm", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
-               ".aac": "audio/aac", ".flac": "audio/flac"}  # audio too: music is auditioned on the review tab
+               ".aac": "audio/aac", ".flac": "audio/flac", ".png": "image/png", ".jpg": "image/jpeg"}  # audio too: music is auditioned on the review tab
 
 
 @router.get("/media")
