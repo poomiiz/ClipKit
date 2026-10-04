@@ -745,7 +745,7 @@ def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
 
 class SubAnimRequest(BaseModel):
     path: str
-    anim: str = Field(pattern="^(none|pop|karaoke)$")
+    anim: str = Field(pattern="^(none|pop|karaoke|pair|pair-nina)$")
 
 
 @router.post("/draft/sub-anim")

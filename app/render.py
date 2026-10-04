@@ -53,6 +53,90 @@ def _json(path: Path, empty: Any) -> Any:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else empty
 
 
+def _clock(spoken: list | None, length: float):
+    """Seconds into the line at a fraction of its text: from the heard words' times, else evenly by letters."""
+    if not spoken:
+        return lambda f: f * length
+    marks, n, acc = [], sum(len(w) for _, _, w in spoken) or 1, 0
+    for a, _, w in spoken:
+        marks.append((acc / n, a))
+        acc += len(w)
+    marks.append((1.0, spoken[-1][1]))
+    return lambda f: next((t for p, t in reversed(marks) if p <= f), 0.0)
+
+
+# the sentence-pair look measured from P'Ohm's own CapCut edits (BPS3 01/07, Nina 02/08): each spoken phrase
+# becomes a short white lead line plus a bigger coloured punch line; Nina adds a small full caption at the bottom
+PAIR = {
+    "bps": {"lead": (25, -0.37, [1, 1, 1], [0, 0, 0], 0.03), "punch": (30, -0.50, [0.02, 0.07, 0.57], [1, 1, 1], 0.08),
+            "caption": None},
+    "nina": {"lead": (25, -0.29, [1, 1, 1], [0, 0, 0], 0.05), "punch": (30, -0.44, [1, 0.49, 0], [0, 0, 0], 0.06),
+             "caption": (8, -0.80, [1, 1, 1], [0, 0, 0], 0.08)},
+}
+
+
+JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน"}
+
+
+def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
+          preset: str, max_chars: int = 16) -> list[str]:
+    """Split a spoken line into phrases of about two seconds (where the speaker breathes, or at ~16 letters),
+    each shown as lead + punch; the punch is the phrase's last words, the part that lands."""
+    from pythainlp.tokenize import word_tokenize
+    look = PAIR[preset]
+    toks = word_tokenize(text.replace("\n", " "), keep_whitespace=True)
+    at, total = _clock(spoken, t1 - t0), len(text) or 1
+    timed, pos = [], 0
+    for tok in toks:
+        timed.append((tok, t0 + at(pos / total)))
+        pos += len(tok)
+    chunks, cur = [], []
+    for k, (tok, t) in enumerate(timed):
+        gap = k and tok.strip() and t - timed[k - 1][1] > 0.6
+        joiner = tok.strip() in JOINERS and sum(len(x) for x, _ in cur) >= 6  # a new thought starts here
+        if cur and (gap or joiner or sum(len(x) for x, _ in cur) >= max_chars):
+            chunks.append(cur)
+            cur = []
+        cur.append((tok, t))
+    if cur:
+        chunks.append(cur)
+    k = min(W, H) / 1080 * CAPCUT_PX
+
+    def line(words: str, part: tuple, a: float, b: float, extra: str = "") -> str:
+        size, y, fill, stroke, width = part
+        px = size * k
+        lines, px = _fit(words, font_file, px, W * 0.9)
+        return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{H / 2 - y * H / 2:.0f})\\fn{fam}"
+                f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
+                f"\\shad2{extra}}}" + "\\N".join(lines))
+
+    out = []
+    for n, ch in enumerate(chunks):
+        a = ch[0][1]
+        # stays until the next phrase, but not through a long pause after its last word
+        b = min(chunks[n + 1][0][1] if n + 1 < len(chunks) else t1, ch[-1][1] + 1.5)
+        words = [x for x, _ in ch]
+        real = [i for i, w in enumerate(words) if w.strip()]
+        if not real:
+            continue
+        # punch = trailing words worth ~40% of the letters (at least one word); lead = the rest
+        cut, acc, size = real[-1], 0, sum(len(w) for w in words)
+        for i in reversed(real):
+            acc += len(words[i])
+            cut = i
+            if acc >= size * 0.4:
+                break
+        lead, punch = "".join(words[:cut]).strip(), "".join(words[cut:]).strip()
+        hit = min(b - 0.05, max(a + 0.2, ch[cut][1]))  # the punch lands when it is said
+        if lead:
+            out.append(line(lead, look["lead"], a, b, "\\fad(80,0)"))
+        out.append(line(punch, look["punch"], hit if lead else a, b,
+                        "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)"))
+        if look["caption"]:
+            out.append(line("".join(words).strip(), look["caption"], a, b))
+    return out
+
+
 def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl: str) -> list[tuple[float, float, str]]:
     """The whole line shows; the word being said turns the highlight colour, then back.
     Returned as back-to-back pieces (start, end, text in seconds from the line start), one per word, each with
@@ -61,16 +145,7 @@ def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl
     heard ones (fixed typos, English terms), so they are matched by position in the text, not by spelling."""
     from pythainlp.tokenize import word_tokenize
     total = sum(len(t) for t in lines) or 1
-    if spoken:  # time at a fraction of the heard text, from the heard words' own lengths
-        marks, n = [], sum(len(w) for _, _, w in spoken) or 1
-        acc = 0
-        for a, b, w in spoken:
-            marks.append((acc / n, a))
-            acc += len(w)
-        marks.append((1.0, spoken[-1][1]))
-        at = lambda f: next((t for p, t in reversed(marks) if p <= f), 0.0)  # noqa: E731
-    else:
-        at = lambda f: f * length  # noqa: E731
+    at = _clock(spoken, length)
     toks, pos = [], 0  # (line no, text, start, end)
     for li, line in enumerate(lines):
         for tok in word_tokenize(line, keep_whitespace=True):
@@ -175,6 +250,12 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         y = H / 2 - s["clip"]["transform"]["y"] * H / 2
         t0 = s["target_timerange"]["start"] / US
         t1 = t0 + s["target_timerange"]["duration"] / US
+        if anim in ("pair", "pair-nina"):
+            spoken = said.get(body.get("text", ""))
+            estimated += spoken is None
+            events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir, "nina" if anim == "pair-nina" else "bps")
+            shown += 1
+            continue
         lines, size = _fit(body.get("text", ""), fdir, size, W * 0.9)
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
@@ -230,5 +311,5 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
     return {"file": str(target), "subtitles": shown, "motions": len(ins) // 2, "sub_anim": anim,
-            "karaoke_estimated": estimated if anim == "karaoke" else 0, "pieces": len(segs), "skipped_tracks": skipped,
+            "karaoke_estimated": estimated, "pieces": len(segs), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}
