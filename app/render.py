@@ -336,7 +336,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     c = style.get("color") or {}
     if c:
         w = float(c.get("warmth", 0))
-        graph = graph.replace("[vc]scale=", f"[vc]eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
+        r, g, b = (float(c.get(k, 1)) for k in ("r", "g", "b"))  # white balance gains from the auto pick
+        graph = graph.replace("[vc]scale=", f"[vc]colorchannelmixer=rr={r:.3f}:gg={g:.3f}:bb={b:.3f},"
+                              f"eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
                               f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f},scale=", 1)
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     said = _json(folder / "clipkit_words.json", {})
