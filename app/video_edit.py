@@ -323,13 +323,16 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
             try:
                 segments, _ = model.transcribe(
                     str(chunk), language=language, vad_filter=False,
-                    beam_size=5, condition_on_previous_text=False)
+                    beam_size=5, condition_on_previous_text=False, word_timestamps=True)
                 for seg in segments:
                     text = seg.text.strip()
                     if text:
+                        # word times drive the word-by-word subtitle highlight in the MP4 export
+                        words = [[round(offset + w.start, 2), round(offset + w.end, 2), w.word]
+                                 for w in (seg.words or []) if w.word.strip()]
                         phrases.append({"start": round(offset + seg.start, 2),
                                         "end": round(offset + seg.end, 2),
-                                        "text": text})
+                                        "text": text, "words": words})
             finally:
                 chunk.unlink(missing_ok=True)
             offset += window - 1.0

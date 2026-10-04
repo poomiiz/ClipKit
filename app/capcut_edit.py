@@ -537,6 +537,7 @@ def transcribe_draft(path: str) -> dict[str, Any]:
         raise VideoEditError(f"source video not found: {source}")
 
     lines: list[dict[str, Any]] = []
+    words: dict[str, list[list[Any]]] = {}
     cursor = 0.0
     for segment in _video_track(draft)["segments"]:
         start = segment["source_timerange"]["start"] / US
@@ -545,7 +546,12 @@ def transcribe_draft(path: str) -> dict[str, Any]:
             lines.append({"start": round(cursor + phrase["start"], 2),
                           "end": round(cursor + phrase["end"], 2),
                           "text": phrase["text"]})
+            # word times relative to the line start, keyed by the line: they stay right after trims move the line
+            words[phrase["text"]] = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
+                                     for a, b, w in phrase.get("words", [])]
         cursor += length
+    # spoken word times per subtitle line, for the word-by-word highlight in the MP4 export
+    (folder / "clipkit_words.json").write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
 
     lines.sort(key=lambda p: p["start"])
     for first, second in zip(lines, lines[1:]):
