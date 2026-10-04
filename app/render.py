@@ -53,8 +53,10 @@ def _json(path: Path, empty: Any) -> Any:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else empty
 
 
-def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl: str) -> str:
+def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl: str) -> list[tuple[float, float, str]]:
     """The whole line shows; the word being said turns the highlight colour, then back.
+    Returned as back-to-back pieces (start, end, text in seconds from the line start), one per word, each with
+    plain colour switches: libass chains two \\t colour changes on one word wrongly (unsaid words lit up).
     Word times come from the speech model (relative to the line start); the shown words can differ from the
     heard ones (fixed typos, English terms), so they are matched by position in the text, not by spelling."""
     from pythainlp.tokenize import word_tokenize
@@ -69,17 +71,30 @@ def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl
         at = lambda f: next((t for p, t in reversed(marks) if p <= f), 0.0)  # noqa: E731
     else:
         at = lambda f: f * length  # noqa: E731
-    out, pos = [], 0
+    toks, pos = [], 0  # (line no, text, start, end)
     for li, line in enumerate(lines):
-        toks = word_tokenize(line, keep_whitespace=True)
-        for tok in toks:
-            a = at(pos / total) * 1000
+        for tok in word_tokenize(line, keep_whitespace=True):
+            a = at(pos / total)
             pos += len(tok)
-            b = max(a + 80, at(pos / total) * 1000)
-            out.append(f"{{\\1c{base}\\t({a:.0f},{a + 1:.0f},\\1c{hl})\\t({b:.0f},{b + 1:.0f},\\1c{base})}}{tok}" if tok.strip() else tok)
-        if li < len(lines) - 1:
-            out.append("\\N")
-    return "".join(out)
+            toks.append((li, tok, a, max(a + 0.08, at(pos / total))))
+
+    def text(lit: int) -> str:
+        parts = []
+        for k, (li, tok, _, _) in enumerate(toks):
+            if k and li != toks[k - 1][0]:
+                parts.append("\\N")
+            parts.append(f"{{\\1c{hl}}}{tok}{{\\1c{base}}}" if k == lit and tok.strip() else tok)
+        return "".join(parts)
+
+    words = [k for k, t in enumerate(toks) if t[1].strip()]
+    if not words:
+        return [(0.0, length, text(-1))]
+    out = [(0.0, toks[words[0]][2], text(-1))]
+    for n, k in enumerate(words):
+        end = toks[words[n + 1]][2] if n + 1 < len(words) else toks[k][3]
+        out.append((toks[k][2], end, text(k)))
+    out.append((toks[words[-1]][3], length, text(-1)))
+    return [(a, min(b, length), t) for a, b, t in out if min(b, length) - a > 0.005]
 
 
 def _ass_color(rgb: list[float]) -> str:
@@ -137,6 +152,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
     style = _json(folder / "clipkit_style.json", {})
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     said = _json(folder / "clipkit_words.json", {})
+    shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
@@ -163,13 +179,16 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
-            words = _karaoke(lines, spoken, t1 - t0, _ass_color(fill), _ass_color(highlight))
+            pieces = [(t0 + a, t0 + b, w) for a, b, w in
+                      _karaoke(lines, spoken, t1 - t0, _ass_color(fill), _ass_color(highlight))]
         else:
-            words = "\\N".join(lines)
+            pieces = [(t0, t1, "\\N".join(lines))]
+        shown += 1
         pop = "\\fscx70\\fscy70\\t(0,120,\\fscx108\\fscy108)\\t(120,200,\\fscx100\\fscy100)" if anim == "pop" else ""
-        events.append(f"Dialogue: 0,{_ts(t0)},{_ts(t1)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
-                      f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
-                      f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}{pop}}}{words}")
+        for a, b, words in pieces:
+            events.append(f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
+                          f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
+                          f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}{pop}}}{words}")
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -210,6 +229,6 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
-    return {"file": str(target), "subtitles": len(events), "motions": len(ins) // 2, "sub_anim": anim,
+    return {"file": str(target), "subtitles": shown, "motions": len(ins) // 2, "sub_anim": anim,
             "karaoke_estimated": estimated if anim == "karaoke" else 0, "pieces": len(segs), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}
