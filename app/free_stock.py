@@ -1,5 +1,5 @@
-"""Free stock video from Pexels and Pixabay (both: free for commercial use, no credit needed).
-Each needs its own free API key in config.json: pexels_key, pixabay_key (Settings > เครื่องนี้).
+"""Free stock video from Pixabay (free for commercial use, no credit needed).
+Needs a free API key in config.json: pixabay_key (Settings > เครื่องนี้).
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 
 from video_edit import VideoEditError
 
-SIGNUP = {"pexels": "https://www.pexels.com/api/new/", "pixabay": "https://pixabay.com/api/docs/"}
+SIGNUP = {"pixabay": "https://pixabay.com/api/docs/"}
 
 
 def _get(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -31,38 +31,25 @@ def _pick(files: list[dict[str, Any]], want_h: int = 1920) -> dict[str, Any] | N
 
 
 def search(cfg: dict[str, Any], query: str, count: int = 6, portrait: bool = True) -> dict[str, Any]:
-    """Hits from every source that has a key; a source without a key is reported, never skipped silently."""
-    items: list[dict[str, Any]] = []
-    missing = [s for s in ("pexels", "pixabay") if not cfg.get(f"{s}_key")]
-    if len(missing) == 2:
-        raise VideoEditError("ยังไม่ได้ใส่รหัส Pexels / Pixabay — ไปที่ ตั้งค่า > เครื่องนี้ (สมัครฟรี)")
-    errors = []
-    if cfg.get("pexels_key"):
-        try:
-            q = urllib.parse.urlencode({"query": query, "per_page": count, "orientation": "portrait" if portrait else "landscape"})
-            for v in _get(f"https://api.pexels.com/videos/search?{q}", {"Authorization": cfg["pexels_key"]}).get("videos", []):
-                f = _pick([{"link": x.get("link"), "width": x.get("width"), "height": x.get("height")} for x in v.get("video_files", [])])
-                if f:
-                    items.append({"source": "pexels", "id": str(v["id"]), "title": (v.get("user") or {}).get("name", "Pexels"),
-                                  "thumb": v.get("image"), "url": v.get("url"), "file": f["link"],
-                                  "duration": v.get("duration"), "width": f["width"], "height": f["height"]})
-        except Exception as exc:  # one source down must not hide the other's hits, but it is reported
-            errors.append(f"Pexels: {exc}")
-    if cfg.get("pixabay_key"):
-        try:
-            q = urllib.parse.urlencode({"key": cfg["pixabay_key"], "q": query, "per_page": max(3, count), "safesearch": "true"})
-            for v in _get(f"https://pixabay.com/api/videos/?{q}").get("hits", []):
-                vids = v.get("videos") or {}
-                f = _pick([{"link": x.get("url"), "width": x.get("width"), "height": x.get("height")} for x in vids.values()])
-                if f:
-                    items.append({"source": "pixabay", "id": str(v["id"]), "title": v.get("tags", "Pixabay"),
-                                  "thumb": (vids.get("tiny") or {}).get("thumbnail") or "", "url": v.get("pageURL"),
-                                  "file": f["link"], "duration": v.get("duration"), "width": f["width"], "height": f["height"]})
-        except Exception as exc:
-            errors.append(f"Pixabay: {exc}")
-    if errors and not items:
-        raise VideoEditError("ค้นภาพฟรีไม่ได้: " + " · ".join(errors))
-    return {"items": items, "missing_keys": missing, "errors": errors, "signup": {s: SIGNUP[s] for s in missing}}
+    """Pixabay video hits for a search (portrait first when asked)."""
+    if not cfg.get("pixabay_key"):
+        raise VideoEditError("ยังไม่ได้ใส่รหัส Pixabay — ไปที่ ตั้งค่า > เครื่องนี้ (สมัครฟรี)")
+    q = urllib.parse.urlencode({"key": cfg["pixabay_key"], "q": query, "per_page": max(3, count * 2), "safesearch": "true"})
+    try:
+        hits = _get(f"https://pixabay.com/api/videos/?{q}").get("hits", [])
+    except Exception as exc:
+        raise VideoEditError(f"ค้นใน Pixabay ไม่ได้: {exc}") from exc
+    items = []
+    for v in hits:
+        vids = v.get("videos") or {}
+        f = _pick([{"link": x.get("url"), "width": x.get("width"), "height": x.get("height")} for x in vids.values()])
+        if f:
+            items.append({"source": "pixabay", "id": str(v["id"]), "title": v.get("tags", "Pixabay"),
+                          "thumb": (vids.get("tiny") or {}).get("thumbnail") or "", "url": v.get("pageURL"),
+                          "file": f["link"], "duration": v.get("duration"), "width": f["width"], "height": f["height"]})
+    if portrait:  # Pixabay has no portrait filter: tall clips first, wide ones get cropped
+        items.sort(key=lambda x: (x["height"] or 0) <= (x["width"] or 0))
+    return {"items": items[:count], "missing_keys": [], "errors": []}
 
 
 def download(folder: str, source: str, item_id: str, file_url: str) -> str:
@@ -70,8 +57,8 @@ def download(folder: str, source: str, item_id: str, file_url: str) -> str:
     if source not in SIGNUP or not item_id.isdigit():
         raise VideoEditError("unknown free stock item")
     host = urllib.parse.urlparse(file_url).hostname or ""
-    if not host.endswith(("pexels.com", "pixabay.com")):
-        raise VideoEditError(f"not a Pexels/Pixabay file: {host}")
+    if not host.endswith("pixabay.com"):
+        raise VideoEditError(f"not a Pixabay file: {host}")
     out = Path(folder) / "free"
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{source}-{item_id}.mp4"

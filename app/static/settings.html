@@ -78,9 +78,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   <div class="card" data-tab="machine">
     <h2>ตัวเลือก</h2>
     <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ (เร็ว)</option><option value="cpu">CPU (ช้า ใช้เมื่อไม่มีการ์ดจอ)</option></select></div>
-    <div class="row"><label>ภาพประกอบจาก</label><select id="o_stock_source"><option value="free">Pexels + Pixabay (ฟรี)</option><option value="envato">Envato (บัญชีบริษัท)</option></select></div>
-    <div class="row"><label>รหัส Pexels</label><input id="o_pexels_key" placeholder="วางรหัสที่ได้ตอนสมัคร" style="flex:1">
-      <button class="ghost" onclick="window.open('https://www.pexels.com/api/new/','_blank')">ขอรหัสฟรี</button></div>
+    <div class="row"><label>ภาพประกอบจาก</label><select id="o_stock_source"><option value="free">Pixabay (ฟรี)</option><option value="envato">Envato (บัญชีบริษัท)</option></select></div>
     <div class="row"><label>รหัส Pixabay</label><input id="o_pixabay_key" placeholder="วางรหัสที่ได้ตอนสมัคร" style="flex:1">
       <button class="ghost" onclick="window.open('https://pixabay.com/api/docs/','_blank')">ขอรหัสฟรี</button></div>
     <div class="row"><button class="ghost" id="bStockTest">ทดสอบรหัส</button><span class="msg" id="mStock"></span></div>
@@ -163,7 +161,7 @@ async function startJob(path, btn, msgId, logId, busyText) {
 
 async function loadConfig() {
   const c = await api('config');
-  for (const k of ['envato_backend', 'whisper_device', 'stock_source', 'pexels_key', 'pixabay_key']) if (c.options[k]) $('o_' + k).value = c.options[k];
+  for (const k of ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key']) if (c.options[k]) $('o_' + k).value = c.options[k];
   $('ws').value = c.options.workspace || '';
   renderTree(c.folders);
   if (!c.exists) say('mSave', 'ยังไม่มีไฟล์ตั้งค่า — ตรวจค่าแล้วกดบันทึก', false);
@@ -176,12 +174,12 @@ $('bStockTest').onclick = async () => {
     const r = await fetch('/api/video/stock/free-search', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({query: 'office', count: 2})}).then(async x => { const j = await x.json(); if (!x.ok) throw new Error(j.detail); return j; });
     const got = s => r.items.filter(i => i.source === s).length;
-    say('mStock', ['pexels', 'pixabay'].map(s => r.missing_keys.includes(s) ? `${s}: ยังไม่ใส่รหัส` : got(s) ? `${s}: ✅ ใช้ได้` : `${s}: ❌ ${(r.errors.find(e => e.toLowerCase().startsWith(s)) || 'ไม่เจอผลลัพธ์')}`).join(' · '), !r.errors.length);
+    say('mStock', r.items.length ? '✅ ใช้ได้ (เจอ ' + r.items.length + ' คลิป)' : '❌ รหัสใช้ได้แต่ไม่เจอผลลัพธ์', !!r.items.length);
   } catch (e) { say('mStock', '❌ ' + e.message, false); }
 };
 async function saveConfig() {
   const values = {};
-  ['envato_backend', 'whisper_device', 'stock_source', 'pexels_key', 'pixabay_key'].forEach(k => values[k] = $('o_' + k).value.trim());
+  ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key'].forEach(k => values[k] = $('o_' + k).value.trim());
   try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
   catch (e) { say('mSave', '❌ ' + e.message, false); }
 }

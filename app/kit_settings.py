@@ -23,7 +23,7 @@ EXAMPLE = KIT / "config.example.json"
 # keys the settings page may edit; everything else in config.json is kept untouched
 FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx", "output_dir", "models_dir"]
 TEXT_KEYS = ["card_font", "envato_backend", "whisper_device", "whisper_model", "bot_api_url", "workspace",
-             "stock_source", "pexels_key", "pixabay_key"]
+             "stock_source", "pixabay_key"]
 # standard layout under one workspace folder: every machine in the team looks the same
 WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stock_music": "stock\\music",
                     "sfx": "sfx", "output_dir": "output", "models_dir": "models"}
