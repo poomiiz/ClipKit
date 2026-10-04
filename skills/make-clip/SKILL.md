@@ -79,7 +79,10 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    orange/white, one big red word...) - pick by the content: red for a warning or shock, orange for the promise.
    From P'Ohm's Nina titles: "ธุรกิจสมัยนี้ / ไม่ต้องแย่งทำเลอีกแล้ว", "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้",
    "เงิน 5 แสนก็ไม่เอา!", "Burn out".
-6. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
+6. Nina look (`pair-nina`) only: write `<folder>/clipkit_caption_en.json` as `{"<line text>": "<English>"}` for
+   every line - short natural English for the small bottom caption, as in P'Ohm's Nina clips ("If I want to
+   start my own business from scratch, let's say..."). Brand names and terms stay as they are.
+7. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 
 ### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
 Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on P'Ohm's machine.

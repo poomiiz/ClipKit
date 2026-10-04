@@ -148,7 +148,10 @@ def main() -> int:
                 state[key] = make_project(raw, n, st, a.shape, a.look)
                 state_f.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
             path = state[key]
-            if not all((Path(path) / f).is_file() for f in ("clipkit_punch.json", "clipkit_hook.json")):
+            need = ["clipkit_punch.json", "clipkit_hook.json"]
+            if json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8")).get("anim") == "pair-nina":
+                need.append("clipkit_caption_en.json")  # the Nina look's small English caption
+            if not all((Path(path) / f).is_file() for f in need):
                 waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
                 continue
             if a.insert:

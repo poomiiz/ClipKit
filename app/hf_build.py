@@ -127,6 +127,15 @@ def build(path: str) -> Path:
     if look in ("pair", "pair-nina"):
         P = render.PAIR["nina" if look == "pair-nina" else "bps"]
         held = ""
+        en = t.get("caption_en") or {}
+        if P["caption"] and en:  # Nina's small English caption: one per spoken line, also under the title
+            lines_at: dict[str, list[float]] = {}
+            for p in t["phrases"]:
+                s = lines_at.setdefault(p["line"], [p["start"], p["end"]])
+                s[1] = max(s[1], p["end"])
+            for line, (a, b) in lines_at.items():
+                if en.get(line):
+                    text(en[line], *P["caption"], a, b)
         for p in t["phrases"]:
             a, b = p["start"], p["end"]
             white, colour, rgb = render._shown(p["lead"], p["punch"], p.get("opts"), held)
@@ -143,7 +152,7 @@ def build(path: str) -> Path:
                 part = P["punch"] if rgb is None else P["punch"][:2] + (rgb,) + P["punch"][3:]
                 i = text(colour, *part, hit, b, "down", tops.get(lead_id, 0) + 8, one=bool(white))
                 anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
-            if P["caption"]:
+            if P["caption"] and not en:
                 text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b)
     else:
         for p in t["phrases"]:

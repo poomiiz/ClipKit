@@ -209,8 +209,12 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         if colour:
             part = look["punch"] if rgb is None else look["punch"][:2] + (rgb,) + look["punch"][3:]
             out.append(line(colour, part, hit if white else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(white)))
-        if look["caption"]:
+        if look["caption"] and not held.get("en"):
             out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
+    # Nina's small bottom caption is English, one per spoken line (clipkit_caption_en.json, written by the agent)
+    en = (held.get("en") or {}).get(text)
+    if look["caption"] and en and phrases:  # shown under the title too, as in Nina 07
+        out.append(line(en, look["caption"], phrases[0][2], t1))
     return out
 
 
@@ -347,7 +351,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     hook = _hook(folder)
-    held = {"white": "", "until": HOOK_DUR if hook else 0}
+    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption_en.json", {})}
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
@@ -490,7 +494,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
-                    "hook": hook,
+                    "hook": hook, "caption_en": held["en"],
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
