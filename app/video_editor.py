@@ -756,14 +756,30 @@ def draft_sub_anim(req: SubAnimRequest) -> dict[str, Any]:
     style["anim"] = req.anim
     f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
     words = Path(req.path) / "clipkit_words.json"
-    return {"anim": req.anim, "has_word_times": words.is_file()}
+    return {"anim": req.anim, "zoomcut": bool(style.get("zoomcut")), "has_word_times": words.is_file()}
 
 
 @router.get("/draft/sub-anim")
 def draft_sub_anim_get(path: str = Query(...)) -> dict[str, Any]:
     f = Path(path) / "clipkit_style.json"
-    return {"anim": (json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}).get("anim", "none"),
+    style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    return {"anim": style.get("anim", "none"), "zoomcut": bool(style.get("zoomcut")),
             "has_word_times": (Path(path) / "clipkit_words.json").is_file()}
+
+
+class ZoomCut(BaseModel):
+    path: str
+    on: bool
+
+
+@router.post("/draft/zoomcut")
+def draft_zoomcut(req: ZoomCut) -> dict[str, Any]:
+    """Every other subtitle line punched in (an editing effect for the MP4 export)."""
+    f = Path(req.path) / "clipkit_style.json"
+    style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    style["zoomcut"] = req.on
+    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    return {"zoomcut": req.on}
 
 
 @router.post("/draft/punch-request")

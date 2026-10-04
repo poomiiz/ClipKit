@@ -293,6 +293,15 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{folder.name}.mp4"
     with tempfile.TemporaryDirectory() as tmp:
+        base = "[vo]"
+        if style.get("zoomcut"):
+            # jump-cut feel without new footage: every other subtitle line plays punched in (112%), a hard cut each time
+            beats = sorted((s["target_timerange"]["start"] / US, (s["target_timerange"]["start"] + s["target_timerange"]["duration"]) / US)
+                           for s in (text or {}).get("segments", []))
+            zin = "+".join(f"between(it,{a:.3f},{b:.3f})" for a, b in beats[1::2]) or "0"
+            graph += (f";[vo]zoompan=z='if({zin},1.12,1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                      f":d=1:s={W}x{H}:fps={info.get('fps') or 30}[vz]")
+            base = "[vz]"
         if events:
             fam0 = family or _font(None)[0]
             (Path(tmp) / "subs.ass").write_text(
@@ -308,10 +317,10 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
             fd.mkdir()
             for f in font_files | {DEFAULT_FONT}:
                 shutil.copy2(f, fd / f.name)
-            graph += ";[vo]ass=subs.ass:fontsdir=fonts[vf]"
+            graph += f";{base}ass=subs.ass:fontsdir=fonts[vf]"
             vout = "[vf]"
         else:
-            vout = "[vo]"
+            vout = base
         # motion clips (transparent MOV) on top, each from its own moment; scaled to the canvas height
         ins = []
         for k, o in enumerate(overlays):
