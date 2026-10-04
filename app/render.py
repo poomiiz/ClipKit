@@ -394,18 +394,17 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
             graph += f";{vout}scale=trunc(iw/4)*2:-2[pv]"
             vout = "[pv]"
 
-        # sound: music bed that ducks under the voice, a pop on each punch, a whoosh as b-roll comes in
+        # sound: a quiet music bed, a pop on each punch, a whoosh as b-roll comes in
         length = sum(s["target_timerange"]["duration"] for s in segs) / US
         mix, music_file = ["[voice]"], _music(style)
         graph += ";[ac]asplit=2[voice][key]"
         if music_file:
             n = add("-stream_loop", "-1", "-i", music_file)
-            graph += (f";[{n}:a]atrim=0:{length:.3f},volume={style.get('music_volume', 0.35)},"
-                      f"afade=t=out:st={max(0, length - 1.5):.3f}:d=1.5[mus];"
-                      f"[mus][key]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[duck]")
-            mix.append("[duck]")
-        else:
-            graph += ";[key]anullsink"
+            # one low steady level under the voice (P'Ohm: no pumping up and down)
+            graph += (f";[{n}:a]atrim=0:{length:.3f},volume={style.get('music_volume', 0.12)},"
+                      f"afade=t=out:st={max(0, length - 1.5):.3f}:d=1.5[mus]")
+            mix.append("[mus]")
+        graph += ";[key]anullsink"
         sfx = [("pop", m[1]) for m in marks if m[0] == "pop"] + [("whoosh", a - 0.15) for a, _ in used_b]
         if style.get("sfx", True):
             for k, (kind, t) in enumerate(sfx):
