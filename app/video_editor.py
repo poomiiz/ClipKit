@@ -986,3 +986,85 @@ def draft_placed_save(req: PlacedRequest) -> dict[str, Any]:
             "music": req.music.model_dump(), "sfx": req.sfx.model_dump()}
     f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"placed": data}
+
+
+@router.get("/draft/timeline")
+def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
+    """Everything the export will put on screen and in the sound, as tracks for the timeline editor."""
+    import render
+    try:
+        t = render.render_draft(path, "", dry=True)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    d = capcut_edit.read_draft(path)
+    t["subs"] = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in d["subtitles"]]
+    t["name"], t["source"] = d["name"], d["source"]
+    import kit_settings
+    cfg = kit_settings._read_config()
+    out = cfg.get("output_dir") or cfg.get("work_root") or ""
+    pv = Path(out) / "exports" / f"{d['name']} - ตัวอย่าง.mp4"
+    t["preview_file"] = str(pv) if out and pv.is_file() else ""
+    meta = Path(path) / "clipkit.json"
+    t["via"] = json.loads(meta.read_text(encoding="utf-8")).get("via", "capcut") if meta.is_file() else "capcut"
+    t["agent_command"] = video_edit.agent_command("punch", path)
+    t["punch_picked"] = (Path(path) / "clipkit_punch.json").is_file()
+    return t
+
+
+class PhraseEdit(BaseModel):
+    path: str
+    line: str                  # the subtitle line this phrase belongs to (current text)
+    pairs: list[list[str]]     # every phrase of that line after the edit: [lead, punch] or [lead, punch, query]
+
+
+@router.post("/draft/phrases")
+def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
+    """Save the editor's split / words / b-roll search for one subtitle line. New words also change the line."""
+    folder = Path(req.path)
+    new = "".join(p[0] + p[1] for p in req.pairs)
+    if "".join(new.split()) != "".join(req.line.split()):
+        capcut_edit.set_line_text(req.path, req.line, " ".join((p[0] + " " + p[1]).strip() for p in req.pairs))
+        line = " ".join((p[0] + " " + p[1]).strip() for p in req.pairs)
+    else:
+        line = req.line
+    f = folder / "clipkit_punch.json"
+    data = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    data[line] = req.pairs
+    f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"line": line}
+
+
+class LookRequest(BaseModel):
+    path: str
+    style: dict[str, Any]   # merged into clipkit_style.json (anim, zoomcut, color, ...)
+
+
+@router.post("/draft/look")
+def draft_look(req: LookRequest) -> dict[str, Any]:
+    f = Path(req.path) / "clipkit_style.json"
+    style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    style.update(req.style)
+    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    return {"style": style}
+
+
+@router.post("/draft/auto-color")
+def draft_auto_color(req: DraftPath) -> dict[str, Any]:
+    """A first colour pick from the footage itself: brightness towards a mid level, a little more colour."""
+    import subprocess as sp
+    d = capcut_edit.read_draft(req.path)
+    src = d["source"]
+    r = sp.run([video_edit.FFMPEG, "-v", "error", "-ss", str(max(1.0, d["duration"] / 2)), "-i", src, "-frames:v", "1",
+                "-vf", "scale=160:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG", "-f", "null", "-"],
+               capture_output=True, text=True, encoding="utf-8", errors="replace")
+    import re
+    m = re.search(r"YAVG=([\d.]+)", r.stderr + r.stdout)
+    if not m:
+        raise HTTPException(500, "อ่านความสว่างของภาพไม่ได้: " + (r.stderr or "")[-200:])
+    y = float(m.group(1)) / 255
+    color = {"brightness": round(max(-0.12, min(0.12, 0.47 - y)) * 0.6, 3), "contrast": 1.05, "saturation": 1.12, "warmth": 0.0}
+    f = Path(req.path) / "clipkit_style.json"
+    style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    style["color"] = color
+    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    return {"color": color, "measured_luma": round(y, 3)}

@@ -144,7 +144,8 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         b = min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, last + 1.5)
         # the punch lands when it is said, but never leaves the lead alone on screen for long (slow talkers)
         hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
-        if marks is not None:  # moments for sound effects and b-roll
+        if marks is not None:  # moments for sound effects, b-roll, and the editor's timeline
+            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query))
             if punch:
                 marks.append(("pop", hit if lead else a))
             if query:
@@ -233,7 +234,7 @@ def _music(style: dict[str, Any]) -> str | None:
     return str(tracks[0]) if tracks else None
 
 
-def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, Any]:
+def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False) -> dict[str, Any]:
     folder = Path(path)
     draft = capcut_edit._load(folder)
     index = capcut_edit._index(draft)
@@ -276,6 +277,12 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
     overlays = json.loads(olist.read_text(encoding="utf-8")) if olist.is_file() else []
     # subtitle look chosen in the editor: none (still), pop (bounce in), karaoke (the spoken word lights up)
     style = _json(folder / "clipkit_style.json", {})
+    # colour: the editor's sliders (or the auto pick) on the footage only, never on text or b-roll
+    c = style.get("color") or {}
+    if c:
+        w = float(c.get("warmth", 0))
+        graph = graph.replace("[vc]scale=", f"[vc]eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
+                              f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f},scale=", 1)
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     said = _json(folder / "clipkit_words.json", {})
     punches = _json(folder / "clipkit_punch.json", {})  # punch words picked by the agent (ClipKit: เลือกคำเน้น)
@@ -310,6 +317,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
                             "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")), marks=marks)
             shown += 1
             continue
+        marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
         lines, size = _fit(body.get("text", ""), fdir, size, W * 0.9)
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
@@ -406,6 +414,13 @@ def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, An
             raise VideoEditError(f"music file missing: {music_file}")
         music_vol = mus.get("volume", 0.12) if mus is not None else style.get("music_volume", 0.12)
         fx = (placed or {}).get("sfx", {"on": style.get("sfx", True), "volume": 1.0})
+        if dry:  # what the export would contain, for the timeline editor; nothing is encoded
+            length = sum(s["target_timerange"]["duration"] for s in segs) / US
+            return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
+                    "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
+                                 "query": m[7]} for m in marks if m[0] == "phrase"],
+                    "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
+                    "sfx": fx, "edited": placed is not None}
         graph += ";[ac]asplit=2[voice][key]"
         if music_file:
             n = add("-stream_loop", "-1", "-i", music_file)
