@@ -71,7 +71,7 @@ def queries(path: str) -> list[str]:
     seen = []
     for pairs in json.loads(p.read_text(encoding="utf-8")).values():
         for x in pairs:
-            if len(x) > 2 and x[2] and x[2] not in seen:
+            if len(x) > 2 and isinstance(x[2], str) and x[2] and x[2] not in seen:
                 seen.append(x[2])
     return seen
 

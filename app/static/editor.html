@@ -266,13 +266,17 @@ function sidePhrase(s, p) {
     <div class="hint">ประโยค: ${esc(p.line)}</div>
     <div class="row"><label>ตัวขาว</label><input id="pl" style="flex:1"></div>
     <div class="row"><label>คำเน้น</label><input id="pp" style="flex:1"></div>
+    <div class="row"><label>แบบ</label><select id="po" style="flex:1">
+      <option value="pair">ขาว + สี</option><option value="white">ขาวอย่างเดียว</option><option value="color">สีอย่างเดียว</option>
+      <option value="red">ขาว + แดง (จุดแรงสุด)</option><option value="hold">ขาวค้างจากท่อนก่อน + สี (ลิสต์)</option><option value="skip">ไม่ขึ้นซับ</option></select></div>
     <div class="row"><label>หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
     <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นข้อความใหญ่กลางจอ</button></div>
     <div class="hint">แก้คำได้เลย (แก้ในซับด้วย) · ย้ายคำระหว่างตัวขาวกับคำเน้นได้ · ใส่คำค้นแล้วบันทึก ระบบหาภาพประกอบให้ตอน "ทำให้ครบ" หรือกดหาเองในแถบภาพประกอบ</div>`;
-  $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || '';
+  $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || ''; $('po').value = (p.opts || {}).look || 'pair';
   $('ps').onclick = async () => {
-    const pairs = line.map(x => x === p ? [$('pl').value.trim(), $('pp').value.trim(), $('pq').value.trim()] : [x.lead, x.punch, x.query || ''])
-      .map(a => a[2] ? a : a.slice(0, 2));
+    const opts = {...(p.opts || {}), look: $('po').value};
+    const pairs = line.map(x => x === p ? [$('pl').value.trim(), $('pp').value.trim(), $('pq').value.trim(), opts] : [x.lead, x.punch, x.query || '', x.opts])
+      .map(([l, k, q, o]) => [l, k, ...(q ? [q] : []), ...(o && (o.show || (o.look && o.look !== 'pair')) ? [o] : [])]);
     try { await api('draft/phrases', {path: PATH, line: p.line, pairs}); await reload(); say('บันทึกแล้ว'); }
     catch (e) { say('❌ ' + e.message); }
   };
