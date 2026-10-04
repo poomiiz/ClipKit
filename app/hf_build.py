@@ -147,8 +147,11 @@ def build(path: str) -> Path:
             if look == "pop":
                 anim.append(f'tl.fromTo("#{i}",{{scale:0.7}},{{scale:1,duration:0.2,ease:"back.out(2)"}},{p["start"]:.3f});')
     # clip title: each line punches in, the second a beat after the first
+    first = ""
     for n, h in enumerate(t["hook"]):
-        i = text(h["text"], h["size"], h["y"], h["fill"], h["stroke"], h["width"], h["start"], h["end"], one=True)
+        i = text(h["text"], h["size"], h["y"], h["fill"], h["stroke"], h["width"], h["start"], h["end"],
+                 h["grow"], tops.get(first, 0) + 8, one=True)
+        first = first or i
         anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{n * 0.15:.2f});')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
