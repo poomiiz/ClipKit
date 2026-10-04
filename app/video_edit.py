@@ -189,6 +189,39 @@ def detect_pauses(path: str, start: float, end: float,
         work.unlink(missing_ok=True)
 
 
+def quiet_spans(path: str, start: float, end: float, min_len: float = 0.25) -> list[dict[str, float]]:
+    """Breaths and pauses under background noise (café, street), where a fixed silence gate finds nothing:
+    loudness per 20 ms against this clip's own noise floor (20th percentile + 4 dB). Clip-relative seconds."""
+    import wave
+    import numpy as np
+    work = Path(os.environ.get("TEMP", "/tmp")) / f"ve_{uuid.uuid4().hex}.wav"
+    try:
+        _extract_audio(path, start, end, work)
+        with wave.open(str(work)) as w:
+            rate, ch = w.getframerate(), w.getnchannels()
+            pcm = np.frombuffer(w.readframes(w.getnframes()), np.int16)[::ch].astype(float) / 32768
+    finally:
+        work.unlink(missing_ok=True)
+    n = int(rate * 0.02)
+    if len(pcm) < n * 10:
+        return []
+    db = 20 * np.log10(np.sqrt((pcm[:len(pcm) // n * n].reshape(-1, n) ** 2).mean(1)) + 1e-9)
+    db = np.convolve(db, np.ones(5) / 5, mode="same")  # 100 ms smoothing: no cuts inside a word's dip
+    quiet = db < np.percentile(db, 20) + 4
+    out, i = [], 0
+    while i < len(quiet):
+        if quiet[i]:
+            j = i
+            while j < len(quiet) and quiet[j]:
+                j += 1
+            if (j - i) * 0.02 >= min_len:
+                out.append({"start": round(i * 0.02, 2), "end": round(j * 0.02, 2), "length": round((j - i) * 0.02, 2)})
+            i = j
+        else:
+            i += 1
+    return out
+
+
 def suggest_cuts(pauses: list[dict[str, float]], keep: float = 0.25,
                  min_gain: float = 0.30) -> list[dict[str, float]]:
     """Trim every pause down to `keep` seconds, but only when that frees
