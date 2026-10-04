@@ -234,9 +234,11 @@ function sideClip(s) {
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <div class="row"><label><input type="checkbox" id="zc" ${st.zoomcut ? 'checked' : ''}> ตัดสลับด้วยการซูม</label><span class="hint">ประโยคเว้นประโยคซูมเข้า 12%</span></div>
     <h4>สีภาพ</h4>
-    ${[['brightness', 'ความสว่าง', -0.3, 0.3, 0.01], ['contrast', 'ความคม', 0.6, 1.6, 0.01], ['saturation', 'ความสด', 0, 2, 0.01], ['warmth', 'อุ่น / เย็น', -0.3, 0.3, 0.01]]
+    ${[['brightness', 'ความสว่าง', -0.3, 0.3, 0.01], ['contrast', 'ความคม', 0.6, 1.6, 0.01], ['saturation', 'ความสด', 0, 2, 0.01], ['warmth', 'อุณหภูมิสี (อุ่น/เย็น)', -0.3, 0.3, 0.01]]
       .map(([k, t, a, b, d]) => `<div class="row"><label>${t}</label><input type="range" data-c="${k}" min="${a}" max="${b}" step="${d}" value="${c[k] ?? (k === 'contrast' || k === 'saturation' ? 1 : 0)}"></div>`).join('')}
     <div class="row"><button id="autoC">✨ ปรับสีอัตโนมัติ</button><button id="resetC">ค่าเดิม</button></div>
+    <div class="hint">ปรับอัตโนมัติ = แก้สีเพี้ยน (white balance) + ความสว่าง + ความคม</div>
+    <div class="row"><label>ผิวเนียน</label><input type="range" id="skin" min="0" max="1" step="0.1" value="${st.skin ?? 0}"><span class="hint" id="skinV">${Math.round((st.skin ?? 0) * 100)}%</span></div>
     <h4 id="coverH">ปก</h4>
     ${st.cover ? `<img src="/api/kit/media?path=${encodeURIComponent(st.cover)}&t=${Date.now()}" style="width:140px;border-radius:10px;display:block">` : '<div class="hint">ยังไม่มีปก · กด "ทำให้ครบ" ระบบทำปกจากชื่อเรื่องให้</div>'}
     <div class="row"><button id="cAuto">✨ ทำปกใหม่อัตโนมัติ</button><button id="cEdit">แก้ปกเอง</button></div>
@@ -249,9 +251,13 @@ function sideClip(s) {
   s.querySelectorAll('.look').forEach(b => b.onclick = async () => { await api('draft/look', {path: PATH, style: {anim: b.dataset.k}}); await reload(); });
   $('zc').onchange = async e => { await api('draft/look', {path: PATH, style: {zoomcut: e.target.checked}}); T.style.zoomcut = e.target.checked; live(); };
   s.querySelectorAll('[data-c]').forEach(r => r.onchange = async () => {
-    const color = {}; s.querySelectorAll('[data-c]').forEach(x => color[x.dataset.c] = +x.value);
+    const color = {...(T.style.color || {})}; s.querySelectorAll('[data-c]').forEach(x => color[x.dataset.c] = +x.value);  // keeps the auto white balance
     await api('draft/look', {path: PATH, style: {color}}); T.style.color = color; live();
   });
+  $('skin').oninput = e => $('skinV').textContent = Math.round(e.target.value * 100) + '%';
+  $('skin').onchange = async e => {  // the footage is re-made with the new smoothing: a few seconds
+    await api('draft/look', {path: PATH, style: {skin: +e.target.value}}); T.style.skin = +e.target.value; say('กำลังทำผิวเนียนทั้งคลิป… (ราว 1 นาที)'); await live(); say('');
+  };
   $('autoC').onclick = async () => { const r = await api('draft/auto-color', {path: PATH}); T.style.color = r.color; side(); live(); };
   $('resetC').onclick = async () => { await api('draft/look', {path: PATH, style: {color: null}}); T.style.color = null; side(); live(); };
   $('cAuto').onclick = () => run(null, 'กำลังทำปก… (ราว 30 วิ)', async () => { const r = await api('draft/auto-cover', {path: PATH}); T.style.cover = r.file; side(); say('✅ ทำปกแล้ว: ' + esc(r.file)); });
