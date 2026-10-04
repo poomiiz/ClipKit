@@ -448,8 +448,13 @@ def draft_transcribe(req: DraftPath) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"transcribe failed: {exc}") from exc
 
 
+class ExportRequest(BaseModel):
+    path: str
+    preview: bool = False  # quick half-size file for review before the real export
+
+
 @router.post("/draft/export")
-def draft_export(req: DraftPath) -> dict[str, Any]:
+def draft_export(req: ExportRequest) -> dict[str, Any]:
     """MP4 straight from ClipKit (no CapCut): <output_dir>/exports/<project>.mp4"""
     import kit_settings
     import render
@@ -458,7 +463,7 @@ def draft_export(req: DraftPath) -> dict[str, Any]:
     if not out:
         raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
     try:
-        return render.render_draft(req.path, str(Path(out) / "exports"))
+        return render.render_draft(req.path, str(Path(out) / "exports"), preview=req.preview)
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -830,3 +835,57 @@ def stock_free_download(req: FreeDownload) -> dict[str, Any]:
         return {"path": free_stock.download(folder, req.source, req.id, req.file)}
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def broll_fill(path: str) -> dict[str, Any]:
+    """Free b-roll for the phrases the agent tagged with a search (3rd item in clipkit_punch.json):
+    the first Pixabay/Pexels hit for each search is saved and listed in clipkit_broll.json."""
+    import free_stock
+    import kit_settings
+    folder = Path(path)
+    punch = folder / "clipkit_punch.json"
+    queries = [p[2] for pairs in (json.loads(punch.read_text(encoding="utf-8")).values() if punch.is_file() else [])
+               for p in pairs if len(p) > 2 and p[2]]
+    out_file = folder / "clipkit_broll.json"
+    chosen = json.loads(out_file.read_text(encoding="utf-8")) if out_file.is_file() else {}
+    if not queries:
+        return {"broll": chosen, "not_found": [], "queries": 0}
+    cfg = kit_settings._read_config()
+    store = cfg.get("stock_video") or cfg.get("output_dir") or cfg.get("work_root")
+    if not store:
+        raise VideoEditError("ยังไม่ได้ตั้งโฟลเดอร์สต็อกวิดีโอ — ไปที่ ตั้งค่า > โฟลเดอร์")
+    missing = []
+    for q in queries:
+        if q in chosen and Path(chosen[q]["file"]).is_file():
+            continue
+        hits = free_stock.search(cfg, q, 3)["items"]
+        if not hits:
+            missing.append(q)
+            continue
+        h = hits[0]
+        chosen[q] = {"file": free_stock.download(store, h["source"], h["id"], h["file"]), "source": h["source"],
+                     "id": h["id"], "thumb": h["thumb"], "page": h["url"]}
+    out_file.write_text(json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"broll": chosen, "not_found": missing, "queries": len(queries)}
+
+
+@router.post("/draft/broll-auto")
+def draft_broll_auto(req: DraftPath) -> dict[str, Any]:
+    try:
+        return broll_fill(req.path)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class BrollRemove(BaseModel):
+    path: str
+    query: str
+
+
+@router.post("/draft/broll-remove")
+def draft_broll_remove(req: BrollRemove) -> dict[str, Any]:
+    f = Path(req.path) / "clipkit_broll.json"
+    chosen = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    chosen.pop(req.query, None)
+    f.write_text(json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"broll": chosen}
