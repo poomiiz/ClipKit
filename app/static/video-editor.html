@@ -1995,7 +1995,9 @@ async function makeHyperframes(open = true) {
   } catch (e) { out.textContent = '❌ ' + e.message; if (!open) throw e; }
 }
 
-function openDraft(i) {
+function openDraft(i, tools) {
+  // every project opens in the timeline editor; the older tool tabs stay reachable from there ("เครื่องมือเดิม")
+  if (!tools) { location.href = '/editor.html?path=' + encodeURIComponent(drafts[i].path); return; }
   state.draft = drafts[i];
   const d = state.draft;
 
@@ -2248,8 +2250,9 @@ async function loadHomeDrafts() {
     selSet.clear(); showSel();
     shown.forEach(d => box.appendChild(projCard(d)));
     if (window.ckLoadProjects) window.ckLoadProjects();
-    const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw');
-    if (want || raw) history.replaceState(null, '', location.pathname);
+    const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw'), tools = q.get('tools');
+    if (want || raw || tools) history.replaceState(null, '', location.pathname);
+    if (tools) { const k = drafts.findIndex(d => d.path === tools); if (k >= 0) openDraft(k, true); }
     if (want) ckOpenProject(want);
     if (raw) ckOpenRaw(raw);
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }

@@ -1053,3 +1053,36 @@ def fill_subtitle_gaps(path: str, min_gap: float = 1.0, preview: bool = False,
     result["added"] = written["added"]
     result["subtitles"] = written["subtitles"]
     return result
+
+
+def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
+    """Change one subtitle line's words (the timeline editor). The ClipKit side files keyed by the line text
+    (word times, punch picks) are moved to the new text so they stay attached."""
+    folder = Path(path)
+    draft = _load(folder)
+    index = _index(draft)
+    text = _text_track(draft)
+    hit = 0
+    for seg in (text or {}).get("segments", []):
+        m = index.get(seg["material_id"], (None, None))[1]
+        if not m:
+            continue
+        body = json.loads(m["content"])
+        if body.get("text") != old:
+            continue
+        body["text"] = new
+        for st in body.get("styles", []):
+            st["range"] = [0, len(new)]
+        m["content"] = json.dumps(body, ensure_ascii=False)
+        hit += 1
+    if not hit:
+        raise VideoEditError(f"subtitle line not found: {old}")
+    _save(folder, draft, "linetext")
+    for name in ("clipkit_words.json", "clipkit_punch.json"):
+        f = folder / name
+        if f.is_file():
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if old in data:
+                data[new] = data.pop(old)
+                f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"changed": hit}
