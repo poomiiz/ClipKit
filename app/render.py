@@ -420,7 +420,11 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7]} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
-                    "sfx": fx, "edited": placed is not None}
+                    "sfx": fx, "edited": placed is not None, "source": src, "src_w": info["width"], "src_h": info["height"],
+                    "fit": {"w": vw, "h": vh, "x": ox, "y": oy},
+                    "pops": [m[1] for m in marks if m[0] == "pop"],
+                    "segments": [{"media_start": s["source_timerange"]["start"] / US, "dur": s["source_timerange"]["duration"] / US,
+                                  "start": s["target_timerange"]["start"] / US} for s in segs]}
         graph += ";[ac]asplit=2[voice][key]"
         if music_file:
             n = add("-stream_loop", "-1", "-i", music_file)
