@@ -30,8 +30,13 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    carries the point (a feeling, a number, a result, a brand: "ถูกกดดัน", "20 ปี", "ไม่อิ่ม"), not just the
    last word. Lead + punch together must be that phrase's exact text (punch may come first: then lead is "").
    Every character of the line must be used once, in order (spaces may be dropped).
-3. Write `<folder>/clipkit_punch.json` as `{"<line text>": [[lead, punch], ...], ...}` covering every line.
-4. Tell the person to press ส่งออก MP4 again.
+3. B-roll: about one phrase in three that names something you can see (a product, food, a place, an action,
+   an emotion on a face), add a third item: a short English stock-footage search, e.g.
+   `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. Concrete nouns, 2-4 words, no brand names.
+   Skip abstract phrases; never two b-roll phrases in a row.
+4. Write `<folder>/clipkit_punch.json` as `{"<line text>": [[lead, punch] or [lead, punch, query], ...], ...}`
+   covering every line.
+5. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 
 ### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
 Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on P'Ohm's machine.

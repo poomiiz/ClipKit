@@ -79,7 +79,7 @@ JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "
 
 
 def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
-          preset: str, picked: list | None = None, max_chars: int = 16) -> list[str]:
+          preset: str, picked: list | None = None, max_chars: int = 16, marks: list | None = None) -> list[str]:
     """Split a spoken line into phrases of about two seconds, each shown as lead + punch.
     picked = the agent's [[lead, punch], ...] for this line (the words that carry the point); without it the
     phrases break at breaths / ~16 letters / Thai joining words and the punch is the phrase's last words."""
@@ -96,10 +96,10 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         letters = [i for i, c in enumerate(flat) if not c.isspace()]
         when = lambda n: t0 + at(letters[min(n, len(letters) - 1)] / total)  # noqa: E731
         n = 0
-        for lead, punch in picked:
+        for lead, punch, *query in picked:
             a, hit = when(n), when(n + len(tight(lead)))
             n += len(tight(lead)) + len(tight(punch))
-            phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1)))
+            phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1), (query or [""])[0]))
     else:
         timed, pos = [], 0
         for tok in word_tokenize(flat, keep_whitespace=True):
@@ -127,7 +127,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
                 cut = i
                 if acc >= size * 0.4:
                     break
-            phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1]))
+            phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1], ""))
     k = min(W, H) / 1080 * CAPCUT_PX
 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "") -> str:
@@ -139,11 +139,16 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
                 f"\\shad2{extra}}}" + "\\N".join(lines))
 
     out = []
-    for n, (lead, punch, a, hit, last) in enumerate(phrases):
+    for n, (lead, punch, a, hit, last, query) in enumerate(phrases):
         # stays until the next phrase, but not through a long pause after its last word
         b = min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, last + 1.5)
         # the punch lands when it is said, but never leaves the lead alone on screen for long (slow talkers)
         hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
+        if marks is not None:  # moments for sound effects and b-roll
+            if punch:
+                marks.append(("pop", hit if lead else a))
+            if query:
+                marks.append(("broll", a, b, query))
         if lead:
             out.append(line(lead, look["lead"], a, b, "\\fad(80,0)"))
         if punch:
@@ -198,7 +203,37 @@ def _ts(t: float) -> str:
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 
 
-def render_draft(path: str, out_dir: str) -> dict[str, Any]:
+SFX = FONTS.parent / "sfx_builtin"  # made here with ffmpeg on first use: no licence to worry about
+SFX_RECIPE = {
+    "pop": "aevalsrc=0.6*sin(2*PI*(500+1400*t)*t)*exp(-28*t):d=0.14:s=44100",
+    "whoosh": "anoisesrc=d=0.5:c=pink:a=0.6:r=44100,bandpass=f=1600:w=1400,afade=t=in:d=0.22,afade=t=out:st=0.22:d=0.28",
+}
+
+
+def _sfx(kind: str) -> Path:
+    f = SFX / f"{kind}.wav"
+    if not f.is_file():
+        SFX.mkdir(exist_ok=True)
+        r = subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", SFX_RECIPE[kind], str(f)],
+                           capture_output=True, text=True)
+        if r.returncode or not f.is_file():
+            raise VideoEditError(f"could not make sound effect {kind}: {r.stderr[-300:]}")
+    return f
+
+
+def _music(style: dict[str, Any]) -> str | None:
+    """The bed picked in the editor; with none picked, the first track of the music library (same pick every
+    export), or no music when there is no library. style['music'] = '' turns music off."""
+    if "music" in style:
+        if style["music"] and not Path(style["music"]).is_file():
+            raise VideoEditError(f"music file missing: {style['music']}")
+        return style["music"] or None
+    tracks = sorted(p for d in capcut_edit.music_dirs() for p in Path(d).rglob("*")
+                    if p.suffix.lower() in capcut_edit.AUDIO_SUFFIXES)
+    return str(tracks[0]) if tracks else None
+
+
+def render_draft(path: str, out_dir: str, preview: bool = False) -> dict[str, Any]:
     folder = Path(path)
     draft = capcut_edit._load(folder)
     index = capcut_edit._index(draft)
@@ -244,6 +279,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     said = _json(folder / "clipkit_words.json", {})
     punches = _json(folder / "clipkit_punch.json", {})  # punch words picked by the agent (ClipKit: เลือกคำเน้น)
+    marks: list = []  # ("pop", t) at each punch, ("broll", a, b, query) where the agent asked for b-roll
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
@@ -271,7 +307,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")))
+                            "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")), marks=marks)
             shown += 1
             continue
         lines, size = _fit(body.get("text", ""), fdir, size, W * 0.9)
@@ -291,7 +327,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"{folder.name}.mp4"
+    target = out / f"{folder.name}{' - ตัวอย่าง' if preview else ''}.mp4"
     with tempfile.TemporaryDirectory() as tmp:
         base = "[vo]"
         if style.get("zoomcut"):
@@ -304,6 +340,28 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
             graph += (f";[vo]split[zp][zq];[zq]scale={zw}:{zh},crop={W}:{H}[zz];"
                       f"[zp][zz]overlay=0:0:enable='{zin}'[vz]")
             base = "[vz]"
+        ins: list[str] = []  # extra inputs; input 0 is the raw clip
+
+        def add(*args: str) -> int:
+            ins.extend(args)
+            return sum(1 for x in ins if x == "-i")
+        # b-roll: the free clip the agent's search found, over the speaker for the phrase (max 2.2 s),
+        # never closer than 5 s to the previous one; the voice keeps going underneath
+        broll = _json(folder / "clipkit_broll.json", {})
+        last_b, used_b = -99.0, []
+        for k, (_, a, b, q) in enumerate(m for m in marks if m[0] == "broll"):
+            if q not in broll or a - last_b < 5:
+                continue
+            f = broll[q]["file"]
+            if not Path(f).is_file():
+                raise VideoEditError(f"b-roll file missing: {f}")
+            n = add("-i", f)
+            e = min(b, a + 2.2)
+            graph += (f";[{n}:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+                      f"trim=0:{e - a:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB[br{k}];"
+                      f"{base}[br{k}]overlay=0:0:eof_action=pass:enable='between(t,{a:.3f},{e:.3f})'[bo{k}]")
+            base, last_b = f"[bo{k}]", a
+            used_b.append((a, q))
         if events:
             fam0 = family or _font(None)[0]
             (Path(tmp) / "subs.ass").write_text(
@@ -324,21 +382,46 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         else:
             vout = base
         # motion clips (transparent MOV) on top, each from its own moment; scaled to the canvas height
-        ins = []
         for k, o in enumerate(overlays):
             if not Path(o["file"]).is_file():
                 raise VideoEditError(f"motion file missing: {o['file']}")
-            ins += ["-i", o["file"]]
+            n = add("-i", o["file"])
             s0 = float(o["start"])
-            graph += (f";[{k + 1}:v]scale=-2:{H},setpts=PTS-STARTPTS+{s0:.3f}/TB[m{k}];"
+            graph += (f";[{n}:v]scale=-2:{H},setpts=PTS-STARTPTS+{s0:.3f}/TB[m{k}];"
                       f"{vout}[m{k}]overlay=(W-w)/2:0:eof_action=pass:enable='between(t,{s0:.3f},{s0 + float(o['duration']):.3f})'[o{k}]")
             vout = f"[o{k}]"
-        cmd = [FFMPEG, "-y", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[ac]",
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
+        if preview:  # quick look for review: half size, fast encode
+            graph += f";{vout}scale=trunc(iw/4)*2:-2[pv]"
+            vout = "[pv]"
+
+        # sound: music bed that ducks under the voice, a pop on each punch, a whoosh as b-roll comes in
+        length = sum(s["target_timerange"]["duration"] for s in segs) / US
+        mix, music_file = ["[voice]"], _music(style)
+        graph += ";[ac]asplit=2[voice][key]"
+        if music_file:
+            n = add("-stream_loop", "-1", "-i", music_file)
+            graph += (f";[{n}:a]atrim=0:{length:.3f},volume={style.get('music_volume', 0.35)},"
+                      f"afade=t=out:st={max(0, length - 1.5):.3f}:d=1.5[mus];"
+                      f"[mus][key]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[duck]")
+            mix.append("[duck]")
+        else:
+            graph += ";[key]anullsink"
+        sfx = [("pop", m[1]) for m in marks if m[0] == "pop"] + [("whoosh", a - 0.15) for a, _ in used_b]
+        if style.get("sfx", True):
+            for k, (kind, t) in enumerate(sfx):
+                n = add("-i", str(_sfx(kind)))
+                ms = max(0, round(t * 1000))
+                graph += f";[{n}:a]adelay={ms}|{ms},volume={0.5 if kind == 'pop' else 0.35}[s{k}]"
+                mix.append(f"[s{k}]")
+        graph += f";{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first[aout]"
+        cmd = [FFMPEG, "-y", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
+               "-c:v", "libx264", "-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20",
+               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
         r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
-    return {"file": str(target), "subtitles": shown, "motions": len(ins) // 2, "sub_anim": anim,
+    return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
+            "broll": [q for _, q in used_b], "music": Path(music_file).name if music_file else None,
+            "sfx": len(sfx) if style.get("sfx", True) else 0, "preview": preview,
             "karaoke_estimated": estimated, "pieces": len(segs), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}
