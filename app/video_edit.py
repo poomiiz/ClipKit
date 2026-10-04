@@ -354,8 +354,19 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
                     continue
         merged.append(phrase)
     for phrase in merged:
-        phrase["text"] = english_terms(phrase["text"])
+        phrase["text"] = english_terms(thai_spacing(phrase["text"]))
     return merged
+
+
+THAI = "฀-๿"
+
+
+def thai_spacing(text: str) -> str:
+    """The model sometimes puts a space after every Thai word ("เอา งี้ เอา กิน"); Thai only spaces between
+    phrases. When spaces are that dense, join Thai-to-Thai words; normal phrase spacing is left alone."""
+    thai = len(re.findall(f"[{THAI}]", text))
+    gaps = len(re.findall(f"(?<=[{THAI}]) (?=[{THAI}])", text))
+    return re.sub(f"(?<=[{THAI}]) (?=[{THAI}])", "", text) if thai and gaps / thai > 0.12 else text
 
 
 # ── CapCut draft writing ─────────────────────────────────────────────
