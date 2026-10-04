@@ -22,6 +22,17 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
 3. Write `<folder>/clipkit_subs_en.json` as a JSON list of strings, exactly one per Thai line, same order.
 4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
+### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
+For the sentence-pair subtitles (white lead line + bigger coloured punch line, P'Ohm's own style).
+1. Read `<folder>/clipkit_lines.json` (list of subtitle line texts, in order) and the whole clip's meaning.
+2. For every line, split it into short phrases of about 2 seconds / 10-18 Thai letters, in speaking order,
+   breaking where a thought ends. Each phrase = `[lead, punch]`: the punch is the word or short phrase that
+   carries the point (a feeling, a number, a result, a brand: "ถูกกดดัน", "20 ปี", "ไม่อิ่ม"), not just the
+   last word. Lead + punch together must be that phrase's exact text (punch may come first: then lead is "").
+   Every character of the line must be used once, in order (spaces may be dropped).
+3. Write `<folder>/clipkit_punch.json` as `{"<line text>": [[lead, punch], ...], ...}` covering every line.
+4. Tell the person to press ส่งออก MP4 again.
+
 ### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
 Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on P'Ohm's machine.
 1. Read `motion/library/README.md` and `motion/library/hyperframes.md`. A new move must not repeat an existing template in `motion/*/` or a registry item with the same role and mood; for the HyperFrames command, start from that item (`npx hyperframes@0.8.101 add <name>` in a scratch project) and rebuild it as our template.

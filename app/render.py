@@ -79,27 +79,55 @@ JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "
 
 
 def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
-          preset: str, max_chars: int = 16) -> list[str]:
-    """Split a spoken line into phrases of about two seconds (where the speaker breathes, or at ~16 letters),
-    each shown as lead + punch; the punch is the phrase's last words, the part that lands."""
+          preset: str, picked: list | None = None, max_chars: int = 16) -> list[str]:
+    """Split a spoken line into phrases of about two seconds, each shown as lead + punch.
+    picked = the agent's [[lead, punch], ...] for this line (the words that carry the point); without it the
+    phrases break at breaths / ~16 letters / Thai joining words and the punch is the phrase's last words."""
     from pythainlp.tokenize import word_tokenize
     look = PAIR[preset]
-    toks = word_tokenize(text.replace("\n", " "), keep_whitespace=True)
-    at, total = _clock(spoken, t1 - t0), len(text) or 1
-    timed, pos = [], 0
-    for tok in toks:
-        timed.append((tok, t0 + at(pos / total)))
-        pos += len(tok)
-    chunks, cur = [], []
-    for k, (tok, t) in enumerate(timed):
-        gap = k and tok.strip() and t - timed[k - 1][1] > 0.6
-        joiner = tok.strip() in JOINERS and sum(len(x) for x, _ in cur) >= 6  # a new thought starts here
-        if cur and (gap or joiner or sum(len(x) for x, _ in cur) >= max_chars):
+    flat = text.replace("\n", " ")
+    at, total = _clock(spoken, t1 - t0), len(flat) or 1
+    phrases = []  # (lead, punch, start, punch time, last word time)
+    if picked:
+        tight = lambda t: "".join(t.split())  # noqa: E731  (spaces may be dropped, nothing else)
+        if tight("".join(a + b for a, b in picked)) != tight(flat):
+            raise VideoEditError(f"clipkit_punch.json does not match the subtitle line: {flat}")
+        # time of a position in the line, counting letters only (the agent may have dropped spaces)
+        letters = [i for i, c in enumerate(flat) if not c.isspace()]
+        when = lambda n: t0 + at(letters[min(n, len(letters) - 1)] / total)  # noqa: E731
+        n = 0
+        for lead, punch in picked:
+            a, hit = when(n), when(n + len(tight(lead)))
+            n += len(tight(lead)) + len(tight(punch))
+            phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1)))
+    else:
+        timed, pos = [], 0
+        for tok in word_tokenize(flat, keep_whitespace=True):
+            timed.append((tok, t0 + at(pos / total)))
+            pos += len(tok)
+        chunks, cur = [], []
+        for k, (tok, t) in enumerate(timed):
+            gap = k and tok.strip() and t - timed[k - 1][1] > 0.6
+            joiner = tok.strip() in JOINERS and sum(len(x) for x, _ in cur) >= 6  # a new thought starts here
+            if cur and (gap or joiner or sum(len(x) for x, _ in cur) >= max_chars):
+                chunks.append(cur)
+                cur = []
+            cur.append((tok, t))
+        if cur:
             chunks.append(cur)
-            cur = []
-        cur.append((tok, t))
-    if cur:
-        chunks.append(cur)
+        for ch in chunks:
+            words = [x for x, _ in ch]
+            real = [i for i, w in enumerate(words) if w.strip()]
+            if not real:
+                continue
+            # punch = trailing words worth ~40% of the letters (at least one word); lead = the rest
+            cut, acc, size = real[-1], 0, sum(len(w) for w in words)
+            for i in reversed(real):
+                acc += len(words[i])
+                cut = i
+                if acc >= size * 0.4:
+                    break
+            phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1]))
     k = min(W, H) / 1080 * CAPCUT_PX
 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "") -> str:
@@ -111,29 +139,16 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
                 f"\\shad2{extra}}}" + "\\N".join(lines))
 
     out = []
-    for n, ch in enumerate(chunks):
-        a = ch[0][1]
+    for n, (lead, punch, a, hit, last) in enumerate(phrases):
         # stays until the next phrase, but not through a long pause after its last word
-        b = min(chunks[n + 1][0][1] if n + 1 < len(chunks) else t1, ch[-1][1] + 1.5)
-        words = [x for x, _ in ch]
-        real = [i for i, w in enumerate(words) if w.strip()]
-        if not real:
-            continue
-        # punch = trailing words worth ~40% of the letters (at least one word); lead = the rest
-        cut, acc, size = real[-1], 0, sum(len(w) for w in words)
-        for i in reversed(real):
-            acc += len(words[i])
-            cut = i
-            if acc >= size * 0.4:
-                break
-        lead, punch = "".join(words[:cut]).strip(), "".join(words[cut:]).strip()
-        hit = min(b - 0.05, max(a + 0.2, ch[cut][1]))  # the punch lands when it is said
+        b = min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, last + 1.5)
+        hit = min(b - 0.05, max(a + 0.2, hit))  # the punch lands when it is said
         if lead:
             out.append(line(lead, look["lead"], a, b, "\\fad(80,0)"))
-        out.append(line(punch, look["punch"], hit if lead else a, b,
-                        "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)"))
+        if punch:
+            out.append(line(punch, look["punch"], hit if lead else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)"))
         if look["caption"]:
-            out.append(line("".join(words).strip(), look["caption"], a, b))
+            out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
     return out
 
 
@@ -227,6 +242,7 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
     style = _json(folder / "clipkit_style.json", {})
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     said = _json(folder / "clipkit_words.json", {})
+    punches = _json(folder / "clipkit_punch.json", {})  # punch words picked by the agent (ClipKit: เลือกคำเน้น)
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
@@ -253,7 +269,8 @@ def render_draft(path: str, out_dir: str) -> dict[str, Any]:
         if anim in ("pair", "pair-nina"):
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
-            events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir, "nina" if anim == "pair-nina" else "bps")
+            events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
+                            "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")))
             shown += 1
             continue
         lines, size = _fit(body.get("text", ""), fdir, size, W * 0.9)

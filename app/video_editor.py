@@ -764,3 +764,16 @@ def draft_sub_anim_get(path: str = Query(...)) -> dict[str, Any]:
     f = Path(path) / "clipkit_style.json"
     return {"anim": (json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}).get("anim", "none"),
             "has_word_times": (Path(path) / "clipkit_words.json").is_file()}
+
+
+@router.post("/draft/punch-request")
+def draft_punch_request(req: DraftPath) -> dict[str, Any]:
+    """Lines for the agent to pick punch words from; the editor pastes the returned command into chat."""
+    lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
+    if not lines:
+        raise HTTPException(400, "ยังไม่มีซับ — ถอดเสียงก่อน")
+    (Path(req.path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+    done = Path(req.path) / "clipkit_punch.json"
+    picked = json.loads(done.read_text(encoding="utf-8")) if done.is_file() else {}
+    return {"command": video_edit.agent_command("punch", req.path), "lines": len(lines),
+            "picked": sum(1 for t in lines if t in picked)}

@@ -689,7 +689,8 @@ def stories_file(video: str) -> Path:
 def agent_command(kind: str, target: str) -> str:
     """The line the editor pastes into Claude / Codex chat; the ClipKit skill knows what to do with it."""
     return {"stories": f'ClipKit: แบ่งเรื่อง "{target}"',
-            "translate": f'ClipKit: แปลซับเป็นอังกฤษ "{target}"'}[kind]
+            "translate": f'ClipKit: แปลซับเป็นอังกฤษ "{target}"',
+            "punch": f'ClipKit: เลือกคำเน้น "{target}"'}[kind]
 
 
 def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
