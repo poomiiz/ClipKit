@@ -647,6 +647,9 @@
             <button class="small" data-a="pop">เด้งเข้า</button>
             <button class="small" data-a="karaoke">ไล่สีทีละคำ</button></div>
           <div class="hint" id="saNote"></div>
+          <label class="hint" style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer">
+            <input type="checkbox" id="zoomCut" onchange="api('draft/zoomcut', {path: state.draft.path, on: this.checked})">
+            ตัดสลับด้วยการซูม · ประโยคเว้นประโยคซูมเข้า 12% ให้ภาพเปลี่ยนจังหวะ (ไม่ต้องใช้ภาพเพิ่ม)</label>
           <div id="saPunch" style="display:none;margin-top:8px">
             <button class="small" onclick="punchAsk()">✨ ให้ Claude เลือกคำเน้น</button>
             <div id="saPunchBox"></div></div>
@@ -2354,6 +2357,7 @@ async function saLoad(pick) {
     b.classList.toggle('primary', b.dataset.a === r.anim);
     b.onclick = () => saLoad(b.dataset.a);
   });
+  document.getElementById('zoomCut').checked = !!r.zoomcut;
   document.getElementById('saPunch').style.display = r.anim.startsWith('pair') ? '' : 'none';
   document.getElementById('saNote').textContent = r.anim === 'karaoke' && !r.has_word_times
     ? '⚠️ โปรเจกต์นี้ยังไม่มีเวลาของแต่ละคำ สีจะไล่ตามความยาวตัวอักษรแทน · กดถอดเสียงใหม่ (แท็บ 🎙️ ซับ) ให้ตรงเสียงพูด'
