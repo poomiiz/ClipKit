@@ -113,10 +113,12 @@ def _hook(folder: Path) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not 1 <= len(raw) <= 2 or any(
             not isinstance(x, dict) or not str(x.get("text", "")).strip() or x.get("color") not in HOOK_COLORS for x in raw):
         raise VideoEditError('clipkit_hook.json must be 1-2 lines of {"text": ..., "color": "white|orange|red"}')
-    place = [(36, -0.37)] if len(raw) == 1 else [(30, -0.31), (36, -0.43)]  # the second line bigger, as in Nina 07/08/10
-    return [{"text": x["text"].strip(), "size": s, "y": y, "fill": HOOK_COLORS[x["color"]][0],
+    # one centre line at y -0.37: a single title sits on it; with two, the first sits above it and the second
+    # (bigger, as in Nina 07/08/10) hangs below it
+    place = [(36, "mid")] if len(raw) == 1 else [(30, "up"), (36, "down")]
+    return [{"text": x["text"].strip(), "size": s, "y": -0.37, "grow": g, "fill": HOOK_COLORS[x["color"]][0],
              "stroke": HOOK_COLORS[x["color"]][1], "width": HOOK_COLORS[x["color"]][2], "start": 0.0, "end": HOOK_DUR}
-            for x, (s, y) in zip(raw, place)]
+            for x, (s, g) in zip(raw, place)]
 
 
 JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน"}
@@ -396,7 +398,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         kk = min(W, H) / 1080 * CAPCUT_PX
         for n, h in enumerate(hook):
             lines, px = _fit(h["text"], hfile, h["size"] * kk, W * 0.9, True)
-            events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2:.0f})"
+            an = {"up": 2, "down": 8}.get(h["grow"], 5)
+            events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
                           f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"
                           f"\\bord{px * h['width'] * 0.6 + 2:.1f}\\shad2\\fad(0,150)\\fscx120\\fscy120"
                           f"\\t({n * 150},{n * 150 + 160},\\fscx100\\fscy100)}}" + lines[0])
