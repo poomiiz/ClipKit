@@ -1,6 +1,6 @@
 ---
 name: clip-workflow
-description: Client-neutral workflow for turning raw talking-head footage into 60-130 s vertical shorts in CapCut - transcribe, pick self-contained stories, cut, Thai keyword cards, B-roll, music/SFX, QC. Use when asked to cut, subtitle or edit a short clip from interview/podcast footage, "ตัดคลิป", "ทำซับ", "ใส่อินเสิร์ต", or to plan a batch of clips from one long recording. Load the client style skill (style-*) for the look.
+description: Editing rules behind make-clip - how to pick self-contained 60-130 s stories, where cuts go, Thai keyword cards, B-roll and music choices, QC. Read it for the judgement steps; to actually make a clip use make-clip (scripts/run_clip.py), not the older per-step scripts mentioned here.
 ---
 
 # Clip workflow (any client)
@@ -11,7 +11,7 @@ Order matters. Each step has an output file you can show; never skip to the next
 Run `python scripts/doctor.py` once per machine. It must print all green before any work. Paths come from `config.json` (see `config.example.json`) - never type a drive path into a script or skill.
 
 ## 1. Transcribe the raw footage once
-`python scripts/clipkit.py transcribe RAW.mov` -> `RAW.words.json` (Thai words + times).
+The transcript is made by `scripts/run_clip.py` (`<video>.transcript.json`, Thai lines + times).
 - Thai speech-to-text is a draft. Names, brands and English words come out wrong; fix them from the client's word list (`clients/<client>/words.txt`) before you write cards.
 
 ## 2. Pick the stories (one idea per clip)

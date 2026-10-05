@@ -17,6 +17,7 @@ function Ensure($cmd, $wingetId, $label) {
 
 Ensure python "Python.Python.3.12" "Python 3.12"
 Ensure ffmpeg "Gyan.FFmpeg" "ffmpeg"
+Ensure npx "OpenJS.NodeJS.LTS" "Node.js (MP4 export)"
 
 Write-Host "Installing Python packages..."
 python -m pip install -r "$root\requirements.txt"
