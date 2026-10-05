@@ -33,7 +33,7 @@ Show the list to the person before cutting.
 - Cards are short rewrites (2-6 words) in the speaker's own slang, not a transcript.
 - Every spoken stretch has a card; no gap longer than about 1 s while someone talks.
 - Keep words spoken in English in English.
-- Colours, sizes, positions and animations come from the client style skill.
+- Colours, sizes and positions come from the project's subtitle preset (`presets/<name>.json`).
 
 ## 5. B-roll inserts
 Use the `broll-finder` skill: transcript -> keyword list -> Envato search -> HTML picker -> the person ticks -> bot downloads. Place each insert on the exact spoken keyword it shows.
