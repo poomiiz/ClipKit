@@ -107,7 +107,7 @@ RED = [0.93, 0.11, 0.11]
 
 def _shown(lead: str, punch: str, opts: dict | None, prev_white: str) -> tuple[str, str, list | None]:
     """What a phrase puts on screen, from the agent's choice in clipkit_punch.json (4th item, optional), the
-    options measured from P'Ohm's Nina CapCut edits: "pair" white lead + coloured punch (default), "white" white
+    options measured from real hand-edited clips: "pair" white lead + coloured punch (default), "white" white
     only, "color" coloured only, "red" punch in red for the strongest point, "hold" keeps the previous white line
     while the coloured line changes (lists), "skip" no subtitle (filler). "show": [white, colour] = shorter
     rewritten words on screen (timing still comes from the spoken words). Returns (white, colour, colour rgb)."""
@@ -123,11 +123,11 @@ def _shown(lead: str, punch: str, opts: dict | None, prev_white: str) -> tuple[s
     return (prev_white if look == "hold" else w), c, (RED if look == "red" else None)
 
 
-# the clip title over the first seconds, measured from P'Ohm's Nina 01-10: one or two lines, each line white,
+# the clip title over the first seconds, measured from hand-edited clips: one or two lines, each line white,
 # orange or red (any mix: red/white, white/orange, orange/white ...), coloured text outlined white, white outlined black
 HOOK_COLORS = {"white": ([1, 1, 1], [0, 0, 0], 0.05), "orange": ([1, 0.49, 0], [1, 1, 1], 0.06), "red": (RED, [1, 1, 1], 0.06)}
 HOOK_DUR = 4.0
-# skin smoothing like CapCut's "skin" slider (P'Ohm uses 0.6 on Nina 02/08/09): an edge-keeping (bilateral) blur
+# skin smoothing like CapCut's "skin" slider (0.6 = a typical hand-edited setting): an edge-keeping (bilateral) blur
 # mixed over the footage at that strength
 SKIN_FILTER = "split[sk1][sk2];[sk2]bilateral=sigmaS=8:sigmaR=0.08[sk3];[sk1][sk3]blend=all_opacity={skin:.2f}"
 SKIN_DEFAULT = 0.6
@@ -143,7 +143,7 @@ def _hook(folder: Path) -> list[dict[str, Any]]:
             not isinstance(x, dict) or not str(x.get("text", "")).strip() or x.get("color") not in HOOK_COLORS for x in raw):
         raise VideoEditError('clipkit_hook.json must be 1-2 lines of {"text": ..., "color": "white|orange|red"}')
     # one centre line at y -0.37: a single title sits on it; with two, the first sits above it and the second
-    # (bigger, as in Nina 07/08/10) hangs below it
+    # (bigger) hangs below it
     place = [(36, "mid")] if len(raw) == 1 else [(30, "up"), (36, "down")]
     return [{"text": x["text"].strip(), "size": s, "y": -0.37, "grow": g, "fill": HOOK_COLORS[x["color"]][0],
              "stroke": HOOK_COLORS[x["color"]][1], "width": HOOK_COLORS[x["color"]][2], "start": 0.0, "end": HOOK_DUR}
@@ -395,7 +395,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                               f"eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
                               f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f},scale=", 1)
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
-    if anim == "pair-nina":  # projects made before presets: the same look is now a preset
+    if anim.startswith("pair-"):  # projects made before presets: that look is now the with-caption preset
         anim, style["preset"] = "pair", style.get("preset") or "with-caption"
     said = _json(folder / "clipkit_words.json", {})
     punches = _json(folder / "clipkit_punch.json", {})  # punch words picked by the agent (ClipKit: เลือกคำเน้น)
@@ -555,7 +555,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         graph += ";[ac]asplit=2[voice][key]"
         if music_file:
             n = add("-stream_loop", "-1", "-i", music_file)
-            # one low steady level under the voice (P'Ohm: no pumping up and down)
+            # one low steady level under the voice (no pumping up and down)
             graph += (f";[{n}:a]atrim=0:{length:.3f},volume={music_vol},"
                       f"afade=t=out:st={max(0, length - 1.5):.3f}:d=1.5[mus]")
             mix.append("[mus]")

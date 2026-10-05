@@ -1084,7 +1084,7 @@ def auto_color(path: str) -> dict[str, Any]:
     spread = float(np.percentile(luma, 95) - np.percentile(luma, 5))
     y = float(luma.mean())
     color = {"r": gains[0], "g": gains[1], "b": gains[2],
-             # gentle on purpose: P'Ohm found +12 % contrast / +10 % colour too strong on Nina (2026-10-05)
+             # gentle on purpose: +12 % contrast / +10 % colour looked too strong on real footage
              "brightness": round(max(-0.12, min(0.12, 0.47 - y)) * 0.3, 3),
              "contrast": round(min(1.05, max(1.0, 0.75 / max(spread, 0.1))), 3), "saturation": 1.0, "warmth": 0.0}
     f = Path(path) / "clipkit_style.json"

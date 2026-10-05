@@ -285,7 +285,7 @@ def _get_model(model_size: str | None = None):
     return _model[1], "/".join(_model[0])
 
 
-# English terms written the way the finished BPS2 subtitles have them (05, 06):
+# English terms written the way finished subtitles have them (05, 06):
 # loanwords in English, first letter capitalised, a space either side.
 # Longest spelling first, so "เทรนด์" is not caught as "เทรน" + "ด์".
 ENGLISH_TERMS: list[tuple[str, str]] = sorted([
@@ -847,7 +847,7 @@ def extract_presets(drafts_root: str | None = None) -> dict[str, Any]:
 
 
 def _styles_by_series(root: Path) -> list[dict[str, Any]]:
-    """One ready-to-use style per project series (BPS2, Nina, …), since each
+    """One ready-to-use style per project series (first word of the project names), since each
     client's look differs — a single global average would fit neither."""
     from collections import Counter, defaultdict
 

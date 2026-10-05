@@ -393,8 +393,8 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     total = sum(s["source_timerange"]["duration"] for s in video["segments"]) / US
     words_file = folder / "clipkit_words.json"
     # breaths and pauses against the clip's own noise floor (a fixed silence gate finds nothing under café
-    # noise), ~0.1 s left each side. Tuned on Nina 07's footage: 41 cuts / 20 s out of 118 s with every word
-    # still there on re-transcription - P'Ohm's own edit of the same talk has 40.
+    # noise), ~0.1 s left each side. Tuned on café footage: 41 cuts / 20 s out of 118 s with every word
+    # still there on re-transcription - a hand edit of the same talk has 40.
     cursor = 0.0
     for segment in video["segments"]:
         start = segment["source_timerange"]["start"] / US
@@ -758,7 +758,7 @@ def _borrow_sound(name: str, root: str | None = None) -> tuple[dict, dict, list[
 def add_sound_on_subtitles(path: str, sound: str, volume: float = 0.35,
                            every_line: bool = True, offset: float = 0.0) -> dict[str, Any]:
     """Drop a sound effect at the start of each subtitle — the pairing used in
-    the Nina projects, where a text animation gets a pop underneath it."""
+    hand-edited projects, where a text animation gets a pop underneath it."""
     folder = Path(path)
     draft = _load(folder)
     text = _text_track(draft)
@@ -877,7 +877,7 @@ def list_music(dirs: list[str] | None = None) -> list[dict[str, Any]]:
 def add_music(path: str, music_path: str, volume: float = 0.10,
               fade_out: float = 5.0, start: float = 0.0,
               fade_in: float | None = None) -> dict[str, Any]:
-    """Lay a music bed under the whole project, the way the finished BPS2 clips
+    """Lay a music bed under the whole project, the way finished clips
     were done by hand: about 10% volume, a ~5s fade at the end, and a ~3s fade
     in when the song is entered part-way rather than from its first bar."""
     if fade_in is None:
@@ -973,7 +973,7 @@ def _borrow_sound_any(root: str | None = None) -> tuple[dict, dict, list]:
 def subtitle_gaps(path: str, min_gap: float = 1.0, pad: float = 0.15) -> list[dict[str, Any]]:
     """Stretches of the timeline that play sound but carry no subtitle.
 
-    This is what happens after P'Ohm lengthens a clip or drops a new one in:
+    This is what happens after someone lengthens a clip or drops a new one in:
     the old lines keep their place, and the new footage is left bare.
     """
     folder = Path(path)
