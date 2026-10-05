@@ -1,7 +1,7 @@
-"""Pull the CapCut building blocks for app/capcut_build.py out of P'Ohm's own CapCut projects into
+"""Pull the CapCut building blocks for app/capcut_build.py out of your own CapCut projects into
 app/capcut_templates.json: one text style per role (white lead, orange punch, small caption, title), the click
 sound he puts on the coloured words, a b-roll clip on the overlay track, and the skin effect. Styles only - no
-footage, no words of the talk are kept (text is blanked). Re-run when P'Ohm changes his look.
+footage, no words of the talk are kept (text is blanked). Re-run when the look changes.
 
     python scripts/capcut/make_templates.py "<project with the subtitle roles>" "<project with the skin effect>"
 """
@@ -54,7 +54,13 @@ def main() -> None:
     out["click"] = with_refs(click["segments"][0], idx)
     d8, idx8 = load(skin_project)
     out["skin"] = copy.deepcopy(next(m for k, m in idx8.values() if k == "effects" and "face_adjust_skin_Intensity" in json.dumps(m)))
-    OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    import os
+    import re
+    text = json.dumps(out, ensure_ascii=False, indent=1)
+    local = Path(os.environ["LOCALAPPDATA"]).as_posix()
+    # no machine-specific paths in the repo: capcut_build fills these in on each machine
+    text = re.sub(re.escape(local) + r"/CapCut/Apps/[0-9.]+", "{CAPCUT_APP}", text).replace(local, "{LOCALAPPDATA}")
+    OUT.write_text(text, encoding="utf-8")
     print("wrote", OUT, {k: (v["mat"].get("name") or v["mat"].get("path", ""))[-40:] if isinstance(v, dict) and "mat" in v else "" for k, v in out.items()})
 
 

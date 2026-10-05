@@ -1,11 +1,11 @@
-"""The finished clip as a CapCut project, laid out the way P'Ohm builds his clips by hand, so a person can
+"""The finished clip as a CapCut project, laid out the way clips are built by hand, so a person can
 open it in CapCut and keep editing: cut footage (zoom cuts as 108 % clips, skin effect), white and coloured
 subtitle lines on their own tracks, the title, the small English caption, b-roll on an overlay track, a click
 on every coloured word, and the music bed.
 
 Built from the same timeline as the MP4 export (render.render_draft dry run) into a copy of the project,
 "<project> · CapCut", so ClipKit's own project stays as it is. Styles come from app/capcut_templates.json
-(scripts/capcut/make_templates.py, pulled from P'Ohm's own CapCut projects). Colour correction is left to CapCut.
+(scripts/capcut/make_templates.py, pulled from hand-made CapCut projects). Colour correction is left to CapCut.
 """
 from __future__ import annotations
 
@@ -22,6 +22,16 @@ import video_edit
 from video_edit import US, VideoEditError
 
 TEMPLATES = Path(__file__).with_name("capcut_templates.json")
+
+
+def _machine_paths(text: str) -> str:
+    """The templates name CapCut's fonts and effects by {LOCALAPPDATA} / {CAPCUT_APP}: point them at this
+    machine's folders (the newest installed CapCut version)."""
+    import os
+    local = Path(os.environ.get("LOCALAPPDATA", "")).as_posix()
+    apps = sorted((Path(local) / "CapCut" / "Apps").glob("*.*.*"), key=lambda p: [int(x) for x in p.name.split(".") if x.isdigit()])
+    app = apps[-1].as_posix() if apps else f"{local}/CapCut/Apps/missing"
+    return text.replace("{CAPCUT_APP}", app).replace("{LOCALAPPDATA}", local)
 
 
 def _id() -> str:
@@ -87,7 +97,7 @@ def build(path: str) -> tuple[Path, list[str]]:
     """Returns the new project folder and what this machine lacks (shown to the person, never hidden)."""
     if not TEMPLATES.is_file():
         raise VideoEditError("app/capcut_templates.json is missing - run scripts/capcut/make_templates.py")
-    _T.update(json.loads(TEMPLATES.read_text(encoding="utf-8")))
+    _T.update(json.loads(_machine_paths(TEMPLATES.read_text(encoding="utf-8"))))
     warnings: list[str] = []
     fonts = {st.get("font", {}).get("path", "") for k in ("white", "orange", "caption", "title")
              for st in json.loads(_T[k]["mat"]["content"]).get("styles", [])}
@@ -131,7 +141,7 @@ def build(path: str) -> tuple[Path, list[str]]:
         if skin_id:
             seg["extra_material_refs"].append(skin_id)
 
-    # subtitles: the same choices as the MP4 (render._shown), each role on its own track like P'Ohm's projects
+    # subtitles: the same choices as the MP4 (render._shown), each role on its own track like a hand-made project
     look = t["look"]
     P = render.pair_look(st) if look == "pair" else None
     whites, colours, captions, titles = [], [], [], []
@@ -187,12 +197,12 @@ def build(path: str) -> tuple[Path, list[str]]:
         rolls.append(seg)
     _track(draft, "video", rolls, 1)
 
-    # a click on every coloured word (P'Ohm: one short click, ~30 % volume)
+    # a click on every coloured word (one short click, ~30 % volume)
     fx = t["sfx"]
     clicks = []
     if fx.get("on"):
         click_file = _T["click"]["mat"]["path"]
-        if not Path(click_file).is_file():  # this machine's CapCut never downloaded P'Ohm's click: use ours
+        if not Path(click_file).is_file():  # this machine's CapCut never downloaded that click: use ours
             click_file = str(render._sfx("pop"))
         for tp in t["pops"]:
             mat = copy.deepcopy(_T["click"]["mat"])
