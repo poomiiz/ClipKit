@@ -1964,11 +1964,13 @@ async function makeChosen(kind) {
       else if (kind === 'clipkit') {   // several stories: subtitles + MP4 without stopping at the workbench
         const d = await makeDraft(false);
         say('ทำทุกขั้น (ซับ ตัด ภาพประกอบ เพลง) แล้วทำตัวอย่าง');
-        const r = await api('draft/auto', {path: d.path});
-        made.push(r.preview.file);
+        await api('draft/auto', {path: d.path});
+        made.push(d.path);
       } else await makeDraft(false);
       done.push(i + 1);
     }
+    // several stories made in ClipKit: go straight on to editing the first one (the rest are in the sidebar)
+    if (made.length) { location.href = '/editor.html?path=' + encodeURIComponent(made[0]); return; }
     if (list.length > 1) out.textContent = made.length
       ? `✅ ได้ตัวอย่าง ${made.length} เรื่อง (เรื่อง ${done.join(', ')}) รอรีวิว · เปิดแต่ละโปรเจกต์จากแถบซ้าย แท็บ 📤 ส่งออก ดูแล้วกดส่งออกตัวจริง`
       : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
