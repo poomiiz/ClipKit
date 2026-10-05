@@ -40,6 +40,13 @@ def tools():
         raise RuntimeError("not on PATH: " + ", ".join(missing))
 
 
+def node():
+    # the MP4 export and the live preview run HyperFrames through npx
+    if not shutil.which("npx"):
+        raise RuntimeError("Node.js not found (npx missing) - install Node.js LTS from nodejs.org")
+    return subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip()
+
+
 def config():
     import kitconfig
     bad = [f"{k}={kitconfig.CFG.get(k)}" for k in ("capcut_drafts", "stock_video", "stock_music", "work_root")
@@ -98,7 +105,7 @@ def asr():
     return "Whisper loaded and ran"
 
 
-for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("config + folders", config),
+for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("node", node), ("config + folders", config),
              ("GPU", gpu), ("speech model", model), ("disk space", disk)]:
     check(n, f)
 # fonts are each editor's own choice; only the preview render needs "card_font" installed

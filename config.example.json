@@ -1,5 +1,5 @@
 {
-  "_note": "New machine: open ClipKit Settings and pick one workspace folder; it fills these paths. Scripts read config.json; never hard-code paths in a skill.",
+  "_note": "New machine: run  python scripts/setup_workspace.py D:\ClipKit  (or pick the workspace in ClipKit Settings); it creates config.json with these paths. Scripts read config.json; never hard-code paths in a skill.",
   "work_root": "",
   "capcut_drafts": "",
   "stock_video": "",
