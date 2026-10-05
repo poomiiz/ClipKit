@@ -126,6 +126,7 @@ def main() -> int:
     ap.add_argument("--look", default="pair", choices=["pair", "pair-nina", "karaoke", "pop", "none"])
     ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
     ap.add_argument("--export", action="store_true", help="render the MP4s")
+    ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
     a = ap.parse_args()
     raw = str(Path(a.video).resolve())
     if not Path(raw).is_file():
@@ -168,6 +169,10 @@ def main() -> int:
                    "length": round(ve.draft_timeline(path)["duration"], 1), "pixabay": note}
             bf = Path(path) / "clipkit_broll.json"
             row["have"] = list(json.loads(bf.read_text(encoding="utf-8"))) if bf.is_file() else []
+            if a.capcut:
+                import capcut_build
+                say(step="ทำโปรเจกต์ CapCut", story=n)
+                row["capcut"] = str(capcut_build.build(path))
             if a.export:
                 say(step="ส่งออก MP4", story=n)
                 row["mp4"] = ve.draft_hf_export(ve.ExportRequest(path=path))["file"]
@@ -178,7 +183,7 @@ def main() -> int:
     if waits:
         say(WAIT=waits, then=" ".join(sys.argv))
         return 2
-    say(done=str(page(raw, rows)), clips=[{k: r[k] for k in ("n", "title", "length", "path") if k in r} | {"mp4": r.get("mp4")}
+    say(done=str(page(raw, rows)), clips=[{k: r[k] for k in ("n", "title", "length", "path") if k in r} | {"mp4": r.get("mp4"), "capcut": r.get("capcut")}
                                          for r in rows], stories=len(sts), pilot=not a.all)
     return 0
 
