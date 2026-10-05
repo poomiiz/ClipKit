@@ -103,6 +103,13 @@ Owner only: do this only when `config.json` has `"creator": true`; otherwise say
 3. Render one MOV through `POST /api/kit/motion` with Thai words, pull 3 frames with ffmpeg and look at them (pilot first). Fix anything cut off or broken before going on.
 4. Commit and push to ClipKit; teammates get it from the update banner and it appears on the motion page and in the library.
 
+## Cut log (always)
+Every finished clip is logged by `run_clip.py` (`<output>/logs/runs.jsonl`). When the person complains about a
+result ("ซับยาวไป", "ซับสั้นเกิน", "เรียงเนื้อหาไม่ดี", "หัวคลิปไม่ตรง"...), BEFORE you change anything run
+`python scripts/cutlog.py feedback "<project folder>" "<what they said, their words>"`, then fix, then run it again
+with `--fix "<what you changed>"`. Asked to send results back: `clipkit report` (or `python scripts/cutlog.py report`)
+makes a small zip with no video - tell them it contains the clip's spoken words.
+
 ## Subtitle presets (each person makes their own)
 A preset is `presets/<name>.json`: how the normal text and the emphasis text look, plus an optional small
 translated caption. Never name one after a client unless the person asks; ask them for a name.
