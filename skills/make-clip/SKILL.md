@@ -21,7 +21,9 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
    before `--all`.
 4. Envato: the person opens the links, downloads into each project's `clipkit_insert` folder (name starts with
    the link number, e.g. `2 coffee.mp4`), then you run with `--insert`. Never log in to Envato for them.
-5. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
+5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
+   tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
+6. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
 Needs: `python scripts/doctor.py` all OK, Node (for `npx hyperframes`), `pixabay_key` in config.json (optional).
 
 ## Commands pasted from the ClipKit app
