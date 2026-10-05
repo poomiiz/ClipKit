@@ -578,7 +578,8 @@
           <option value="landscape">แนวนอน 16:9</option>
           <option value="square">สี่เหลี่ยม 1:1</option>
           <option value="source">ตามฟุตเทจ</option></select>
-        <span class="hint" id="focusNote"></span></div>
+        <span class="hint" id="focusNote"></span>
+        &nbsp; เทมเพลต <select id="tpl" onchange="try{localStorage.setItem('ck_tpl',this.value)}catch(e){}"><option value="">ค่าเริ่มต้น</option></select></div>
       <div class="make-pair">
         <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
         <button class="ghost" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">สร้างโปรเจกต์ แล้วเปิด CapCut</small></button>
@@ -1827,6 +1828,15 @@ function renderGuide(d) {
   document.getElementById('wzNext').onclick = () => { wzMark(w.key); if (wzAt < WZ.length - 1) wzAt++; renderGuide(state.draft); };
 }
 
+// project templates (saved from the editor): the choice is remembered on this machine
+fetch('/api/video/templates').then(r => r.json()).then(r => {
+  const sel = document.getElementById('tpl');
+  if (!sel) return;
+  r.templates.forEach(n => { const o = document.createElement('option'); o.value = o.textContent = n; sel.appendChild(o); });
+  let last = ''; try { last = localStorage.getItem('ck_tpl') || ''; } catch (e) {}
+  if (r.templates.includes(last)) sel.value = last;
+}).catch(() => {});
+
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
 async function makeDraft(open = true) {
   const main = document.getElementById('mainAction');
@@ -1837,8 +1847,14 @@ async function makeDraft(open = true) {
   main.disabled = true;
   out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
-    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, ...(state.range || {})});
+    const template = document.getElementById('tpl').value || null;
+    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, template, ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
+    if ((state.via || 'capcut') === 'capcut') {  // CapCut route: settle everything the template asks for, then lay it out in CapCut
+      out.innerHTML = '<span class="spin"></span> ถอดเสียง · ตัดช่วงหายใจ · ปรับสี · ทำโปรเจกต์ CapCut… (ราว 1–3 นาที)';
+      const p = await api('draft/prepare', {path: r.draft_path, template});
+      out.textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"';
+    }
     drafts = (await api('drafts')).drafts;
     const i = drafts.findIndex(d => d.name === r.draft_name || d.path === r.draft_path);
     if (i < 0) throw new Error('สร้างแล้วแต่หาโปรเจกต์ในรายการไม่เจอ: ' + r.draft_name);
