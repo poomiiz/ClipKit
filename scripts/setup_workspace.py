@@ -1,4 +1,4 @@
-"""New machine without the ClipKit window: make config.json from one workspace folder, the same as Settings.
+r"""New machine without the ClipKit window: make config.json from one workspace folder, the same as Settings.
 
     python scripts/setup_workspace.py D:\ClipKit
 
