@@ -231,6 +231,7 @@ function back() { return '<button onclick="SEL=null;drawTL();side()">‹ ตั�
 function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
   s.innerHTML = `<h3>ตั้งค่าทั้งคลิป</h3>
+    <div class="row"><button id="tsave">💾 บันทึกเป็นเทมเพลต</button><span class="hint">${st.template ? 'ใช้เทมเพลต: ' + esc(st.template) + ' · ' : ''}เก็บหน้าตาคลิปนี้ไว้ใช้กับโปรเจกต์ใหม่</span></div>
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <div class="row"><label>พรีเซ็ตข้อความ</label><select id="preset" style="flex:1"></select></div>
     <div class="hint">สร้างพรีเซ็ตเองได้: บอกในแชท หรือดึงจากโปรเจกต์ CapCut ที่ตัดไว้</div>
@@ -263,10 +264,17 @@ function sideClip(s) {
   $('preset').onchange = async e => { await api('draft/look', {path: PATH, style: {preset: e.target.value}}); T.style.preset = e.target.value; live(); };
   const hookColor = f => f[2] > 0.9 ? 'white' : f[1] < 0.3 ? 'red' : 'orange';
   (T.hook || []).forEach((h, n) => { $('hk' + n).value = h.text; $('hc' + n).value = hookColor(h.fill); });
-  if ((T.hook || []).length === 1) $('hc1').value = 'orange';
+  if (!(T.hook || []).length) (st.hook_colors || ['white', 'orange']).forEach((c, n) => { if ($('hc' + n)) $('hc' + n).value = c; });
+  else if (T.hook.length === 1) $('hc1').value = (st.hook_colors || [])[1] || 'orange';
   $('hks').onclick = async () => {
     const lines = [0, 1].map(n => ({text: $('hk' + n).value.trim(), color: $('hc' + n).value})).filter(x => x.text);
     try { await api('draft/hook', {path: PATH, lines}); say('บันทึกหัวคลิปแล้ว'); await reload(); live(); } catch (e) { say('❌ ' + e.message); }
+  };
+  $('tsave').onclick = async () => {
+    const name = prompt('ชื่อเทมเพลต (เช่น ชื่อลูกค้า หรือ สไตล์)', st.template || '');
+    if (!name) return;
+    try { await api('template/save', {path: PATH, name}); T.style.template = name; say('บันทึกเทมเพลต "' + esc(name) + '" แล้ว · เลือกใช้ได้ตอนสร้างโปรเจกต์ใหม่'); side(); }
+    catch (e) { say('❌ ' + e.message); }
   };
   $('uncut').onclick = async () => {
     try { const r = await api('draft/uncut', {path: PATH}); say('ย้อนแล้ว · เหลือย้อนได้อีก ' + r.undo + ' ครั้ง'); await reload(); live(); } catch (e) { say('❌ ' + e.message); }
