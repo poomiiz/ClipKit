@@ -83,10 +83,16 @@ def _track(draft: dict, kind: str, segs: list[dict], render_index: int) -> None:
 _T: dict[str, Any] = {}
 
 
-def build(path: str) -> Path:
+def build(path: str) -> tuple[Path, list[str]]:
+    """Returns the new project folder and what this machine lacks (shown to the person, never hidden)."""
     if not TEMPLATES.is_file():
         raise VideoEditError("app/capcut_templates.json is missing - run scripts/capcut/make_templates.py")
     _T.update(json.loads(TEMPLATES.read_text(encoding="utf-8")))
+    warnings: list[str] = []
+    fonts = {st.get("font", {}).get("path", "") for k in ("white", "orange", "caption", "title")
+             for st in json.loads(_T[k]["mat"]["content"]).get("styles", [])}
+    for f in sorted(x for x in fonts if x and not Path(x).is_file()):
+        warnings.append(f"font not on this machine, CapCut will show its default font: {Path(f).name}")
     t = render.render_draft(path, "", dry=True)
     st = t["style"] or {}
     src = Path(path)
@@ -106,6 +112,9 @@ def build(path: str) -> Path:
     main = capcut_edit._video_track(draft)
     skin = float(st.get("skin", 0))
     skin_id = None
+    if skin > 0 and not Path(_T["skin"].get("path", "")).exists():
+        warnings.append("CapCut skin effect not downloaded on this machine: add skin smoothing once by hand in CapCut")
+        skin = 0
     if skin > 0:
         fx = copy.deepcopy(_T["skin"])
         fx["id"] = skin_id = _id()
@@ -205,4 +214,4 @@ def build(path: str) -> Path:
     mu = t["music"]
     if mu.get("file"):
         capcut_edit.add_music(str(dst), mu["file"], float(mu.get("volume", 0.12)))
-    return dst
+    return dst, warnings

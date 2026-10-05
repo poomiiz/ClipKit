@@ -21,10 +21,12 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 ## Machine setup (once)
 1. `git clone https://github.com/poomiiz/ClipKit` (scripts run from the clone).
 2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` - installs Python, ffmpeg, Chrome (via winget) and all packages, creates `config.json` and the desktop icon.
-3. Edit `config.json` (your folders), then `python scripts\doctor.py --asr` must show all OK.
+3. `python scripts\setup_workspace.py D:\ClipKit` (any folder: makes `config.json` and every folder), install
+   Node.js LTS (nodejs.org, needed for MP4 export), then `python scripts\doctor.py --asr` must show all OK.
    Fonts are each editor's choice (not bundled); `card_font` is optional and only used for quick previews.
-4. `python scripts\envato.py login` - sign in to the **company** Envato account once in the Chrome window that opens.
-5. Open the app from the desktop icon **ClipKit - Video to CapCut**.
+4. Optional: `python scripts\envato.py login` - sign in to the **company** Envato account once (only for the bot route; the link page needs no login here).
+5. Then ask your AI agent (Claude Code / Codex) "ตัดคลิปนี้ ..." - it follows `skills/make-clip`. The ClipKit
+   window (desktop icon) is optional, for reviewing on a timeline.
 
 ## Envato (shared company account, decided 2026-10-01)
 Everyone signs in with the one company account on their own machine. To keep the account safe:
@@ -56,4 +58,4 @@ Everyone signs in with the one company account on their own machine. To keep the
 ## Rules
 - No video, footage, client files, fonts or passwords in this repo. Media stays on the shared drive.
 - Machine paths only in `config.json` (git-ignored).
-- New client = new `skills/style-<client>/SKILL.md`.
+- New look = new subtitle preset in `presets/` (by chat or `scripts/preset_from_capcut.py`).

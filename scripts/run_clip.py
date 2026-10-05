@@ -22,6 +22,22 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
+def _parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description="One command from a raw video to finished short clips.")
+    ap.add_argument("video")
+    ap.add_argument("--max", type=int, default=120, help="longest clip in seconds")
+    ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
+    ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
+    ap.add_argument("--look", default="pair", choices=["pair", "karaoke", "pop", "none"])
+    ap.add_argument("--preset", default="default", help="subtitle preset in presets/ (normal + emphasis text)")
+    ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
+    ap.add_argument("--export", action="store_true", help="render the MP4s")
+    ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
+    return ap
+
+
+if __name__ == "__main__" and {"-h", "--help"} & set(sys.argv):
+    _parser().parse_args()  # help works before config.json exists
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import capcut_edit  # noqa: E402
@@ -118,17 +134,7 @@ a{{color:#8fb8ff}}section{{border:1px solid #333;border-radius:10px;padding:12px
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("video")
-    ap.add_argument("--max", type=int, default=120, help="longest clip in seconds")
-    ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
-    ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
-    ap.add_argument("--look", default="pair", choices=["pair", "karaoke", "pop", "none"])
-    ap.add_argument("--preset", default="default", help="subtitle preset in presets/ (normal + emphasis text)")
-    ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
-    ap.add_argument("--export", action="store_true", help="render the MP4s")
-    ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
-    a = ap.parse_args()
+    a = _parser().parse_args()
     render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
     raw = str(Path(a.video).resolve())
     if not Path(raw).is_file():
@@ -175,7 +181,8 @@ def main() -> int:
             if a.capcut:
                 import capcut_build
                 say(step="ทำโปรเจกต์ CapCut", story=n)
-                row["capcut"] = str(capcut_build.build(path))
+                cc, row["capcut_warnings"] = capcut_build.build(path)
+                row["capcut"] = str(cc)
             if a.export:
                 say(step="ส่งออก MP4", story=n)
                 row["mp4"] = ve.draft_hf_export(ve.ExportRequest(path=path))["file"]
@@ -186,7 +193,7 @@ def main() -> int:
     if waits:
         say(WAIT=waits, then=" ".join(sys.argv))
         return 2
-    say(done=str(page(raw, rows)), clips=[{k: r[k] for k in ("n", "title", "length", "path") if k in r} | {"mp4": r.get("mp4"), "capcut": r.get("capcut")}
+    say(done=str(page(raw, rows)), clips=[{k: r[k] for k in ("n", "title", "length", "path") if k in r} | {"mp4": r.get("mp4"), "capcut": r.get("capcut"), "capcut_warnings": r.get("capcut_warnings")}
                                          for r in rows], stories=len(sts), pilot=not a.all)
     return 0
 

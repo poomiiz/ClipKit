@@ -1,16 +1,26 @@
 ---
 name: make-clip
-description: One-request runner for a whole short clip - "ทำคลิปนี้", "ตัดคลิปจากไฟล์นี้", "make a clip from this footage", and the commands the ClipKit app asks the person to paste ("ClipKit: แบ่งเรื่อง ...", "ClipKit: แปลซับเป็นอังกฤษ ..."). Checks the machine, transcribes, proposes stories, waits for the person to pick, then builds the CapCut draft with cuts and subtitles, adds cards/B-roll/motion per the client style, runs QC and logs the clip. Use this as the entry point; it calls clip-workflow, style-*, broll-finder and clip-qc in order.
+description: One-request runner for a whole short clip - "ทำคลิปนี้", "ตัดคลิปจากไฟล์นี้", "ทำคลิปสั้นไม่เกิน 2 นาที", "make a clip from this footage", "ทำเป็นโปรเจกต์ CapCut ด้วย", and the commands the ClipKit app asks the person to paste ("ClipKit: แบ่งเรื่อง ...", "ClipKit: เลือกคำเน้น ..."). Runs scripts/run_clip.py end to end (transcribe, stories, cuts, subtitles in the person's preset, title, b-roll, music, MP4 and/or CapCut project) and does its two thinking steps. Use this as the entry point; it uses broll-finder and clip-qc.
 ---
 
 # Make a clip (entry point)
 
 Run from the ClipKit folder. Stop and report `Blocked` with the exact error if any command fails - never skip a step or guess a value.
 
+## New machine (once)
+1. `python scripts/setup_workspace.py D:\ClipKit` (any folder) - makes `config.json` with every folder.
+2. `python scripts/doctor.py` - every line OK (WARN on "preview font" is fine). FAIL = tell the person which line
+   and stop. Python packages: `scripts/setup.ps1`. Node.js LTS from nodejs.org. Speech model: `scripts/fetch_model.py`.
+3. Optional: free Pixabay key (pixabay.com/api/docs) as `"pixabay_key"` in `config.json` for automatic b-roll.
+
 ## One command: "ตัดคลิปนี้" / "ทำคลิปสั้นจากไฟล์นี้" (no ClipKit window needed)
 ```
-python scripts/run_clip.py "<video>" [--max 120] [--all] [--insert] [--export]
+python scripts/run_clip.py "<video>" [--max 120] [--preset default] [--all] [--capcut] [--export] [--insert]
 ```
+Ask only what is missing: the video path, and which subtitle preset (`default` when they have no preference;
+list: the `presets/` folder; none they like: make one, see **Subtitle presets**). "ทำเป็นโปรเจกต์ CapCut" = add
+`--capcut`; "ขอไฟล์ MP4" = add `--export`. `--look` (pair, karaoke, pop, none) and `--shape` (portrait default)
+rarely change.
 It transcribes, splits into stories, makes one project per story (face crop, subtitles, silences trimmed,
 subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the HyperFrames page, and writes
 `<video> - ClipKit.html` with one Envato search link per b-roll spot. Rerunning skips every finished step.
@@ -24,7 +34,6 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
 5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
    tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
 6. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
-Needs: `python scripts/doctor.py` all OK, Node (for `npx hyperframes`), `pixabay_key` in config.json (optional).
 
 ## Commands pasted from the ClipKit app
 The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
@@ -42,7 +51,7 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
 4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
 ### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
-For the sentence-pair subtitles (white lead line + bigger coloured punch line, P'Ohm's own style).
+For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, in the project's preset).
 1. Read `<folder>/clipkit_lines.json` (list of subtitle line texts, in order) and the whole clip's meaning.
 2. For every line, split it into short phrases of about 2 seconds / 10-18 Thai letters, in speaking order,
    breaking where a thought ends. Each phrase = `[lead, punch]`: the punch is the word or short phrase that
@@ -55,7 +64,7 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    phrases that carry the message (a feeling, a number, a result, a key idea) - roughly half or fewer.
    The screen shows at most 2 lines: white 1 + colour 1, or one of them on 2 lines.
    Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase ("white" = the preset's
-   normal text, "colour" = its emphasis text), measured from P'Ohm's own CapCut edits:
+   normal text, "colour" = its emphasis text), measured from real hand-edited clips:
    - `pair` (default): white lead + coloured punch.
    - `white`: white only - setups and questions ("จะแนะนำยังไง", "ธุรกิจเขาเป็นยังไง").
    - `color`: coloured only - a short line that is all point.
@@ -63,7 +72,7 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    - `hold`: the previous white line stays while the coloured line changes - lists ("บางคนบอก" ->
      "ทำแบรนด์ดิ้ง" / "ลงระบบ CRM" / "จ้างเซลส์มาขาย").
    - `skip`: no subtitle - filler, repeats, false starts, the other person's "อืมๆ".
-   - `show`: the words on screen, rewritten short and clean the way P'Ohm does ("ไปจ้างพนักงานขายซิ" ->
+   - `show`: the words on screen, rewritten short and clean ("ไปจ้างพนักงานขายซิ" ->
      "จ้างเซลส์มาขาย", "มันคือแบบกูต้องทำอะไร" -> "ต้องทำอะไรก่อน?"). Keep the meaning, drop slang and
      filler, max ~15 letters per line. Lead + punch still hold the exact spoken text (they give the timing).
    Example item: `["บางคนบอกต้องลง", "ระบบ Crm", {"look": "hold", "show": ["", "ลงระบบ CRM"]}]`;
@@ -72,7 +81,8 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    an emotion on a face), add a third item: a short English stock-footage search, e.g.
    `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. Concrete nouns, 2-4 words, no brand names.
    Skip abstract phrases; never two b-roll phrases in a row.
-4. Write `<folder>/clipkit_punch.json` as `{"<line text>": [[lead, punch] or [lead, punch, query], ...], ...}`
+4. Write `<folder>/clipkit_punch.json` as `{"<line text>": [item, ...], ...}`, each item
+   `[lead, punch]`, `[lead, punch, query]`, `[lead, punch, options]` or `[lead, punch, query, options]`
    covering every line.
 5. Clip title (every clip has one, on screen for the first 4 s; the subtitles start after it): write
    `<folder>/clipkit_hook.json` as 1-2 lines `[{"text": "เริ่มทำธุรกิจใหม่", "color": "red"},
@@ -87,7 +97,7 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
 7. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 
 ### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
-Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on P'Ohm's machine.
+Owner only: do this only when `config.json` has `"creator": true`; otherwise say it is done on the owner's machine.
 1. Read `motion/library/README.md` and `motion/library/hyperframes.md`. A new move must not repeat an existing template in `motion/*/` or a registry item with the same role and mood; for the HyperFrames command, start from that item (`npx hyperframes@0.8.101 add <name>` in a scratch project) and rebuild it as our template.
 2. Make `motion/<kebab-name>/index.html`: 1080x1920 transparent, Thai-safe (grapheme splitting with `Intl.Segmenter`, never per code point), lines shrink to fit the frame, `speed` and `font` params, and a `<script type="application/json" id="clipkit-motion">` block with `role`, `mood`, `label`, `fields`, `length` (copy the shape from `motion/hook-title`).
 3. Render one MOV through `POST /api/kit/motion` with Thai words, pull 3 frames with ffmpeg and look at them (pilot first). Fix anything cut off or broken before going on.
@@ -104,38 +114,14 @@ translated caption. Never name one after a client unless the person asks; ask th
   reads the text styles they used most and writes the preset; show them what it wrote.
 - Use it: `run_clip.py ... --preset <name>`, or the preset list in the ClipKit editor.
 
-## 1. Machine ready
-`python scripts/doctor.py` - every line OK (WARN on "preview font" is fine). FAIL = tell the person which line and stop.
+## QC and hand-over
+Run `clip-qc` on the pilot clip. Tell the person what to open (the HTML page, the MP4, or the "· CapCut"
+project), its length and what to check. Wait for their verdict before `--all`.
 
-## 2. Which preset and which file
-Ask only what is missing: the raw footage path and the subtitle preset (`python -c "import sys; sys.path.insert(0,'app'); import render; print(render.preset_names())"`;
-`default` when the person has no preference). No preset they like yet: make one (see **Subtitle presets** below).
-
-## 3. Transcript of the whole recording (once per file)
-`python scripts/clipkit.py transcribe "<RAW>"` -> `<RAW>.words.json`. Reuse it if it already exists.
-
-## 4. Propose stories - wait for the person
-Follow `clip-workflow` step 2. Show a numbered list: `start-end s | title | promise | why it works`. Do not build anything until the person picks.
-
-## 5. Build the draft for each picked story (pilot first: ONE story, then wait)
-```
-python scripts/make_clip.py --file "<RAW>" --start <s> --end <e> --name "<client> <EP> <title>"
-```
-It prints JSON: `draft_path`, `cuts`, `subtitles`, `result_length_s`, `plan_file`, `started_at`, `minutes`. Keep `started_at` for the log. Check `result_length_s` is 60-130 s; outside = adjust the range and rerun.
-
-## 6. Cards, motion, B-roll, music
-- Cards and subtitles: `clip-workflow` step 4 plus the project's subtitle preset.
-- Motion overlays (hook title, sentence pair): the app page `/motion.html`, or POST `/api/kit/motion`; files land in `<output>/motion` as transparent MOV - place them in CapCut on the exact spoken word.
-- B-roll: `broll-finder` (the person ticks; only ticked items are downloaded - each download uses one Envato licence).
-- Cover: `/cover.html`.
-
-## 7. QC and hand-over
-Run `clip-qc` on the pilot clip. Tell the person: draft name to open in CapCut, length, what to check. Wait for their verdict before building the next story.
-
-## 8. Log the clip (the moment it is done)
+## Log the clip (the moment it is done)
 ```
 python scripts/log_clip.py add --project "<client>" --item "<clip name>" --agent <claude|codex> \
-  --started-at <started_at from step 5> --minutes <measured agent minutes> \
+  --started-at <when you started, ISO time> --minutes <measured agent minutes> \
   --metadata '{"human_fix_min": N, "source_range": "s-e", "final_len_s": N, "draft": "<draft name>"}'
 ```
 - Always written to `<output>/logs/clips_log.jsonl`. On the office machine it also goes straight to the central work log.
