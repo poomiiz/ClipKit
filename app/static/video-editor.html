@@ -676,7 +676,6 @@
             <h3>ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก ClipKit</p></div></div>
           <div class="row" id="saBtns" style="gap:8px;flex-wrap:wrap">
             <button class="small" data-a="pair">คู่ประโยค · BPS</button>
-            <button class="small" data-a="pair-nina">คู่ประโยค · Nina</button>
             <button class="small" data-a="none">ซับนิ่ง</button>
             <button class="small" data-a="pop">เด้งเข้า</button>
             <button class="small" data-a="karaoke">ไล่สีทีละคำ</button></div>
@@ -2561,8 +2560,7 @@ async function saLoad(pick) {
   document.getElementById('saNote').textContent = r.anim === 'karaoke' && !r.has_word_times
     ? '⚠️ โปรเจกต์นี้ยังไม่มีเวลาของแต่ละคำ สีจะไล่ตามความยาวตัวอักษรแทน · กดถอดเสียงใหม่ (แท็บ 🎙️ ซับ) ให้ตรงเสียงพูด'
     : {none: 'ซับขึ้นนิ่งๆ', pop: 'แต่ละบรรทัดขยายเด้งเข้ามา', karaoke: 'คำที่กำลังพูดเปลี่ยนเป็นสีเหลือง',
-       pair: 'แบ่งเป็นช่วงสั้นตามจังหวะพูด · ตัวขาว + คำเน้นน้ำเงินขอบขาว (แบบ BPS ที่พี่ตัด)',
-       'pair-nina': 'แบ่งเป็นช่วงสั้นตามจังหวะพูด · ตัวขาว + คำเน้นส้ม + ซับเล็กด้านล่าง (แบบ Nina ที่พี่ตัด)'}[r.anim];
+       pair: 'แบ่งเป็นช่วงสั้นตามจังหวะพูด · ตัวขาว + คำเน้นน้ำเงินขอบขาว (แบบ BPS ที่พี่ตัด)',}[r.anim];
 }
 // motion on top of the clip: one row per subtitle line, a button per look, a ✓ where one is placed
 async function ovLoad() {

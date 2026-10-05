@@ -40,8 +40,7 @@ Everyone signs in with the one company account on their own machine. To keep the
 | `skills/clip-workflow` | Client-neutral steps from raw footage to finished clip |
 | `skills/broll-finder` | Transcript -> Envato keywords -> HTML picker -> download ticked items only |
 | `skills/clip-qc` | Checklist before a clip is called done |
-| `skills/style-nina` | Nina look: cards, colours, animations, storytelling |
-| `skills/style-bps` | BPS คุณตั้น look: sentence-pair pop text, red hook, film-effect inserts |
+| `presets/` | Subtitle presets (normal + emphasis text): `default`, `with-caption`, and the ones each user makes |
 | `templates/EDIT_LOG.md` | Per-client edit log to copy into the client folder |
 | `scripts/make_clip.py` | One story -> transcribe, jump cuts, subtitles, CapCut draft (prints JSON) |
 | `scripts/log_clip.py` | Log a finished clip: always to `<output>/logs/clips_log.jsonl`, plus central log on the office machine; `import` loads team files |

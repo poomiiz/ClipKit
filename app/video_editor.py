@@ -386,6 +386,13 @@ def browse(req: BrowseRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/subtitle-presets")
+def subtitle_presets() -> dict[str, Any]:
+    """Subtitle presets (normal + emphasis text) in presets/, made by each user."""
+    import render
+    return {"presets": render.preset_names()}
+
+
 @router.get("/presets")
 def presets() -> dict[str, Any]:
     """Colour grade and subtitle styling taken from the projects already cut."""
@@ -682,7 +689,7 @@ def config() -> dict[str, Any]:
 
 # --- motion on top of the clip: pick a subtitle line, pick a template, it renders and sits at that time ---
 OVERLAYS = "clipkit_overlays.json"
-MOTION_TEMPLATES = {"hook-title": "หัวคลิป", "bps-sentence-pair": "คำเน้น"}
+MOTION_TEMPLATES = {"hook-title": "หัวคลิป", "sentence-pair": "คำเน้น"}
 
 
 def _overlays(path: str) -> list[dict[str, Any]]:
@@ -750,7 +757,7 @@ def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
 
 class SubAnimRequest(BaseModel):
     path: str
-    anim: str = Field(pattern="^(none|pop|karaoke|pair|pair-nina)$")
+    anim: str = Field(pattern="^(none|pop|karaoke|pair)$")
 
 
 @router.post("/draft/sub-anim")
@@ -893,7 +900,7 @@ def draft_broll_remove(req: BrollRemove) -> dict[str, Any]:
 
 class AutoRequest(BaseModel):
     path: str
-    look: str = Field(default="pair", pattern="^(pair|pair-nina|karaoke|pop|none)$")
+    look: str = Field(default="pair", pattern="^(pair|karaoke|pop|none)$")
 
 
 @router.post("/draft/auto")

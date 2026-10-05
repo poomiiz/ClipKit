@@ -120,11 +120,11 @@ def build(path: str) -> Path:
 
     tops: dict[str, float] = {}
     look = t["look"]
-    if look in ("pair", "pair-nina"):
-        P = render.PAIR["nina" if look == "pair-nina" else "bps"]
+    if look == "pair":
+        P = render.pair_look(st)
         held = ""
         en = t.get("caption_en") or {}
-        if P["caption"] and en:  # Nina's small English caption: one per spoken line, also under the title
+        if P["caption"] and en:  # the preset's small translated caption: one per spoken line, also under the title
             lines_at: dict[str, list[float]] = {}
             for p in t["phrases"]:
                 s = lines_at.setdefault(p["line"], [p["start"], p["end"]])

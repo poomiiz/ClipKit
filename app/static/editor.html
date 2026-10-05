@@ -218,7 +218,7 @@ function tick() { placePH($('v').currentTime || 0); }
 $('zoom').oninput = e => { PX = +e.target.value; drawTL(); };
 
 // ── right panel: the selected piece, or the whole clip's settings ──
-const LOOKS = [['pair', 'ตัวขาว + คำเน้นน้ำเงิน'], ['pair-nina', 'ตัวขาว + คำเน้นส้ม + ซับเล็ก'], ['none', 'ซับธรรมดา'], ['pop', 'ซับเด้งเข้า'], ['karaoke', 'ไล่สีทีละคำ']];
+const LOOKS = [['pair', 'ข้อความปกติ + ข้อความเน้น'], ['none', 'ซับธรรมดา'], ['pop', 'ซับเด้งเข้า'], ['karaoke', 'ไล่สีทีละคำ']];
 function side() {
   const s = $('side');
   if (!SEL) return sideClip(s);
@@ -232,6 +232,8 @@ function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
   s.innerHTML = `<h3>ตั้งค่าทั้งคลิป</h3>
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
+    <div class="row"><label>พรีเซ็ตข้อความ</label><select id="preset" style="flex:1"></select></div>
+    <div class="hint">สร้างพรีเซ็ตเองได้: บอกในแชท หรือดึงจากโปรเจกต์ CapCut ที่ตัดไว้</div>
     <div class="row"><label><input type="checkbox" id="zc" ${st.zoomcut ? 'checked' : ''}> ตัดสลับด้วยการซูม</label><span class="hint">ประโยคเว้นประโยคซูมเข้า 12%</span></div>
     <h4>สีภาพ</h4>
     ${[['brightness', 'ความสว่าง', -0.3, 0.3, 0.01], ['contrast', 'ความคม', 0.6, 1.6, 0.01], ['saturation', 'ความสด', 0, 2, 0.01], ['warmth', 'อุณหภูมิสี (อุ่น/เย็น)', -0.3, 0.3, 0.01]]
@@ -249,6 +251,10 @@ function sideClip(s) {
     <div class="row"><label><input type="checkbox" id="fx" ${PL.sfx.on ? 'checked' : ''}> pop ตอนคำเน้น · whoosh ตอนภาพประกอบ</label></div>
     <div class="row"><label>ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>`;
   s.querySelectorAll('.look').forEach(b => b.onclick = async () => { await api('draft/look', {path: PATH, style: {anim: b.dataset.k}}); await reload(); });
+  fetch('/api/video/subtitle-presets').then(r => r.json()).then(r => {
+    $('preset').innerHTML = r.presets.map(n => `<option${n === (st.preset || 'default') ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  });
+  $('preset').onchange = async e => { await api('draft/look', {path: PATH, style: {preset: e.target.value}}); T.style.preset = e.target.value; live(); };
   $('zc').onchange = async e => { await api('draft/look', {path: PATH, style: {zoomcut: e.target.checked}}); T.style.zoomcut = e.target.checked; live(); };
   s.querySelectorAll('[data-c]').forEach(r => r.onchange = async () => {
     const color = {...(T.style.color || {})}; s.querySelectorAll('[data-c]').forEach(x => color[x.dataset.c] = +x.value);  // keeps the auto white balance

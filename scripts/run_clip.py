@@ -54,7 +54,7 @@ def stories(raw: str, max_s: int) -> list[dict] | None:
     return video_edit.stories_from_agent(raw, json.loads(tf.read_text(encoding="utf-8")))
 
 
-def make_project(raw: str, n: int, st: dict, shape: str, look: str) -> str:
+def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str = "default") -> str:
     f = video_edit.find_focus(raw, st["start"], st["end"])
     r = ve.capcut(ve.DraftRequest(file=raw, name=f"{Path(raw).stem} - {n} {st['title']}", start=st["start"], end=st["end"],
                                   via="clipkit", shape=shape, focus_x=f["x"], focus_y=f["y"]))
@@ -63,7 +63,7 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str) -> str:
     capcut_edit.set_subtitles(path, got["subtitles"])
     capcut_edit.subtitles_language(path, "th")
     capcut_edit.trim_pauses(path)
-    (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
+    (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "preset": preset, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
     ve.auto_color(path)
     return path
 
@@ -123,11 +123,13 @@ def main() -> int:
     ap.add_argument("--max", type=int, default=120, help="longest clip in seconds")
     ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
     ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
-    ap.add_argument("--look", default="pair", choices=["pair", "pair-nina", "karaoke", "pop", "none"])
+    ap.add_argument("--look", default="pair", choices=["pair", "karaoke", "pop", "none"])
+    ap.add_argument("--preset", default="default", help="subtitle preset in presets/ (normal + emphasis text)")
     ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
     ap.add_argument("--export", action="store_true", help="render the MP4s")
     ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
     a = ap.parse_args()
+    render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
     raw = str(Path(a.video).resolve())
     if not Path(raw).is_file():
         say(error="file not found", file=raw)
@@ -147,12 +149,13 @@ def main() -> int:
         try:
             if key not in state or not Path(state[key]).is_dir():
                 say(step="ทำโปรเจกต์", story=n, title=st["title"])
-                state[key] = make_project(raw, n, st, a.shape, a.look)
+                state[key] = make_project(raw, n, st, a.shape, a.look, a.preset)
                 state_f.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
             path = state[key]
             need = ["clipkit_punch.json", "clipkit_hook.json"]
-            if json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8")).get("anim") == "pair-nina":
-                need.append("clipkit_caption_en.json")  # the Nina look's small English caption
+            style = json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8"))
+            if style.get("anim") == "pair" and render.pair_look(style)["caption"]:
+                need.append("clipkit_caption.json")  # the preset has a small translated caption
             if not all((Path(path) / f).is_file() for f in need):
                 waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
                 continue

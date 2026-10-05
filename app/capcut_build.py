@@ -1,11 +1,11 @@
-"""The finished clip as a CapCut project, laid out the way P'Ohm builds his Nina clips by hand, so a person can
+"""The finished clip as a CapCut project, laid out the way P'Ohm builds his clips by hand, so a person can
 open it in CapCut and keep editing: cut footage (zoom cuts as 108 % clips, skin effect), white and coloured
 subtitle lines on their own tracks, the title, the small English caption, b-roll on an overlay track, a click
 on every coloured word, and the music bed.
 
 Built from the same timeline as the MP4 export (render.render_draft dry run) into a copy of the project,
 "<project> · CapCut", so ClipKit's own project stays as it is. Styles come from app/capcut_templates.json
-(scripts/capcut/make_templates.py, pulled from P'Ohm's Nina 07/08). Colour correction is left to CapCut.
+(scripts/capcut/make_templates.py, pulled from P'Ohm's own CapCut projects). Colour correction is left to CapCut.
 """
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def build(path: str) -> Path:
 
     # subtitles: the same choices as the MP4 (render._shown), each role on its own track like P'Ohm's projects
     look = t["look"]
-    P = render.PAIR["nina" if look == "pair-nina" else "bps"]
+    P = render.pair_look(st) if look == "pair" else None
     whites, colours, captions, titles = [], [], [], []
     held = ""
     for p in t["phrases"]:
@@ -133,7 +133,7 @@ def build(path: str) -> Path:
         held = white or held
         if t["hook"] and a < render.HOOK_DUR:
             continue
-        if look not in ("pair", "pair-nina"):
+        if look != "pair":
             whites.append(_text(draft, "white", p["lead"], a, b, -0.6, 16))
             continue
         if white:
@@ -142,7 +142,7 @@ def build(path: str) -> Path:
             hit = min(b - 0.05, a + 0.6) if white else a
             colours.append(_text(draft, "orange", colour, hit, b, P["punch"][1], P["punch"][0], rgb or P["punch"][2], P["punch"][3]))
     en = t.get("caption_en") or {}
-    if P["caption"] and en:
+    if P and P["caption"] and en:
         spans: dict[str, list[float]] = {}
         for p in t["phrases"]:
             s = spans.setdefault(p["line"], [p["start"], p["end"]])

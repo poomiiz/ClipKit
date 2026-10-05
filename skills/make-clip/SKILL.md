@@ -54,8 +54,8 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    "อะไรอย่างนี้", repeated words) and phrases with no point get white only: `[text, ""]`. Colour only the
    phrases that carry the message (a feeling, a number, a result, a key idea) - roughly half or fewer.
    The screen shows at most 2 lines: white 1 + colour 1, or one of them on 2 lines.
-   Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase, measured from P'Ohm's own
-   Nina 01-10 CapCut edits (Nina 07 is the worked example of this whole style):
+   Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase ("white" = the preset's
+   normal text, "colour" = its emphasis text), measured from P'Ohm's own CapCut edits:
    - `pair` (default): white lead + coloured punch.
    - `white`: white only - setups and questions ("จะแนะนำยังไง", "ธุรกิจเขาเป็นยังไง").
    - `color`: coloured only - a short line that is all point.
@@ -79,11 +79,11 @@ For the sentence-pair subtitles (white lead line + bigger coloured punch line, P
    {"text": "ทำสิ่งนี้ก่อน", "color": "white"}]`. Short punchy promise of the clip, ~8-16 letters per line, not a
    sentence from the talk. Colours per line: `white`, `orange` or `red`, any mix (red/white, white/orange,
    orange/white, one big red word...) - pick by the content: red for a warning or shock, orange for the promise.
-   From P'Ohm's Nina titles: "ธุรกิจสมัยนี้ / ไม่ต้องแย่งทำเลอีกแล้ว", "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้",
+   Examples of good titles: "ธุรกิจสมัยนี้ / ไม่ต้องแย่งทำเลอีกแล้ว", "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้",
    "เงิน 5 แสนก็ไม่เอา!", "Burn out".
-6. Nina look (`pair-nina`) only: write `<folder>/clipkit_caption_en.json` as `{"<line text>": "<English>"}` for
-   every line - short natural English for the small bottom caption, as in P'Ohm's Nina clips ("If I want to
-   start my own business from scratch, let's say..."). Brand names and terms stay as they are.
+6. Only when the project's preset has a `caption` (e.g. `with-caption`): write `<folder>/clipkit_caption.json`
+   as `{"<line text>": "<translation>"}` for every line, in the preset's caption `language` (default English) -
+   short and natural ("If I want to start my own business from scratch, let's say..."). Brand names stay.
 7. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 
 ### `ClipKit: สร้างท่าใหม่ ใช้ทำ "<role>" อารมณ์ "<mood>"` and `ClipKit: ทำเทมเพลตจาก HyperFrames "<name>"`
@@ -93,11 +93,23 @@ Owner only: do this only when `config.json` has `"creator": true`; otherwise say
 3. Render one MOV through `POST /api/kit/motion` with Thai words, pull 3 frames with ffmpeg and look at them (pilot first). Fix anything cut off or broken before going on.
 4. Commit and push to ClipKit; teammates get it from the update banner and it appears on the motion page and in the library.
 
+## Subtitle presets (each person makes their own)
+A preset is `presets/<name>.json`: how the normal text and the emphasis text look, plus an optional small
+translated caption. Never name one after a client unless the person asks; ask them for a name.
+- **By chat** ("ตัวปกติขาวขอบดำ ตัวเน้นเหลืองใหญ่กว่า"): copy `presets/default.json` and change it.
+  Per role: `size` (CapCut text size, 15-40 normal), `y` (-1 bottom .. 1 top; normal above emphasis, about 0.12
+  apart), `color` / `outline` as `#rrggbb`, `outline_width` (0-0.15). `caption`: `null`, or the same fields plus
+  `language`.
+- **From the person's own CapCut project**: `python scripts/preset_from_capcut.py "<CapCut project folder>" --name <name>`
+  reads the text styles they used most and writes the preset; show them what it wrote.
+- Use it: `run_clip.py ... --preset <name>`, or the preset list in the ClipKit editor.
+
 ## 1. Machine ready
 `python scripts/doctor.py` - every line OK (WARN on "preview font" is fine). FAIL = tell the person which line and stop.
 
-## 2. Which client and which file
-Ask only what is missing: client style (`style-nina`, `style-bps`, or none) and the raw footage path. Load that style skill now.
+## 2. Which preset and which file
+Ask only what is missing: the raw footage path and the subtitle preset (`python -c "import sys; sys.path.insert(0,'app'); import render; print(render.preset_names())"`;
+`default` when the person has no preference). No preset they like yet: make one (see **Subtitle presets** below).
 
 ## 3. Transcript of the whole recording (once per file)
 `python scripts/clipkit.py transcribe "<RAW>"` -> `<RAW>.words.json`. Reuse it if it already exists.
@@ -111,8 +123,8 @@ python scripts/make_clip.py --file "<RAW>" --start <s> --end <e> --name "<client
 ```
 It prints JSON: `draft_path`, `cuts`, `subtitles`, `result_length_s`, `plan_file`, `started_at`, `minutes`. Keep `started_at` for the log. Check `result_length_s` is 60-130 s; outside = adjust the range and rerun.
 
-## 6. Cards, motion, B-roll, music (client style)
-- Cards and subtitles: `clip-workflow` step 4 plus the style skill (fonts, colours, positions).
+## 6. Cards, motion, B-roll, music
+- Cards and subtitles: `clip-workflow` step 4 plus the project's subtitle preset.
 - Motion overlays (hook title, sentence pair): the app page `/motion.html`, or POST `/api/kit/motion`; files land in `<output>/motion` as transparent MOV - place them in CapCut on the exact spoken word.
 - B-roll: `broll-finder` (the person ticks; only ticked items are downloaded - each download uses one Envato licence).
 - Cover: `/cover.html`.

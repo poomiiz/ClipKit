@@ -67,14 +67,39 @@ def _clock(spoken: list | None, length: float):
     return lambda f: next((t for p, t in reversed(marks) if p <= f), 0.0)
 
 
-# the sentence-pair look measured from P'Ohm's own CapCut edits (BPS3 01/07, Nina 02/08): each spoken phrase
-# becomes a short white lead line plus a bigger coloured punch line; Nina adds a small full caption at the bottom
-PAIR = {
-    "bps": {"lead": (22, -0.37, [1, 1, 1], [0, 0, 0], 0.03), "punch": (26, -0.50, [0.02, 0.07, 0.57], [1, 1, 1], 0.08),
-            "caption": None},
-    "nina": {"lead": (22, -0.29, [1, 1, 1], [0, 0, 0], 0.05), "punch": (26, -0.44, [1, 0.49, 0], [0, 0, 0], 0.06),
-             "caption": (8, -0.80, [1, 1, 1], [0, 0, 0], 0.08)},
-}
+# the sentence-pair look: each spoken phrase becomes a normal line plus a bigger emphasis line, optionally with a
+# small translated caption at the bottom. How they look is a preset each user makes (presets/<name>.json, by chat
+# or from one of their own CapCut projects: scripts/preset_from_capcut.py); "default" ships with ClipKit.
+PRESETS = Path(__file__).resolve().parents[1] / "presets"
+
+
+def _rgb(hexcolor: str) -> list[float]:
+    h = hexcolor.lstrip("#")
+    if len(h) != 6:
+        raise VideoEditError(f"preset colour must be #rrggbb: {hexcolor}")
+    return [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+
+
+def preset_names() -> list[str]:
+    return sorted(p.stem for p in PRESETS.glob("*.json"))
+
+
+def pair_look(style: dict) -> dict[str, Any]:
+    """The project's preset as (size, y, fill, outline colour, outline width) per role: lead (normal text),
+    punch (emphasis), caption (or None)."""
+    name = style.get("preset") or "default"
+    f = PRESETS / f"{name}.json"
+    if not f.is_file():
+        raise VideoEditError(f"preset '{name}' not found in {PRESETS} (have: {', '.join(preset_names())})")
+    try:
+        p = json.loads(f.read_text(encoding="utf-8"))
+        part = lambda r: (float(r["size"]), float(r["y"]), _rgb(r["color"]), _rgb(r["outline"]),  # noqa: E731
+                          float(r["outline_width"]))
+        return {"lead": part(p["normal"]), "punch": part(p["emphasis"]),
+                "caption": part(p["caption"]) if p.get("caption") else None,
+                "caption_lang": (p.get("caption") or {}).get("language", "en")}
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise VideoEditError(f"preset {f.name} is broken: {exc}") from exc
 
 
 RED = [0.93, 0.11, 0.11]
@@ -147,12 +172,11 @@ JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "
 
 
 def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
-          preset: str, picked: list | None = None, max_chars: int = 16, marks: list | None = None, held: dict | None = None) -> list[str]:
-    """Split a spoken line into phrases of about two seconds, each shown as lead + punch.
+          look: dict, picked: list | None = None, max_chars: int = 16, marks: list | None = None, held: dict | None = None) -> list[str]:
+    """Split a spoken line into phrases of about two seconds, each shown as lead + punch (look = pair_look()).
     picked = the agent's [[lead, punch], ...] for this line (the words that carry the point); without it the
     phrases break at breaths / ~16 letters / Thai joining words and the punch is the phrase's last words."""
     from pythainlp.tokenize import word_tokenize
-    look = PAIR[preset]
     held = held if held is not None else {"white": ""}  # a "hold" white line carries over into the next subtitle line
     flat = text.replace("\n", " ")
     at, total = _clock(spoken, t1 - t0), len(flat) or 1
@@ -233,9 +257,9 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
             out.append(line(colour, part, hit if white else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(white)))
         if look["caption"] and not held.get("en"):
             out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
-    # Nina's small bottom caption is English, one per spoken line (clipkit_caption_en.json, written by the agent)
+    # the preset's small bottom caption, one translated line per spoken line (clipkit_caption.json, by the agent)
     en = (held.get("en") or {}).get(text)
-    if look["caption"] and en and phrases:  # shown under the title too, as in Nina 07
+    if look["caption"] and en and phrases:  # shown under the title too
         out.append(line(en, look["caption"], phrases[0][2], t1))
     return out
 
@@ -371,13 +395,15 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                               f"eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
                               f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f},scale=", 1)
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
+    if anim == "pair-nina":  # projects made before presets: the same look is now a preset
+        anim, style["preset"] = "pair", style.get("preset") or "with-caption"
     said = _json(folder / "clipkit_words.json", {})
     punches = _json(folder / "clipkit_punch.json", {})  # punch words picked by the agent (ClipKit: เลือกคำเน้น)
     marks: list = []  # ("pop", t) at each punch, ("broll", a, b, query) where the agent asked for b-roll
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     hook = _hook(folder)
-    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption_en.json", {})}
+    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption.json", {})}
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
@@ -399,11 +425,11 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         y = H / 2 - s["clip"]["transform"]["y"] * H / 2
         t0 = s["target_timerange"]["start"] / US
         t1 = t0 + s["target_timerange"]["duration"] / US
-        if anim in ("pair", "pair-nina"):
+        if anim == "pair":
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            "nina" if anim == "pair-nina" else "bps", punches.get(body.get("text", "")), marks=marks, held=held)
+                            pair_look(style), punches.get(body.get("text", "")), marks=marks, held=held)
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
