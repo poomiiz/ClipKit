@@ -18,7 +18,7 @@ for t in d['tracks']:
     t['segments'] = out
 d['tracks'] = [t for t in d['tracks'] if t['segments']]
 d['duration'] = T
-shutil.copy(P, P.replace('.json', '.before_trimtail.json'))
+os.path.exists(P.replace('.json', '.before_trimtail.json')) or shutil.copy(P, P.replace('.json', '.before_trimtail.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 mp = os.path.join(base, sys.argv[1], 'draft_meta_info.json'); m = json.load(open(mp, encoding='utf-8')); m['tm_duration'] = T

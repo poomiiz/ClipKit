@@ -43,7 +43,7 @@ for tr in d['tracks'][1:]:
     elif tr['type'] == 'audio' or (tr['type'] == 'video'):
         tr['segments'] = tr['segments'][:1]; tr['segments'][0]['target_timerange'] = {'start': T - 100000, 'duration': min(100000, tr['segments'][0]['target_timerange']['duration'])}; keep.append(tr)
 d['tracks'] = [main] + keep; d['duration'] = T
-shutil.copy(P, P.replace('.json', '.before_rebuild.json'))
+os.path.exists(P.replace('.json', '.before_rebuild.json')) or shutil.copy(P, P.replace('.json', '.before_rebuild.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 print('duration', T / 1e6, 'tracks', [(tr['type'], len(tr['segments'])) for tr in d['tracks']])
