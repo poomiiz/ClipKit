@@ -1,4 +1,4 @@
-"""Transcribe the Sony interview takes proposed from a BPS footage folder."""
+"""Transcribe the Sony interview takes proposed from a footage folder."""
 from __future__ import annotations
 
 import argparse
