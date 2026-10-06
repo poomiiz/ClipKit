@@ -664,7 +664,7 @@ def bug_report(body: BugReport) -> dict[str, Any]:
     f.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     md = chr(10).join([report["text"], "", f"- page: {report['page']}",
                      f"- version: {report['version']} ({report['commit']})",
-                     f"- machine: {report['machine']}", f"- time: {report['time']}", "", "errors:", "```",
+                     f"- time: {report['time']}", "", "errors:", "```",
                      *report["errors"], "```"])
     title = report["text"].splitlines()[0][:80]
     url = "https://github.com/poomiiz/ClipKit/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
