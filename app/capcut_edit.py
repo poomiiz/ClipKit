@@ -374,7 +374,7 @@ class NeedsAgent(VideoEditError):
     """This step is done by the agent in chat; the message is the command to paste there."""
 
 
-SUBS_PRESET = {"size": 14.0, "y": -0.62, "color": "#ffffff", "stroke": 0.08}   # plain white, sits above TikTok's buttons
+SUBS_PRESET = {"size": 14.0, "y": -0.45, "color": "#ffffff", "stroke": 0.08}   # plain white; two lines stay inside render.SAFE_BOTTOM
 
 
 def subtitles_language(path: str, lang: str) -> dict[str, Any]:
