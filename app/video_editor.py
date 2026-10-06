@@ -1436,4 +1436,6 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     shutil.rmtree(tmp, ignore_errors=True)
     if r.returncode != 0 or not target.is_file():
         raise HTTPException(500, "render failed: " + (r.stderr or r.stdout).strip()[-800:])
+    import render
+    render.normalize_loudness(target)
     return {"file": str(target), "seconds": round(_t.time() - t0, 1)}
