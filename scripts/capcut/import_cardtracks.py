@@ -24,6 +24,6 @@ for src, want in ((white, 25), (orange, 30)):
     s['extra_material_refs'] = [x for x in (rclone(r) for r in s0['extra_material_refs']) if x]
     s['target_timerange'] = {'start': T - 100000, 'duration': 100000}
     tr['segments'] = [s]; d['tracks'].append(tr)
-shutil.copy(P, P.replace('.json', '.before_import.json'))
+os.path.exists(P.replace('.json', '.before_import.json')) or shutil.copy(P, P.replace('.json', '.before_import.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 print('imported card tracks from', sys.argv[2])

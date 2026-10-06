@@ -17,8 +17,16 @@ from pathlib import Path
 import kitconfig
 
 sys.stdout.reconfigure(encoding="utf-8")
-DATA = Path(kitconfig.need("edit_data"))
-DB = DATA / "edits.sqlite"
+
+
+def __getattr__(name):
+    # read on use, so read() can be imported (pace.py check) on a machine without edit_data set
+    if name == "DATA":
+        return Path(kitconfig.need("edit_data"))
+    if name == "DB":
+        return Path(kitconfig.need("edit_data")) / "edits.sqlite"
+    raise AttributeError(name)
+
 COMB = set(chr(c) for c in [0x0E31] + list(range(0x0E34, 0x0E3B)) + list(range(0x0E47, 0x0E4F)))
 
 SCHEMA = """
@@ -103,11 +111,12 @@ def read(cur, clip_id, version, d):
 
 
 def extract():
-    ap = json.loads((DATA / "approved.json").read_text(encoding="utf-8-sig"))["clips"]
+    ap = json.loads((__getattr__("DATA") / "approved.json").read_text(encoding="utf-8-sig"))["clips"]
     drafts = Path(kitconfig.need("capcut_drafts"))
     names = os.listdir(drafts)
-    DB.unlink(missing_ok=True)
-    con = sqlite3.connect(DB)
+    db = __getattr__("DB")
+    db.unlink(missing_ok=True)
+    con = sqlite3.connect(db)
     con.executescript(SCHEMA)
     cur = con.cursor()
     for n, c in enumerate(ap, 1):
@@ -138,7 +147,7 @@ def notes():
     out = Path(kitconfig.need("obsidian_notes"))
     (out / "คลิป").mkdir(parents=True, exist_ok=True)
     (out / "เทคนิค").mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
+    con = sqlite3.connect(__getattr__("DB"))
     q = lambda s, *a: con.execute(s, a).fetchall()
     head = lambda tags: f"---\ntags: [clipkit, ข้อมูลตัดต่อ, {tags}]\ngenerated: editdata.py (อย่าแก้มือ)\n---\n"
     clips = q("SELECT id, client, draft, folder, duration_s, hook, approved_by FROM clips")

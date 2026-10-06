@@ -49,6 +49,7 @@ Everyone signs in with the one company account on their own machine. To keep the
 | `scripts/clipkit.py` | Transcribe (Thai), pause-cut plan, ffmpeg render |
 | `scripts/capcut/` | Edit CapCut `draft_content.json`: cards, B-roll, SFX, trims, preview |
 | `scripts/capcut/editdata.py` | Approved CapCut drafts -> edits.sqlite (cuts, cards, inserts, audio, effects, AI-vs-person diff) -> Obsidian notes |
+| `scripts/capcut/pace.py` | Per-client pace from edits.sqlite (`presets/pace/<client>.json`), pace check of a CapCut project, `learn` = what the person changed in the AI versions |
 | `scripts/bps/` | BPS3 episode pipeline (analyze, build, verify) |
 | `scripts/envato.py` | Envato search/download with this machine's Chrome (Playwright) |
 | `scripts/broll_picker.py` | Keyword plan -> Envato search -> HTML picker with thumbnails -> download ticked |

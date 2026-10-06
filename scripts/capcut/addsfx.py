@@ -36,6 +36,6 @@ for word, times in (('mouse', [(a, None) for a in orange]), ('typing', white)):
         s['target_timerange'] = {'start': a, 'duration': L}; s['source_timerange'] = {'start': ts['source_timerange']['start'], 'duration': L}
         tr['segments'].append(s); prev = a + L
     d['tracks'].append(tr); print(word, len(tr['segments']))
-shutil.copy(P, P.replace('.json', '.before_sfx.json'))
+os.path.exists(P.replace('.json', '.before_sfx.json')) or shutil.copy(P, P.replace('.json', '.before_sfx.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)

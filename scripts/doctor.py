@@ -77,9 +77,10 @@ def model():
     from faster_whisper.utils import download_model
     name = kitconfig.CFG.get("whisper_model") or "large-v3"
     try:
-        download_model(name, local_files_only=True)
-    except Exception:
-        raise RuntimeError(f"Whisper {name} not downloaded yet - press Install (or run scripts/fetch_model.py)")
+        # same folder fetch_model.py downloads into (models_dir), else the default cache
+        download_model(name, local_files_only=True, cache_dir=kitconfig.CFG.get("models_dir") or None)
+    except Exception as exc:
+        raise RuntimeError(f"Whisper {name} not downloaded yet - press Install (or run scripts/fetch_model.py)") from exc
     return name
 
 
