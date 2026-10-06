@@ -115,6 +115,7 @@ class DraftStyleRequest(BaseModel):
     y: float | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     stroke: float | None = None
+    line_h: float | None = Field(default=None, ge=0.8, le=2.5)
 
 
 class DraftTrimRequest(BaseModel):
@@ -595,9 +596,13 @@ def draft_text_check(path: str = Query(...)) -> dict[str, Any]:
     import render
     try:
         subs = capcut_edit.read_draft(path)["subtitles"]
+        f = Path(path) / "clipkit_style.json"
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
         return {"look": subs[0] if subs else None, "count": len(subs), "problems": render.safe_zone(path),
                 "subs": [{k: s[k] for k in ("start", "end", "text")} for s in subs],
-                "safe": [render.SAFE_W, render.SAFE_TOP, render.SAFE_BOTTOM], "px_per_size": render.CAPCUT_PX}
+                "box": render.safe_box(style), "zone": style.get("safe_zone") or "general",
+                "zones": {k: z["label"] for k, z in render.SAFE_ZONES.items()},
+                "line_h": float(style.get("line_h", render.LINE_H)), "px_per_size": render.CAPCUT_PX}
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -660,7 +665,7 @@ def draft_layout(req: TextLayoutRequest) -> dict[str, Any]:
 def draft_style(req: DraftStyleRequest) -> dict[str, Any]:
     try:
         return capcut_edit.restyle_subtitles(req.path, size=req.size, y=req.y,
-                                             color=req.color, stroke=req.stroke)
+                                             color=req.color, stroke=req.stroke, line_h=req.line_h)
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -62,6 +62,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .agent code{display:block;background:#080a10;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
 .ov{position:absolute;pointer-events:none;z-index:4;background:rgba(5,7,12,.55)}.ov[hidden]{display:none}
 .ov .safe{position:absolute;border:1.5px dashed rgba(255,196,0,.85);border-radius:4px}
+.ov .col{position:absolute;right:0;bottom:0;background:rgba(239,68,68,.22);border-left:1.5px dashed rgba(239,68,68,.8)}
 .ov .otxt{position:absolute;text-align:center;font-weight:700;line-height:1.2;transform:translateY(-50%);font-family:"Kanit","Leelawadee UI",sans-serif;paint-order:stroke fill}
 .opt{display:block;margin:5px 0;cursor:pointer}.prob{color:var(--warn);font-size:12.5px;margin:2px 0}
 @media (max-width:900px){.mid{grid-template-columns:1fr}.player{min-height:300px}}
@@ -83,7 +84,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   <div class="mid">
     <div class="player" id="player"><div class="empty" id="empty">กำลังเตรียมตัวเล่น…</div>
       <hyperframes-player id="v" controls style="display:none;width:100%;height:100%"></hyperframes-player>
-      <div class="ov" id="ov" hidden><div class="safe" id="osafe"></div><div class="otxt" id="otxt"></div></div></div>
+      <div class="ov" id="ov" hidden><div class="safe" id="osafe"></div><div class="col" id="ocol"></div><div class="otxt" id="otxt"></div></div></div>
     <div class="side" id="side"></div>
   </div>
   <div class="tl">
@@ -247,6 +248,8 @@ function sideClip(s) {
     <h4 id="txtH">ข้อความ (ซับ)</h4>
     <div class="row"><label>ขนาด</label><input type="range" id="tSize" min="8" max="24" step="0.5"><span id="tSizeV" class="hint"></span></div>
     <div class="row"><label>ตำแหน่ง</label><input type="range" id="tY" min="-0.6" max="0.6" step="0.01"><span id="tYV" class="hint"></span></div>
+    <div class="row"><label>ระยะบรรทัด</label><input type="range" id="tLh" min="0.9" max="2" step="0.05"><span id="tLhV" class="hint"></span></div>
+    <div class="row"><label>เขตปลอดภัย</label><select id="tZone" style="flex:1"></select></div>
     <div class="row"><label>สี</label><input type="color" id="tColor"><label style="min-width:0">ขอบ</label><input type="range" id="tStroke" min="0" max="0.2" step="0.01"></div>
     <div class="row"><label>ซับยาวเกินจอ</label><select id="tMode" style="flex:1">${TIDY.map(([k, t]) => `<option value="${k}"${(st.tidy || 'lines') === k ? ' selected' : ''}>${t}</option>`).join('')}</select><button id="tTidy">จัดตอนนี้</button></div>
     <div class="hint" id="tModeH"></div>
@@ -438,7 +441,7 @@ const TIDY = [['lines', 'ตัดเป็น 2 บรรทัดตามค�
 const WHERE = {'top bar': 'แถบบนของแอป', 'caption area at the bottom': 'แคปชันด้านล่าง', 'button column / frame edge': 'ปุ่มด้านขวา / ขอบจอ'};
 const probs = c => c.problems.length ? c.problems.map(p => `<div class="prob">⚠️ ${esc(p.replace(/[a-z][a-z /]+[a-z]/g, w => WHERE[w] || w))}</div>`).join('') + '<div class="hint">ใน MP4 ระบบขยับบรรทัดเหล่านี้เข้ากรอบให้เอง แต่ในโปรเจกต์ CapCut จะอยู่ตรงนี้ · เลื่อนตำแหน่งขึ้นหรือลดขนาดได้เลย จอซ้ายเปลี่ยนตาม</div>' : '<div class="hint">✅ ทุกบรรทัดอยู่ในเขตปลอดภัย ไม่โดนปุ่มหรือแคปชันของแอป</div>';
 let TC = null;  // text-check: the subtitle look, the safe box, lines outside it
-const tVal = () => ({size: +$('tSize').value, y: +$('tY').value, color: $('tColor').value.toLowerCase(), stroke: +$('tStroke').value});
+const tVal = () => ({size: +$('tSize').value, y: +$('tY').value, line_h: +$('tLh').value, color: $('tColor').value.toLowerCase(), stroke: +$('tStroke').value});
 function fitLines(text, px, maxW) {  // render._fit in the browser: one line, else two balanced at a Thai word break, then smaller
   const c = fitLines.c || (fitLines.c = document.createElement('canvas').getContext('2d'));
   c.font = `700 ${px}px Kanit, "Leelawadee UI", sans-serif`;
@@ -459,13 +462,15 @@ function fitLines(text, px, maxW) {  // render._fit in the browser: one line, el
 function overlay(v) {  // what the subtitle will look like, drawn at once over the player while the preview rebuilds
   if (!TC || !TC.look) return;
   const p = $('player').getBoundingClientRect(), W = T.width, H = T.height, k = Math.min(p.width / W, p.height / H);
-  const w = W * k, h = H * k, [sw, st, sb] = TC.safe, px = v.size * TC.px_per_size * Math.min(W, H) / 1080 * k;
+  const w = W * k, h = H * k, b = TC.box, sw = b.w, st = b.top, sb = b.bottom, px = v.size * TC.px_per_size * Math.min(W, H) / 1080 * k;
   Object.assign($('ov').style, {left: (p.width - w) / 2 + 'px', top: (p.height - h) / 2 + 'px', width: w + 'px', height: h + 'px'});
   Object.assign($('osafe').style, {left: (1 - sw) / 2 * w + 'px', width: sw * w + 'px', top: st * h + 'px', height: (sb - st) * h + 'px'});
+  $('ocol').style.display = b.col ? '' : 'none';  // the app's like / comment / share buttons
+  if (b.col) Object.assign($('ocol').style, {width: b.col[0] * w + 'px', top: b.col[1] * h + 'px'});
   const at = ($('v').currentTime || 0), cur = (TC.subs || []).find(s => s.start <= at && at < s.end) || TC.look;
-  const f = fitLines(cur.text, px, sw * w), half = f.lines.length * f.px * 1.2 / 2;
+  const f = fitLines(cur.text, px, sw * w), half = f.lines.length * f.px * v.line_h / 2;
   const mid = Math.min(Math.max((1 - v.y) / 2 * h, st * h + half), sb * h - half);  // the MP4 keeps lines inside the box, as render._safe_y
-  Object.assign($('otxt').style, {left: (1 - sw) / 2 * w + 'px', width: sw * w + 'px', top: mid + 'px', fontSize: f.px + 'px',
+  Object.assign($('otxt').style, {left: (1 - sw) / 2 * w + 'px', width: sw * w + 'px', top: mid + 'px', fontSize: f.px + 'px', lineHeight: v.line_h,
     whiteSpace: 'nowrap', color: v.color, webkitTextStroke: (f.px * v.stroke * 2.4 + 1) + 'px #000'});
   $('otxt').innerHTML = f.lines.map(esc).join('<br>');
   $('ov').hidden = false;
@@ -474,14 +479,19 @@ async function textPanel(st) {
   TC = await api('draft/text-check?path=' + encodeURIComponent(PATH));
   if (!$('tSize')) return;
   if (!TC.look) { $('tProb').innerHTML = '<div class="hint">ยังไม่มีซับ · กด "ทำให้ครบ" ก่อน</div>'; return; }
-  const l = TC.look, was = {size: l.size || 14, y: l.y ?? -0.44, color: (l.color || '#ffffff').toLowerCase(), stroke: l.stroke ?? 0.08};
-  $('tSize').value = was.size; $('tY').value = was.y; $('tColor').value = was.color; $('tStroke').value = was.stroke;
-  const label = () => { $('tSizeV').textContent = $('tSize').value; $('tYV').textContent = Math.round((1 - $('tY').value) / 2 * 100) + '% จากบน';
+  const l = TC.look, was = {size: l.size || 14, y: l.y ?? -0.44, line_h: TC.line_h, color: (l.color || '#ffffff').toLowerCase(), stroke: l.stroke ?? 0.08};
+  $('tSize').value = was.size; $('tY').value = was.y; $('tLh').value = was.line_h; $('tColor').value = was.color; $('tStroke').value = was.stroke;
+  $('tZone').innerHTML = Object.entries(TC.zones).map(([k, t]) => `<option value="${k}"${k === TC.zone ? ' selected' : ''}>${esc(t)}</option>`).join('');
+  $('tZone').onchange = async () => {
+    await api('draft/look', {path: PATH, style: {safe_zone: $('tZone').value}}); T.style.safe_zone = $('tZone').value;
+    TC = await api('draft/text-check?path=' + encodeURIComponent(PATH)); showProb(TC); overlay(tVal()); await live(); if (!timer) $('ov').hidden = true;
+  };
+  const label = () => { $('tSizeV').textContent = $('tSize').value; $('tLhV').textContent = (+$('tLh').value).toFixed(2) + ' เท่า'; $('tYV').textContent = Math.round((1 - $('tY').value) / 2 * 100) + '% จากบน';
     $('tModeH').textContent = TIDY.find(t => t[0] === $('tMode').value)[2]; };
   const showProb = c => { $('tProb').innerHTML = probs(c); };
   label(); showProb(TC);
   let timer = null;
-  ['tSize', 'tY', 'tColor', 'tStroke'].forEach(id => {
+  ['tSize', 'tY', 'tLh', 'tColor', 'tStroke'].forEach(id => {
     $(id).oninput = () => { label(); overlay(tVal()); clearTimeout(timer); timer = setTimeout(save, 500); };
   });
   async function save() {

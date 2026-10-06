@@ -24,6 +24,24 @@ DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipK
 # TikTok / Reels / Shorts draw their buttons on the right and the caption + sound bar at the bottom:
 # subtitles stay inside this box (fractions of the frame) so the app never covers them
 SAFE_W, SAFE_TOP, SAFE_BOTTOM = 0.78, 0.11, 0.77
+# where each app's own bar, buttons and caption cover a 9:16 video, as fractions of the frame: side margin, top bar,
+# bottom of the free area, and the lower-right button column (width, from y down; drawn in the editor, not enforced).
+# "general" is ClipKit's box for ordinary posts; the app boxes follow each app's ad spec overlay for 1080x1920
+# (adkit.so/tools/safe-zones, 2026-09): stricter, since ads add their own buttons at the bottom.
+SAFE_ZONES = {
+    "general": {"label": "โพสต์ทั่วไป (ทุกแอป)", "side": 0.11, "top": SAFE_TOP, "bottom": SAFE_BOTTOM, "col": None},
+    "tiktok": {"label": "TikTok (ตามคู่มือโฆษณา)", "side": 0.111, "top": 0.125, "bottom": 0.656, "col": [0.389, 0.4375]},
+    "reels": {"label": "Instagram Reels (ตามคู่มือโฆษณา)", "side": 0.06, "top": 0.14, "bottom": 0.65, "col": [0.27, 0.6]},
+    "shorts": {"label": "YouTube Shorts (เทมเพลตทางการ)", "side": 0.178, "top": 0.15, "bottom": 0.65, "col": None},
+    "all": {"label": "ทุกแอปพร้อมกัน (เข้มสุด)", "side": 0.178, "top": 0.15, "bottom": 0.65, "col": [0.389, 0.4375]},
+}
+LINE_H = 1.2  # line height in font sizes; CapCut's line_spacing is this minus 1.18 (its default 0.02 looks like 1.2)
+
+
+def safe_box(style: dict) -> dict:
+    """The safe box picked for this clip (clipkit_style.json safe_zone), with w = the width text may use."""
+    box = SAFE_ZONES.get(style.get("safe_zone") or "general", SAFE_ZONES["general"])
+    return {**box, "w": 1 - 2 * box["side"]}
 LOUDNESS = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"  # every export at the level the platforms play (-14 LUFS)
 # a few ms of fade on both sides of every jump cut: a cut mid-waveform clicks
 EDGE_FADE = 0.008
@@ -346,7 +364,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False) -> str:
         size, y, fill, stroke, width = part
         px = size * k
-        lines, px = _fit(words, font_file, px, W * SAFE_W, one)
+        lines, px = _fit(words, font_file, px, W * held.get("box", safe_box({}))["w"], one)
         safe = _safe_y(H / 2 - y * H / 2, len(lines) * px, H, held)
         return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{safe:.0f})\\fn{fam}"
                 f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
@@ -419,9 +437,9 @@ def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl
 
 
 def _safe_y(cy: float, block: float, H: int, held: dict) -> float:
-    """Centre y of a text block of height ~block moved inside SAFE_TOP..SAFE_BOTTOM; counts each move in held."""
-    half = block * 0.6
-    safe = min(max(cy, H * SAFE_TOP + half), H * SAFE_BOTTOM - half)
+    """Centre y of a text block of height ~block moved inside the clip's safe box (held["box"]); counts each move."""
+    half, box = block * 0.6, held.get("box") or safe_box({})
+    safe = min(max(cy, H * box["top"] + half), H * box["bottom"] - half)
     if safe != cy:
         held["safe_moved"] = held.get("safe_moved", 0) + 1
     return safe
@@ -534,7 +552,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     hook = _hook(folder)
-    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption.json", {})}
+    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption.json", {}),
+            "box": safe_box(style)}
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
@@ -564,7 +583,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
-        lines, size = _fit(body.get("text", ""), fdir, size, W * SAFE_W)
+        lines, size = _fit(body.get("text", ""), fdir, size, W * held["box"]["w"])
         y = _safe_y(y, len(lines) * size, H, held)
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
@@ -587,7 +606,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         font_files.add(hfile)
         kk = min(W, H) / 1080 * CAPCUT_PX
         for n, h in enumerate(hook):
-            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * SAFE_W, True)
+            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * held["box"]["w"], True)
             an = {"up": 2, "down": 8}.get(h["grow"], 5)
             events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
                           f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"
@@ -728,10 +747,12 @@ def text_px(m: dict, s: dict, W: int, H: int) -> tuple[Path, float]:
 
 
 def safe_zone(path: str) -> list[str]:
-    """Text outside the SAFE_* box in a CapCut project or its subtitle preset: '<time> s "<text>": <where>' per line.
-    The MP4 export moves such lines itself (_safe_y); CapCut projects and presets are only reported."""
+    """Text outside the clip's safe box (safe_box) in a CapCut project or its subtitle preset: '<time> s "<text>":
+    <where>' per line. The MP4 export moves such lines itself (_safe_y); CapCut projects and presets are only reported."""
     from PIL import ImageFont
     folder = Path(path)
+    style = _json(folder / "clipkit_style.json", {})
+    box, lh = safe_box(style), float(style.get("line_h", LINE_H))
     draft = capcut_edit._load(folder)
     W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
     index = capcut_edit._index(draft)
@@ -745,28 +766,27 @@ def safe_zone(path: str) -> list[str]:
                 continue
             text = json.loads(m["content"]).get("text", "")
             fdir, size = text_px(m, s, W, H)
-            lines, size = _fit(text, fdir, size, W * SAFE_W)
+            lines, size = _fit(text, fdir, size, W * box["w"])
             font = ImageFont.truetype(str(fdir), max(1, round(size)))
             half_w = max(font.getlength(t) for t in lines) / 2
-            half_h = size * 1.2 * len(lines) / 2
+            half_h = size * lh * len(lines) / 2
             x = W / 2 + s["clip"]["transform"].get("x", 0) * W / 2
             y = H / 2 - s["clip"]["transform"]["y"] * H / 2
             where = []
-            if y - half_h < SAFE_TOP * H:
+            if y - half_h < box["top"] * H:
                 where.append("top bar")
-            if y + half_h > SAFE_BOTTOM * H:
+            if y + half_h > box["bottom"] * H:
                 where.append("caption area at the bottom")
-            if abs(x - W / 2) + half_w > SAFE_W * W / 2:
+            if abs(x - W / 2) + half_w > box["w"] * W / 2:
                 where.append("button column / frame edge")
             if where:
                 problems.append(f'{s["target_timerange"]["start"] / US:.1f} s "{text[:30]}": ' + ", ".join(where))
-    style = _json(folder / "clipkit_style.json", {})
     if style.get("anim", "none").startswith("pair"):  # the pair look draws lines from the preset, not the draft
         look = pair_look(style)
         for role in ("lead", "punch", "caption"):
             if look[role]:
                 size, y = look[role][0] * CAPCUT_PX * (min(W, H) / 1080), H / 2 - look[role][1] * H / 2
-                if y - size * 0.6 < SAFE_TOP * H or y + size * 0.6 > SAFE_BOTTOM * H:
+                if y - size * 0.6 < box["top"] * H or y + size * 0.6 > box["bottom"] * H:
                     problems.append(f'preset {style.get("preset") or "default"} {role} line (y {look[role][1]}): '
                                     "under the top bar or the caption area")
     return problems
