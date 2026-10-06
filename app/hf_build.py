@@ -111,22 +111,29 @@ def build(path: str) -> Path:
 
     def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False) -> str:
         i = nid("t")
-        # same fitting as the ffmpeg export: one line when it fits, two balanced lines, then smaller
-        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * 0.9, one)
+        # same fitting as the ffmpeg export: one line when it fits, two lines split where the thought breaks, then smaller
+        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * render.safe_w(W, H), one)
         # a wrapped lead grows upward and a wrapped punch downward, so the pair never covers each other
-        top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
+        top = H / 2 - y * H / 2 + {"up": px * gap / 2, "down": -px * gap / 2}.get(grow, 0)
         top = max(top, floor) if grow == "down" else top
+        # same safe zone as the export: the block never reaches the app's buttons or caption bar
+        h = len(lines) * px * gap
+        mid = top + {"up": -h / 2, "down": h / 2}.get(grow, 0)
+        if H > W:
+            top += min(max(mid, H * render.SAFE_TOP + h / 2), H * render.SAFE_BOTTOM - h / 2) - mid
         shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
         tops[i] = top
         els.append(f'<div id="{i}" class="clip txt" data-start="{a:.3f}" data-duration="{max(0.05, b - a - 0.034):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
-                   f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;color:{_css_color(fill)};'
+                   f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;line-height:{gap};color:{_css_color(fill)};'
                    f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{"<br>".join(html.escape(x) for x in lines)}</div>')
         return i
 
     tops: dict[str, float] = {}
     look = t["look"]
+    gap = render.LINE_GAP
     if look == "pair":
         P = render.pair_look(st)
+        gap = P["gap"]
         held = ""
         en = t.get("caption_en") or {}
         if P["caption"] and en:  # the preset's small translated caption: one per spoken line, also under the title
