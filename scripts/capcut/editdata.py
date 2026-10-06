@@ -43,10 +43,11 @@ def color(st):
     return "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
 
 
-def role(size, col, x, rot, anim, start, dur):
+def role(size, col, x, rot, anim, start, dur, ntrack):
     if size <= 12:
         return "english"
-    if start < 0.2 and dur > 2.5 and size >= 34:
+    # hook: opening title, either one big card or a few stacked lines on short tracks (BPS)
+    if start < 1.0 and dur > 2.5 and (size >= 34 or ntrack <= 4):
         return "hook"
     if abs(x) >= 0.2 or abs(rot) >= 3:
         if anim in ("เลื่อนเข้า",):
@@ -56,7 +57,7 @@ def role(size, col, x, rot, anim, start, dur):
         return "wordplay"
     if col == "red":
         return "quote"
-    return {"white": "context", "orange": "punch"}.get(col, "other")
+    return "context" if col == "white" else "punch"  # any accent colour (Nina orange, BPS blue) is the punch layer
 
 
 def read(cur, clip_id, version, d):
@@ -92,7 +93,7 @@ def read(cur, clip_id, version, d):
                 an0 = an[0] if an else {}
                 col = color(st)
                 rot = cl.get("rotation", 0)
-                rl = role(st["size"], col, tf.get("x", 0), rot, an0.get("name"), a, du)
+                rl = role(st["size"], col, tf.get("x", 0), rot, an0.get("name"), a, du, len(tr["segments"]))
                 cur.execute("INSERT INTO cards VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (clip_id, version, rl, a, du, c["text"], round(st["size"], 1),
                             col, tf.get("x", 0), tf.get("y", 0), sc, rot, an0.get("name"), an0.get("type"), an0.get("duration", 0) / 1e6, ti))
             elif tr["type"] == "audio" and s["material_id"] in auds:
@@ -118,7 +119,10 @@ def extract():
         cur.execute("INSERT INTO clips VALUES(?,?,?,?,?,?,?,?)", (n, c["client"], c["draft"], hits[0], c.get("approved_by"), c.get("approved_on"), d["duration"] / 1e6, None))
         read(cur, n, "final", d)
         if c.get("ai_version"):
-            read(cur, n, "ai", json.loads((folder / c["ai_version"]).read_text(encoding="utf-8")))
+            av = folder / c["ai_version"]
+            if not av.is_file():  # a whole backup draft folder next to the approved one
+                av = drafts / c["ai_version"] / "draft_content.json"
+            read(cur, n, "ai", json.loads(av.read_text(encoding="utf-8")))
         hook = cur.execute("SELECT text FROM cards WHERE clip_id=? AND version='final' AND role='hook' ORDER BY start_s", (n,)).fetchone()
         cur.execute("UPDATE clips SET hook=? WHERE id=?", (hook[0].replace("\n", " ") if hook else None, n))
     con.commit()
@@ -126,8 +130,8 @@ def extract():
         print(t, con.execute(f"SELECT COUNT(*) FROM {t} WHERE {'1' if t == 'clips' else 'version=' + chr(39) + 'final' + chr(39)}").fetchone()[0])
 
 
-ROLE_TH = {"hook": "หัวคลิป", "context": "ตัวขาว (บริบท)", "punch": "ตัวส้ม (คำเด็ด)", "quote": "ตัวแดง (คำพูดยกมา หรือช็อก)",
-           "listener": "คำพูดคนที่สอง (เลื่อนจากขอบ)", "reaction": "รีแอ็กชัน (ภาพสั่น)", "wordplay": "เล่นคำ (เยื้องหรือเอียง)", "english": "ซับอังกฤษ", "other": "สีอื่น (สีแบรนด์)"}
+ROLE_TH = {"hook": "หัวคลิป", "context": "ตัวขาว (บริบท)", "punch": "ตัวสีเน้น (คำเด็ด)", "quote": "ตัวแดง (คำพูดยกมา หรือช็อก)",
+           "listener": "คำพูดคนที่สอง (เลื่อนจากขอบ)", "reaction": "รีแอ็กชัน (ภาพสั่น)", "wordplay": "เล่นคำ (เยื้องหรือเอียง)", "english": "ซับอังกฤษ"}
 
 
 def notes():
