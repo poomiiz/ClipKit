@@ -69,11 +69,12 @@ def _self_update() -> None:
 
 
 def _app_icon() -> None:
-    """Team machines get the ClipKit desktop icon the first time they run anything after updating."""
+    """Team machines get the ClipKit Sample desktop icon and the 12-hour update check on their first run."""
     import subprocess
     icon = Path(__file__).with_name("app_icon.ps1")
     desk = Path.home() / "Desktop" / "ClipKit Sample.lnk"
-    if icon.is_file() and not desk.exists():
+    task = subprocess.run(["schtasks", "/Query", "/TN", "ClipKit Sample update"], capture_output=True).returncode == 0
+    if icon.is_file() and not (desk.exists() and task):
         subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(icon)],
                        capture_output=True, timeout=60)
 
