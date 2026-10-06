@@ -23,6 +23,7 @@ DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipK
 # TikTok / Reels / Shorts draw their buttons on the right and the caption + sound bar at the bottom:
 # subtitles stay inside this box (fractions of the frame) so the app never covers them
 SAFE_W, SAFE_TOP, SAFE_BOTTOM = 0.78, 0.11, 0.77
+LINE_GAP = 1.25  # distance between the two lines of one subtitle, in font sizes (a preset or the editor may change it)
 LOUDNESS = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"  # every export at the level the platforms play (-14 LUFS)
 
 
@@ -112,11 +113,16 @@ def pair_look(style: dict) -> dict[str, Any]:
         raise VideoEditError(f"preset '{name}' not found in {PRESETS} (have: {', '.join(preset_names())})")
     try:
         p = json.loads(f.read_text(encoding="utf-8"))
+        own = style.get("text") or {}  # this clip's own tweaks from the editor, over the preset
+        for role in ("normal", "emphasis", "caption"):
+            if p.get(role) and own.get(role):
+                p[role] = {**p[role], **own[role]}
         part = lambda r: (float(r["size"]), float(r["y"]), _rgb(r["color"]), _rgb(r["outline"]),  # noqa: E731
                           float(r["outline_width"]))
         return {"lead": part(p["normal"]), "punch": part(p["emphasis"]),
                 "caption": part(p["caption"]) if p.get("caption") else None,
-                "caption_lang": (p.get("caption") or {}).get("language", "en")}
+                "caption_lang": (p.get("caption") or {}).get("language", "en"),
+                "gap": float(own.get("line_gap", p.get("line_gap", LINE_GAP)))}
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise VideoEditError(f"preset {f.name} is broken: {exc}") from exc
 
@@ -247,14 +253,16 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False) -> str:
         size, y, fill, stroke, width = part
         px = size * k
-        lines, fitted = _fit(words, font_file, px, W * SAFE_W, one)
+        lines, fitted = _fit(words, font_file, px, W * safe_w(W, H), one)
         if fitted < px:  # too long even on two lines: shown smaller, listed for the editor to re-split
             held.setdefault("shrunk", []).append({"at": round(a, 2), "text": words})
         px = fitted
-        safe = _safe_y(H / 2 - y * H / 2, len(lines) * px, H, held)
-        return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{safe:.0f})\\fn{fam}"
-                f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
-                f"\\shad2{extra}}}" + "\\N".join(lines))
+        step = px * look["gap"]
+        safe = _safe_y(H / 2 - y * H / 2, (len(lines) - 1) * step + px, W, H, held)
+        return "\n".join(  # one event per line, so the gap between lines is the preset's, not the font's
+            f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{safe + (n - (len(lines) - 1) / 2) * step:.0f})\\fn{fam}"
+            f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
+            f"\\shad2{extra}}}" + row for n, row in enumerate(lines))
 
     out = []
     for n, (lead, punch, a, hit, last, query, opts) in enumerate(phrases):
@@ -322,8 +330,16 @@ def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl
     return [(a, min(b, length), t) for a, b, t in out if min(b, length) - a > 0.005]
 
 
-def _safe_y(cy: float, block: float, H: int, held: dict) -> float:
-    """Centre y of a text block of height ~block moved inside SAFE_TOP..SAFE_BOTTOM; counts each move in held."""
+def safe_w(W: int, H: int) -> float:
+    """Widest a subtitle may be, as a share of the frame width."""
+    return SAFE_W if H > W else 0.9
+
+
+def _safe_y(cy: float, block: float, W: int, H: int, held: dict) -> float:
+    """Centre y of a text block of height ~block moved inside SAFE_TOP..SAFE_BOTTOM; counts each move in held.
+    Vertical frames only: a landscape clip has no app buttons over it."""
+    if W >= H:
+        return cy
     half = block * 0.6
     safe = min(max(cy, H * SAFE_TOP + half), H * SAFE_BOTTOM - half)
     if safe != cy:
@@ -468,11 +484,11 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
-        lines, fitted = _fit(body.get("text", ""), fdir, size, W * SAFE_W)
+        lines, fitted = _fit(body.get("text", ""), fdir, size, W * safe_w(W, H))
         if fitted < size:
             held.setdefault("shrunk", []).append({"at": round(t0, 2), "text": body.get("text", "")})
         size = fitted
-        y = _safe_y(y, len(lines) * size, H, held)
+        y = _safe_y(y, len(lines) * size, W, H, held)
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
@@ -494,7 +510,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         font_files.add(hfile)
         kk = min(W, H) / 1080 * CAPCUT_PX
         for n, h in enumerate(hook):
-            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * SAFE_W, True)
+            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * safe_w(W, H), True)
             an = {"up": 2, "down": 8}.get(h["grow"], 5)
             events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
                           f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"

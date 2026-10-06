@@ -61,7 +61,7 @@ def _clone(draft: dict, tpl: dict, material: dict, kind: str) -> dict:
 
 
 def _text(draft: dict, role: str, words: str, a: float, b: float, y: float, size: float,
-          fill: list | None = None, stroke: list | None = None) -> dict:
+          fill: list | None = None, stroke: list | None = None, gap: float | None = None) -> dict:
     tpl = _T[role]
     mat = copy.deepcopy(tpl["mat"])
     body = json.loads(mat["content"])
@@ -74,8 +74,15 @@ def _text(draft: dict, role: str, words: str, a: float, b: float, y: float, size
         st["strokes"][0]["content"]["solid"]["color"] = list(stroke)
     body.update(text=words, styles=[st])
     mat.update(content=json.dumps(body, ensure_ascii=False), font_size=float(size), name=words[:20])
+    if gap is not None:  # CapCut counts extra space over its own default (0.02), ours is in font sizes
+        mat["line_spacing"] = round(0.02 + gap - render.LINE_GAP, 3)
     seg = _clone(draft, tpl, mat, "texts")
     seg["target_timerange"] = {"start": _us(a), "duration": max(_us(b - a) - _us(0.034), _us(0.1))}
+    cv = draft.get("canvas_config") or {}
+    W, H = cv.get("width", 0), cv.get("height", 0)
+    if H > W:  # same safe zone as the export (vertical frames only)
+        half = size * render.CAPCUT_PX * min(W, H) / 1080 * 0.6 / H * 2  # half a line, in CapCut's -1..1 units
+        y = min(max(y, 1 - 2 * render.SAFE_BOTTOM + half), 1 - 2 * render.SAFE_TOP - half)
     seg["clip"]["transform"] = {"x": 0.0, "y": y}
     seg["clip"]["scale"] = {"x": 1.0, "y": 1.0}
     return seg
@@ -162,10 +169,10 @@ def build(path: str) -> tuple[Path, list[str]]:
             whites.append(_text(draft, "white", p["lead"], a, b, -0.6, 16))
             continue
         if white:
-            whites.append(_text(draft, "white", white, a, b, P["lead"][1], P["lead"][0], P["lead"][2], P["lead"][3]))
+            whites.append(_text(draft, "white", white, a, b, P["lead"][1], P["lead"][0], P["lead"][2], P["lead"][3], P["gap"]))
         if colour:
             hit = min(b - 0.05, a + 0.6) if white else a
-            colours.append(_text(draft, "orange", colour, hit, b, P["punch"][1], P["punch"][0], rgb or P["punch"][2], P["punch"][3]))
+            colours.append(_text(draft, "orange", colour, hit, b, P["punch"][1], P["punch"][0], rgb or P["punch"][2], P["punch"][3], P["gap"]))
     en = t.get("caption_en") or {}
     if P and P["caption"] and en:
         spans: dict[str, list[float]] = {}

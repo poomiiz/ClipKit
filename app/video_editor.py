@@ -489,7 +489,10 @@ def browse(req: BrowseRequest) -> dict[str, Any]:
 def subtitle_presets() -> dict[str, Any]:
     """Subtitle presets (normal + emphasis text) in presets/, made by each user."""
     import render
-    return {"presets": render.preset_names()}
+    names = render.preset_names()
+    looks = {n: json.loads((render.PRESETS / f"{n}.json").read_text(encoding="utf-8")) for n in names}
+    return {"presets": names, "looks": looks, "line_gap": render.LINE_GAP,
+            "safe": {"w": render.SAFE_W, "top": render.SAFE_TOP, "bottom": render.SAFE_BOTTOM}}
 
 
 @router.get("/presets")

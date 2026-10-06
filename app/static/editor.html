@@ -58,6 +58,10 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .busy{color:var(--warn);font-size:13px;margin-left:6px}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:-2px}
 @keyframes s{to{transform:rotate(360deg)}}
+#safe{display:none;position:absolute;pointer-events:none;z-index:3}
+#safe i{position:absolute;left:0;right:0;background:rgba(239,68,68,.28);color:#fff;font:600 11px/1.3 inherit;font-style:normal;display:flex;align-items:center;justify-content:center;text-align:center;text-shadow:0 1px 2px #000}
+#safe #sfTop{top:0}#safe #sfBot{bottom:0}#safe #sfBtn{left:auto;right:0}
+#safe b{position:absolute;border:2px dashed rgba(16,185,129,.9);border-radius:6px}
 .agent{border:1px dashed var(--acc);border-radius:10px;padding:10px;margin-top:8px}
 .agent code{display:block;background:#080a10;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
 @media (max-width:900px){.mid{grid-template-columns:1fr}.player{min-height:300px}}
@@ -78,7 +82,8 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   </div>
   <div class="mid">
     <div class="player" id="player"><div class="empty" id="empty">กำลังเตรียมตัวเล่น…</div>
-      <hyperframes-player id="v" controls style="display:none;width:100%;height:100%"></hyperframes-player></div>
+      <hyperframes-player id="v" controls style="display:none;width:100%;height:100%"></hyperframes-player>
+      <div id="safe"><i id="sfTop">แถบบนของแอป</i><i id="sfBot">แคปชัน · ชื่อเพลง · ชื่อช่อง</i><i id="sfBtn">ปุ่ม</i><b id="sfBox"></b></div></div>
     <div class="side" id="side"></div>
   </div>
   <div class="tl">
@@ -122,7 +127,7 @@ async function live() {
   building = api('draft/hf-build', {path: PATH}).then(r => {
     v.setAttribute('src', r.url + '?t=' + Date.now());
     v.style.display = 'block'; $('empty').style.display = 'none';
-    v.addEventListener('ready', () => { try { v.seek(at); } catch {} }, {once: true});
+    v.addEventListener('ready', () => { try { v.seek(at); } catch {} safeZone(); }, {once: true});
   }).catch(e => { $('empty').style.display = ''; $('empty').textContent = '❌ ' + e.message; })
     .finally(() => { building = null; if (again) { again = false; live(); } });
   return building;
@@ -231,6 +236,45 @@ function side() {
   if (SEL.type === 'motion') return sideMotion(s, T.motions[SEL.i]);
   if (SEL.type === 'music') return sideMusic(s);
 }
+// this clip's text tweaks (clipkit_style.json "text"), over the preset; the preview rebuilds after each change
+let PRESETS = null, tSave = null;
+const hex = c => c && c[0] === '#' ? c : '#ffffff';
+function textPanel() {
+  if (!PRESETS || !$('tRole')) return;
+  T.style = T.style || {};
+  const base = PRESETS.looks[T.style.preset || 'default'] || {}, own = T.style.text || {};
+  $('tRole').querySelector('[value=caption]').disabled = !base.caption;
+  if (!base.caption && $('tRole').value === 'caption') $('tRole').value = 'normal';
+  const role = $('tRole').value, v = {...(base[role] || {}), ...(own[role] || {})};
+  $('tSize').value = v.size; $('tSizeV').textContent = v.size;
+  $('tY').value = v.y; $('tColor').value = hex(v.color); $('tOut').value = hex(v.outline); $('tOw').value = v.outline_width;
+  const gap = own.line_gap ?? base.line_gap ?? PRESETS.line_gap;
+  $('tGap').value = gap; $('tGapV').textContent = (+gap).toFixed(2) + ' เท่า';
+}
+function textChanged() {
+  const own = {...(T.style.text || {})}, role = $('tRole').value;
+  own[role] = {size: +$('tSize').value, y: +$('tY').value, color: $('tColor').value, outline: $('tOut').value, outline_width: +$('tOw').value};
+  own.line_gap = +$('tGap').value;
+  T.style.text = own; textPanel();
+  clearTimeout(tSave);
+  tSave = setTimeout(async () => { await api('draft/look', {path: PATH, style: {text: own}}); live(); }, 350);
+}
+function safeZone() {  // the strictest of TikTok / Reels / Shorts: the export keeps text inside the dashed box
+  const tall = T.height > T.width, on = $('tSafe') && $('tSafe').checked && tall, z = $('safe'), v = $('v');
+  if ($('tSafeH')) $('tSafeH').textContent = tall ? '' : 'คลิปนี้เป็นแนวนอน ไม่มีปุ่มแอปทับ';
+  z.style.display = 'none';
+  if (!on || !PRESETS || v.style.display === 'none') return;
+  z.style.display = 'block';
+  const p = $('player').getBoundingClientRect(), r = v.getBoundingClientRect();
+  const h = Math.min(r.height - 44, r.width * T.height / T.width), w = h * T.width / T.height;  // 44 px = the player's control bar
+  Object.assign(z.style, {width: w + 'px', height: h + 'px', left: (r.left - p.left + (r.width - w) / 2) + 'px', top: (r.top - p.top + (r.height - 44 - h) / 2) + 'px'});
+  const s = PRESETS.safe, side = (1 - s.w) / 2 * 100;
+  $('sfTop').style.height = s.top * 100 + '%';
+  $('sfBot').style.height = (1 - s.bottom) * 100 + '%';
+  Object.assign($('sfBtn').style, {width: side + '%', top: '40%', bottom: (1 - s.bottom) * 100 + '%'});
+  Object.assign($('sfBox').style, {left: side + '%', right: side + '%', top: s.top * 100 + '%', bottom: (1 - s.bottom) * 100 + '%'});
+}
+addEventListener('resize', safeZone);
 function back() { return '<button onclick="SEL=null;drawTL();side()">‹ ตั้งค่าทั้งคลิป</button>'; }
 function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
@@ -239,6 +283,17 @@ function sideClip(s) {
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <div class="row"><label>พรีเซ็ตข้อความ</label><select id="preset" style="flex:1"></select></div>
     <div class="hint">สร้างพรีเซ็ตเองได้: บอกในแชท หรือดึงจากโปรเจกต์ CapCut ที่ตัดไว้</div>
+    <div id="txtBox"${T.look === 'pair' ? '' : ' style="display:none"'}>
+      <h4>ปรับตัวหนังสือ (เฉพาะคลิปนี้)</h4>
+      <div class="row"><label>ปรับส่วน</label><select id="tRole" style="flex:1"><option value="normal">ตัวปกติ (ขาว)</option><option value="emphasis">คำเน้น (สี)</option><option value="caption">แคปชันเล็ก</option></select></div>
+      <div class="row"><label>ขนาด</label><input type="range" id="tSize" min="10" max="44" step="1"><span class="hint" id="tSizeV"></span></div>
+      <div class="row"><label>สูง / ต่ำ</label><input type="range" id="tY" min="-0.9" max="0.9" step="0.01"></div>
+      <div class="row"><label>สีตัวอักษร</label><input type="color" id="tColor"><label style="min-width:0">สีขอบ</label><input type="color" id="tOut"></div>
+      <div class="row"><label>ขอบหนา</label><input type="range" id="tOw" min="0" max="0.15" step="0.005"></div>
+      <div class="row"><label>ระยะบรรทัด</label><input type="range" id="tGap" min="0.9" max="2" step="0.05"><span class="hint" id="tGapV"></span></div>
+      <div class="row"><label><input type="checkbox" id="tSafe"> แสดงเขตปุ่มแอป (TikTok / Reels / Shorts)</label><span class="hint" id="tSafeH"></span></div>
+      <div class="row"><button id="tReset">กลับเป็นค่าพรีเซ็ต</button><span class="hint">มีผลทั้งตอนส่งออกวิดีโอและส่งเป็นโปรเจกต์ CapCut</span></div>
+    </div>
     <div class="row"><label><input type="checkbox" id="zc" ${st.zoomcut ? 'checked' : ''}> ตัดสลับด้วยการซูม</label><span class="hint">ซูมเข้า 8% ตรงจุดตัด</span></div>
     <h4>หัวคลิป (4 วินาทีแรก)</h4>
     ${[0, 1].map(n => `<div class="row"><input id="hk${n}" style="flex:1" placeholder="${n ? 'บรรทัด 2 (ไม่ใส่ก็ได้)' : 'บรรทัด 1 เช่น ธุรกิจสะดุด'}">
@@ -264,8 +319,14 @@ function sideClip(s) {
   s.querySelectorAll('.look').forEach(b => b.onclick = async () => { await api('draft/look', {path: PATH, style: {anim: b.dataset.k}}); await reload(); });
   fetch('/api/video/subtitle-presets').then(r => r.json()).then(r => {
     $('preset').innerHTML = r.presets.map(n => `<option${n === (st.preset || 'default') ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    PRESETS = r; textPanel(); safeZone();
   });
-  $('preset').onchange = async e => { await api('draft/look', {path: PATH, style: {preset: e.target.value}}); T.style.preset = e.target.value; live(); };
+  ['tSize', 'tY', 'tColor', 'tOut', 'tOw', 'tGap'].forEach(id => $(id).oninput = textChanged);
+  $('tRole').onchange = textPanel;
+  $('tSafe').checked = localStorage.getItem('ck_safe') === '1';
+  $('tSafe').onchange = e => { localStorage.setItem('ck_safe', e.target.checked ? '1' : '0'); safeZone(); };
+  $('tReset').onclick = async () => { T.style.text = null; await api('draft/look', {path: PATH, style: {text: null}}); textPanel(); live(); };
+  $('preset').onchange = async e => { await api('draft/look', {path: PATH, style: {preset: e.target.value}}); T.style.preset = e.target.value; textPanel(); live(); };
   const hookColor = f => f[2] > 0.9 ? 'white' : f[1] < 0.3 ? 'red' : 'orange';
   (T.hook || []).forEach((h, n) => { $('hk' + n).value = h.text; $('hc' + n).value = hookColor(h.fill); });
   if (!(T.hook || []).length) (st.hook_colors || ['white', 'orange']).forEach((c, n) => { if ($('hc' + n)) $('hc' + n).value = c; });
