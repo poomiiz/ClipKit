@@ -7,6 +7,7 @@ Every file the team repo has is refreshed from here, except the ones written for
 A file new in this repo is not added there by itself: copy it once by hand when the team needs it.
 """
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEAM_OWN = {"README.md", "AGENTS.md", "skills/make-clip/SKILL.md", "scripts/setup.ps1", "scripts/doctor.py",
             ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"}
+
+
+# personal and client names never leave this repo; the sync stops and lists where they are
+NAMES = re.compile(r"nina|bps|p'?ohm|poomi|พี่โอม", re.I)
+ALLOWED = ("ClipKit Nina", "poomiiz/ClipKit")  # the team icon name and the GitHub owner in links
+
+
+def names_in(data: bytes) -> list[str]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return []  # images, fonts
+    for a in ALLOWED:
+        text = text.replace(a, "")
+    return [f"{n}: {line.strip()[:100]}" for n, line in enumerate(text.splitlines(), 1) if NAMES.search(line)]
 
 
 def git(repo: Path, *args: str) -> str:
@@ -29,14 +45,22 @@ def main() -> int:
     team = Path(a.team)
     if git(team, "status", "--porcelain").strip():
         sys.exit("the team clone has uncommitted changes - commit or discard them first")
-    copied = []
+    todo = []
     for rel in git(team, "ls-files").splitlines():
         src = ROOT / rel
         if rel in TEAM_OWN or not src.is_file():
             continue
         if src.read_bytes() != (team / rel).read_bytes():
-            shutil.copy2(src, team / rel)
-            copied.append(rel)
+            todo.append(rel)
+    found = {rel: hits for rel in todo if (hits := names_in((ROOT / rel).read_bytes()))}
+    if found:
+        for rel, hits in found.items():
+            print(rel, *hits, sep="\n  ")
+        sys.exit("names found - nothing was copied. Take them out of the files above, then sync again.")
+    copied = []
+    for rel in todo:
+        shutil.copy2(ROOT / rel, team / rel)
+        copied.append(rel)
     if not copied:
         print("team repo already up to date")
         return 0
