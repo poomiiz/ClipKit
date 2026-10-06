@@ -595,7 +595,9 @@ def draft_text_check(path: str = Query(...)) -> dict[str, Any]:
     import render
     try:
         subs = capcut_edit.read_draft(path)["subtitles"]
-        return {"look": subs[0] if subs else None, "count": len(subs), "problems": render.safe_zone(path)}
+        return {"look": subs[0] if subs else None, "count": len(subs), "problems": render.safe_zone(path),
+                "subs": [{k: s[k] for k in ("start", "end", "text")} for s in subs],
+                "safe": [render.SAFE_W, render.SAFE_TOP, render.SAFE_BOTTOM], "px_per_size": render.CAPCUT_PX}
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
