@@ -332,8 +332,10 @@ def _borrow_text_style(root: str | None = None) -> tuple[dict, dict]:
 
 
 def restyle_subtitles(path: str, size: float | None = None, y: float | None = None,
-                      color: str | None = None, stroke: float | None = None) -> dict[str, Any]:
-    """Change how the existing subtitles look without touching their text or timing."""
+                      color: str | None = None, stroke: float | None = None,
+                      line_h: float | None = None) -> dict[str, Any]:
+    """Change how the existing subtitles look without touching their text or timing. line_h (line height in font
+    sizes) goes to CapCut as line_spacing and to clipkit_style.json for the MP4 export."""
     folder = Path(path)
     draft = _load(folder)
     index = _index(draft)
@@ -364,11 +366,17 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
             material["text_color"] = color
         if stroke is not None:
             material["border_width"] = stroke
+        if line_h is not None:
+            material["line_spacing"] = round(line_h - 1.18, 3)
         if y is not None:
             segment["clip"]["transform"] = {"x": 0.0, "y": y}
         changed += 1
 
     _save(folder, draft, "style")
+    if line_h is not None:
+        style_file = folder / "clipkit_style.json"
+        style = json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {}
+        style_file.write_text(json.dumps({**style, "line_h": line_h}, ensure_ascii=False), encoding="utf-8")
     return {"name": folder.name, "restyled": changed}
 
 
@@ -390,8 +398,9 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
     if track is None or not track["segments"]:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
     W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
-    said_file = folder / "clipkit_words.json"
+    said_file, style_file = folder / "clipkit_words.json", folder / "clipkit_style.json"
     said = json.loads(said_file.read_text(encoding="utf-8")) if said_file.is_file() else {}
+    box_w = render.safe_box(json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {})["w"]
     rows = []
     for seg in sorted(track["segments"], key=lambda s: s["target_timerange"]["start"]):
         material = index.get(seg["material_id"], (None, None))[1]
@@ -405,8 +414,7 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
     segments, words, two, split, shrunk = [], dict(said), 0, 0, 0
     for row in rows:
         fdir, px = render.text_px(row["material"], row["seg"], W, H)
-        pieces = render.split_sub(row["text"], row["spoken"], row["start"], row["end"], fdir, px,
-                                  W * render.SAFE_W, mode)
+        pieces = render.split_sub(row["text"], row["spoken"], row["start"], row["end"], fdir, px, W * box_w, mode)
         split += len(pieces) - 1
         for k, (a, b, text, spoken, factor) in enumerate(pieces):
             seg, material = row["seg"], row["material"]
@@ -441,7 +449,7 @@ class NeedsAgent(VideoEditError):
     """This step is done by the agent in chat; the message is the command to paste there."""
 
 
-SUBS_PRESET = {"size": 14.0, "y": -0.45, "color": "#ffffff", "stroke": 0.08}   # plain white; two lines stay inside render.SAFE_BOTTOM
+SUBS_PRESET = {"size": 14.0, "y": -0.44, "color": "#ffffff", "stroke": 0.08}   # plain white; two lines stay inside render.SAFE_BOTTOM
 
 
 def subtitles_language(path: str, lang: str) -> dict[str, Any]:

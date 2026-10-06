@@ -67,6 +67,7 @@ def build(path: str) -> Path:
     W, H, D = t["width"], t["height"], t["duration"]
     st = t["style"] or {}
     k = min(W, H) / 1080 * render.CAPCUT_PX
+    box, lh = render.safe_box(st), float(st.get("line_h", render.LINE_H))
     fit = t["fit"]
     c = st.get("color") or {}
     w = float(c.get("warmth", 0))
@@ -112,18 +113,18 @@ def build(path: str) -> Path:
     def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False) -> str:
         i = nid("t")
         # same fitting as the ffmpeg export: one line when it fits, two balanced lines, then smaller
-        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * render.SAFE_W, one)
+        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * box["w"], one)
         # a wrapped lead grows upward and a wrapped punch downward, so the pair never covers each other
         top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
         top = max(top, floor) if grow == "down" else top
         shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
-        # same safe box as the ffmpeg export (render.SAFE_*): clear of the apps' top bar, buttons and caption
-        block = len(lines) * px * 1.2
+        # same safe box as the ffmpeg export (render.safe_box): clear of the apps' top bar, buttons and caption
+        block = len(lines) * px * lh
         upper = top - {"-100%": block, "0": 0}.get(shift, block / 2)
-        top += min(max(upper, H * render.SAFE_TOP), H * render.SAFE_BOTTOM - block) - upper
+        top += min(max(upper, H * box["top"]), H * box["bottom"] - block) - upper
         tops[i] = top
         els.append(f'<div id="{i}" class="clip txt" data-start="{a:.3f}" data-duration="{max(0.05, b - a - 0.034):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
-                   f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;color:{_css_color(fill)};'
+                   f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;line-height:{lh};color:{_css_color(fill)};'
                    f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{"<br>".join(html.escape(x) for x in lines)}</div>')
         return i
 
