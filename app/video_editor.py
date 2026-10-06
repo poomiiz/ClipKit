@@ -584,6 +584,30 @@ def draft_subs(req: DraftSubsRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+class TidyRequest(BaseModel):
+    path: str
+    mode: str = Field(default="lines", pattern="^(lines|split|shrink)$")
+
+
+@router.get("/draft/text-check")
+def draft_text_check(path: str = Query(...)) -> dict[str, Any]:
+    """What the text settings page shows before an export: the subtitle look and the lines outside the safe zone."""
+    import render
+    try:
+        subs = capcut_edit.read_draft(path)["subtitles"]
+        return {"look": subs[0] if subs else None, "count": len(subs), "problems": render.safe_zone(path)}
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/draft/tidy")
+def draft_tidy(req: TidyRequest) -> dict[str, Any]:
+    try:
+        return capcut_edit.tidy_subtitles(req.path, req.mode)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/draft/subs/fill")
 def draft_subs_fill(req: FillGapsRequest) -> dict[str, Any]:
     """Subtitle only the stretches that have none, for footage added later."""
@@ -824,8 +848,9 @@ def _overlays(path: str) -> list[dict[str, Any]]:
 
 def _split2(text: str) -> tuple[str, str]:
     """Two halves at the Thai word break that balances them (lead / punch, key / sub)."""
+    import render
     from pythainlp.tokenize import word_tokenize
-    w = word_tokenize(text.replace("\n", " "), keep_whitespace=True)
+    w = word_tokenize(render.unbreak(text), keep_whitespace=True)
     if len(w) < 2:
         return text, ""
     i = min(range(1, len(w)), key=lambda k: abs(len("".join(w[:k])) - len("".join(w[k:]))))

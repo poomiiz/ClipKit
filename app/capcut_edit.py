@@ -190,6 +190,8 @@ def read_draft(path: str) -> dict[str, Any]:
                               + seg["target_timerange"]["duration"]) / US, 2),
                 "text": body.get("text", ""),
                 "size": material.get("font_size"),
+                "color": material.get("text_color"),
+                "stroke": material.get("border_width"),
                 "y": round(seg["clip"]["transform"]["y"], 3),
                 "x": round(seg["clip"]["transform"].get("x", 0.0), 3),
                 "rotation": round(seg["clip"].get("rotation", 0.0), 1),
@@ -368,6 +370,71 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
 
     _save(folder, draft, "style")
     return {"name": folder.name, "restyled": changed}
+
+
+TIDY_MODES = ("lines", "split", "shrink")
+
+
+def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
+    """Make long subtitles readable before export (render.split_sub): two lines broken where the Thai reads right
+    ("lines"), a new subtitle from that point ("split", also when two lines still overflow), or one smaller line
+    ("shrink"). First, lines that run straight on hand a dangling joining word to the next line (render.carry_joiners).
+    Each line keeps its own look and position; its word times (clipkit_words.json) follow the new text."""
+    import render
+    if mode not in TIDY_MODES:
+        raise VideoEditError(f"unknown mode: {mode} (use {', '.join(TIDY_MODES)})")
+    folder = Path(path)
+    draft = _load(folder)
+    index = _index(draft)
+    track = _text_track(draft)
+    if track is None or not track["segments"]:
+        raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
+    W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
+    said_file = folder / "clipkit_words.json"
+    said = json.loads(said_file.read_text(encoding="utf-8")) if said_file.is_file() else {}
+    rows = []
+    for seg in sorted(track["segments"], key=lambda s: s["target_timerange"]["start"]):
+        material = index.get(seg["material_id"], (None, None))[1]
+        if not material:
+            continue
+        text = json.loads(material["content"]).get("text", "")
+        start = seg["target_timerange"]["start"] / US
+        rows.append({"seg": seg, "material": material, "start": start, "spoken": said.get(text),
+                     "end": start + seg["target_timerange"]["duration"] / US, "text": render.unbreak(text)})
+    moved = render.carry_joiners(rows)
+    segments, words, two, split, shrunk = [], dict(said), 0, 0, 0
+    for row in rows:
+        fdir, px = render.text_px(row["material"], row["seg"], W, H)
+        pieces = render.split_sub(row["text"], row["spoken"], row["start"], row["end"], fdir, px,
+                                  W * render.SAFE_W, mode)
+        split += len(pieces) - 1
+        for k, (a, b, text, spoken, factor) in enumerate(pieces):
+            seg, material = row["seg"], row["material"]
+            if k:
+                seg, material = copy.deepcopy(seg), copy.deepcopy(material)
+                seg["id"], material["id"] = str(uuid.uuid4()).upper(), str(uuid.uuid4()).upper()
+                seg["material_id"] = material["id"]
+                draft["materials"]["texts"].append(material)
+            body = json.loads(material["content"])
+            body["text"] = text
+            for style in body["styles"]:
+                style["range"] = [0, len(text)]
+                if factor < 1:
+                    style["size"] = round(style.get("size", material.get("font_size") or 15) * factor, 2)
+            if factor < 1:
+                material["font_size"] = material["text_size"] = round((material.get("font_size") or 15) * factor, 2)
+                shrunk += 1
+            material["content"] = json.dumps(body, ensure_ascii=False)
+            seg["target_timerange"] = {"start": int(round(a * US)), "duration": int(round((b - a) * US))}
+            two += "\n" in text
+            if spoken:
+                words[text] = spoken
+            segments.append(seg)
+    track["segments"] = segments
+    _save(folder, draft, "tidy")
+    said_file.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
+    return {"name": folder.name, "mode": mode, "subtitles": len(segments), "two_lines": two, "split": split,
+            "shrunk": shrunk, "moved_words": moved}
 
 
 class NeedsAgent(VideoEditError):
