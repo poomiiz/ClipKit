@@ -43,6 +43,8 @@ def main() -> int:
     ap.add_argument("--push", action="store_true")
     a = ap.parse_args()
     team = Path(a.team)
+    if subprocess.run([sys.executable, str(ROOT / "scripts" / "smoke_test.py")]).returncode:
+        sys.exit("smoke test failed - nothing was copied")
     if git(team, "status", "--porcelain").strip():
         sys.exit("the team clone has uncommitted changes - commit or discard them first")
     todo = []
