@@ -17,7 +17,10 @@ Check with your eyes and ears on the real output, not on the plan. Grab frames w
 8. **Colour** - footage not washed out or over-saturated (HDR/Dolby Vision sources need checking on the export).
 9. **Format** - 1080x1920, length 60-130 s, file plays from start to end.
 10. **Branding** - client logo/overlay present per the style skill.
+11. **Pace** - CapCut project: `python scripts/capcut/pace.py check "<project>" <client>` (or `run_clip.py --capcut --client <client>`) has no problems: cards and inserts not held longer than the person holds them for that client, enough cards per minute, no long stretch without a card. `low_data: true` = the client has under 5 approved minutes; treat its limits as a guide.
 
 Report: pass, or a list of `time - problem - fix`. A batch is released only after clip 1 passes and the person has watched it.
+
+After the person approves a clip, add it to `<edit_data>/approved.json` with `"ai_version": "clipkit_ai_version.json"` (ClipKit saves that copy on every CapCut build), then run `editdata.py extract`, `pace.py baseline` and `pace.py learn`; a change the person made in 3+ clips is a rule idea to add here.
 
 Add a line here every time a reviewer sends a clip back for a reason not on this list.
