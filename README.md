@@ -1,7 +1,10 @@
 # ClipKit
 
-Team kit for cutting talking-head footage into 60-130 s vertical shorts: Thai subtitles, story cut, B-roll from Envato, CapCut drafts, QC.
-Works in **Claude Code** (plugin) and **Codex** (skills).
+Open-source kit for cutting talking-head footage into 60-130 s vertical shorts: Thai subtitles, story cut, B-roll, CapCut drafts, QC.
+Works in **Claude Code** (plugin) and **Codex** (skills), plus a local web app for reviewing on a timeline.
+
+Requirements: Windows 10/11, Python 3.10+, ffmpeg, Node.js LTS (MP4 export), CapCut desktop. An NVIDIA GPU is
+recommended for transcription (`whisper_device: "cuda"`); CPU works but is slow.
 
 ## Install
 
@@ -24,16 +27,15 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 3. `python scripts\setup_workspace.py D:\ClipKit` (any folder: makes `config.json` and every folder), install
    Node.js LTS (nodejs.org, needed for MP4 export), then `python scripts\doctor.py --asr` must show all OK.
    Fonts are each editor's choice (not bundled); `card_font` is optional and only used for quick previews.
-4. Optional: `python scripts\envato.py login` - sign in to the **company** Envato account once (only for the bot route; the link page needs no login here).
+4. Optional: `python scripts\envato.py login` - sign in to your Envato account once (only for the bot route; the link page needs no login here).
 5. Then ask your AI agent (Claude Code / Codex) "ตัดคลิปนี้ ..." - it follows `skills/make-clip`. The ClipKit
    window (desktop icon) is optional, for reviewing on a timeline.
 
-## Envato (shared company account, decided 2026-10-01)
-Everyone signs in with the one company account on their own machine. To keep the account safe:
+## Envato (optional)
+Free stock comes from Pixabay (free API key in `pixabay_key`). Envato is optional and needs your own subscription:
 - Download only items a person ticked in the picker; every download registers a licence.
-- One download at a time per machine; never script bulk downloads.
-- Log out from machines that leave the team (`envato_profile` folder can be deleted).
-- If Envato shows a security check or blocks the account, stop all downloads and tell the account owner.
+- One download at a time per machine; never script bulk downloads (it breaks Envato's terms).
+- If Envato shows a security check or blocks the account, stop all downloads.
 
 ## What is inside
 | Path | What |
@@ -50,7 +52,6 @@ Everyone signs in with the one company account on their own machine. To keep the
 | `scripts/capcut/` | Edit CapCut `draft_content.json`: cards, B-roll, SFX, trims, preview |
 | `scripts/capcut/editdata.py` | Approved CapCut drafts -> edits.sqlite (cuts, cards, inserts, audio, effects, AI-vs-person diff) -> Obsidian notes |
 | `scripts/capcut/pace.py` | Per-client pace from edits.sqlite (`presets/pace/<client>.json`), pace check of a CapCut project, `learn` = what the person changed in the AI versions |
-| `scripts/bps/` | BPS3 episode pipeline (analyze, build, verify) |
 | `scripts/envato.py` | Envato search/download with this machine's Chrome (Playwright) |
 | `scripts/broll_picker.py` | Keyword plan -> Envato search -> HTML picker with thumbnails -> download ticked |
 | `scripts/doctor.py`, `scripts/setup.ps1` | Machine check and one-time install |
@@ -58,6 +59,13 @@ Everyone signs in with the one company account on their own machine. To keep the
 | `app/` | Video -> CapCut web app (desktop icon) |
 
 ## Rules
-- No video, footage, client files, fonts or passwords in this repo. Media stays on the shared drive.
+- No video, footage, client files, edit databases (`*.sqlite`), fonts or passwords in this repo. Media stays on your own drive.
 - Machine paths only in `config.json` (git-ignored).
 - New look = new subtitle preset in `presets/` (by chat or `scripts/preset_from_capcut.py`).
+
+## Contributing
+Bug reports, presets and fixes are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as
+described in [SECURITY.md](SECURITY.md).
+
+## License
+[MIT](LICENSE). Bundled third-party code and fonts keep their own licences: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
