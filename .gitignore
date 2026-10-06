@@ -7,3 +7,8 @@ preview-bg*
 bug_reports/
 app/sfx_builtin/
 project_templates/
+
+# personal / client data, never in the public repo
+*.sqlite
+presets/pace/
+.env
