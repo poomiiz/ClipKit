@@ -7,6 +7,7 @@ Round 1 covers what ClipKit itself makes: the main video track and the main text
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -53,6 +54,98 @@ def _font(path: str | None) -> tuple[str, Path]:
     return TTFont(str(f), fontNumber=0)["name"].getDebugName(1), f
 
 
+# where a Thai line may break: a new thought may start a line, a closing particle never does
+OPENERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน",
+           "ว่า", "ที่", "เพื่อ", "โดย", "จน", "ทำให้"}
+TAILS = {"ครับ", "ค่ะ", "คะ", "นะ", "จ้า", "จ้ะ", "เลย", "ด้วย", "กัน", "ไหม", "มั้ย", "เหรอ", "หรอ", "แหละ", "น่ะ", "ล่ะ",
+         "สิ", "ซะ", "บาท", "คน", "ครั้ง", "เท่า", "เปอร์เซ็นต์", "ล้าน", "แสน", "หมื่น", "พัน", "ร้อย", "ปี", "เดือน", "วัน",
+         "ชั่วโมง", "นาที"}  # particles and units: never the first word of a line
+PREFIXES = {"การ", "ความ", "ผู้", "นัก", "น่า"}  # bind to the next word: never the last word of a line
+
+
+def unbreak(text: str) -> str:
+    """A subtitle on one line again: a break between Thai letters joins them (Thai has no spaces), others become one."""
+    return " ".join(re.sub(r"(?<=[\u0e00-\u0e7f])\s*\n\s*(?=[\u0e00-\u0e7f])", "", text).split())
+
+
+def _key_word(tok: str) -> bool:
+    """A number, an English term or a lesson word: worth starting a line with."""
+    return bool(re.search(r"\d|[A-Za-z]{2,}", tok)) or tok in video_edit._EMPHASIS_WORDS
+
+
+def _best_break(words: list[str], width, max_w: float) -> int:
+    """Index in words (word_tokenize output) to break a line at, 0 if none: halves of similar width, preferring a
+    break before a joining or key word, never before a closing particle or after a dangling joining word."""
+    def cost(i: int) -> float:
+        left, right = "".join(words[:i]).strip(), "".join(words[i:]).strip()
+        head, tail = next(w.strip() for w in words[i:] if w.strip()), words[i - 1].strip()
+        return (abs(width(left) - width(right)) / max_w + (head in TAILS) + (tail in PREFIXES) + 0.6 * (tail in OPENERS)
+                - 0.3 * (head in OPENERS) - 0.3 * _key_word(head))
+    cuts = [i for i in range(1, len(words)) if words[i - 1].strip() and "".join(words[i:]).strip()]
+    return min(cuts, key=cost) if cuts else 0
+
+
+def split_sub(text: str, spoken: list | None, t0: float, t1: float, font_file: Path, px: float, max_w: float,
+              mode: str = "lines") -> list[tuple[float, float, str, list, float]]:
+    """One subtitle that may be too wide -> [(start, end, text, spoken words, size factor)]. It stays as is when it
+    fits one line; else it breaks at the best Thai word break into two lines (mode "lines") or into a new subtitle
+    from that point, timed by the spoken words (when two lines still overflow, or mode "split"). Mode "shrink" keeps
+    one line down to 3/4 size, then breaks like "lines". A piece too short to stand alone (< 0.6 s) stays two
+    lines; the factor shrinks what still overflows."""
+    from PIL import ImageFont
+    from pythainlp.tokenize import word_tokenize
+    font = ImageFont.truetype(str(font_file), 100)
+    width = lambda t: font.getlength(t) * px / 100  # noqa: E731
+    flat = unbreak(text)
+    fit = lambda lines: min(1.0, max_w / max(width(t) for t in lines))  # noqa: E731
+    words = word_tokenize(flat, keep_whitespace=True)
+    if mode == "shrink" and fit([flat]) >= 0.75:
+        return [(t0, t1, flat, spoken or [], fit([flat]))]
+    mode = "lines" if mode == "shrink" else mode  # shrinking more than a quarter is unreadable: break it instead
+    i = 0 if width(flat) <= max_w else _best_break(words, width, max_w)
+    if not i:
+        return [(t0, t1, flat, spoken or [], fit([flat]))]
+    left, right = "".join(words[:i]).strip(), "".join(words[i:]).strip()
+    at = _clock(spoken, t1 - t0)(len("".join(words[:i])) / len(flat))
+    if (mode == "lines" and fit([left, right]) == 1.0) or at < 0.6 or t1 - t0 - at < 0.6:
+        return [(t0, t1, left + "\n" + right, spoken or [], fit([left, right]))]
+    early = [w for w in spoken or [] if w[0] < at]
+    late = [[round(a - at, 2), round(b - at, 2), w] for a, b, w in spoken or [] if a >= at]
+    return (split_sub(left, early, t0, t0 + at, font_file, px, max_w, mode)
+            + split_sub(right, late, t0 + at, t1, font_file, px, max_w, mode))
+
+
+def carry_joiners(rows: list[dict]) -> int:
+    """Subtitles that run straight on (< 0.3 s apart) read as one sentence: a joining word left at the end of one
+    moves to the start of the next, a closing particle at the start of the next moves back. rows: start, end,
+    text (one line), spoken (word times from the row's start); changed in place. Returns how many moved."""
+    from pythainlp.tokenize import word_tokenize
+    moved = 0
+    for a, b in zip(rows, rows[1:]):
+        if b["start"] - a["end"] >= 0.3:
+            continue
+        wa = word_tokenize(a["text"], keep_whitespace=True)
+        wb = word_tokenize(b["text"], keep_whitespace=True)
+        joined, n = wa + wb, len(wa)
+        if sum(1 for w in wa if w.strip()) > 1 and wa[-1].strip() in OPENERS:
+            at = _clock(a["spoken"], a["end"] - a["start"])(len("".join(wa[:-1])) / len(a["text"]))
+            if at < 0.6:
+                continue
+            t = round(a["start"] + at, 2)  # the joining word and its time go to the next line
+            b["spoken"] = ([[round(x - at, 2), round(y - at, 2), w] for x, y, w in a["spoken"] or [] if x >= at]
+                           + [[round(x + b["start"] - t, 2), round(y + b["start"] - t, 2), w]
+                              for x, y, w in b["spoken"] or []])
+            a["spoken"] = [w for w in a["spoken"] or [] if w[0] < at]
+            a["end"], b["start"], cut = t, t, n - 1
+        elif sum(1 for w in wb if w.strip()) > 1 and wb[0].strip() in TAILS:
+            cut = n + 1  # a particle is said fast: only its text moves back, the times stay
+        else:
+            continue
+        a["text"], b["text"] = "".join(joined[:cut]).strip(), "".join(joined[cut:]).strip()
+        moved += 1
+    return moved
+
+
 def _fit(text: str, font_file: Path, size: float, max_w: float, one: bool = False) -> tuple[list[str], float]:
     """Keep a subtitle inside the frame: one line when it fits, else two lines split at the Thai word break
     that balances them best, and only if the longer of the two still overflows, a smaller size."""
@@ -61,15 +154,15 @@ def _fit(text: str, font_file: Path, size: float, max_w: float, one: bool = Fals
     font = ImageFont.truetype(str(font_file), 100)
     width = lambda t: font.getlength(t) * size / 100  # noqa: E731
     if one:  # white + colour pair: one line each so the screen never holds more than 2; smaller when long
-        lines = [text.replace("\n", " ")]
+        lines = [unbreak(text)]
     elif "\n" in text:  # the editor already chose the line breaks
         lines = text.split("\n")
     elif width(text) <= max_w:
         return [text], size
     else:
         words = word_tokenize(text, keep_whitespace=True)
-        cuts = [("".join(words[:i]).strip(), "".join(words[i:]).strip()) for i in range(1, len(words))]
-        lines = list(min(cuts, key=lambda c: max(width(c[0]), width(c[1])))) if cuts else [text]
+        i = _best_break(words, width, max_w)
+        lines = ["".join(words[:i]).strip(), "".join(words[i:]).strip()] if i else [text]
     widest = max(width(t) for t in lines)
     return lines, size if widest <= max_w else size * max_w / widest
 
@@ -201,7 +294,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     phrases break at breaths / ~16 letters / Thai joining words and the punch is the phrase's last words."""
     from pythainlp.tokenize import word_tokenize
     held = held if held is not None else {"white": ""}  # a "hold" white line carries over into the next subtitle line
-    flat = text.replace("\n", " ")
+    flat = unbreak(text)
     at, total = _clock(spoken, t1 - t0), len(flat) or 1
     phrases = []  # (lead, punch, start, punch time, last word time)
     if picked:
@@ -625,6 +718,13 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             "duration": probe(str(target))["duration"]}
 
 
+def text_px(m: dict, s: dict, W: int, H: int) -> tuple[Path, float]:
+    """(font file, size in pixels) of a CapCut text material m shown by segment s on a W x H canvas."""
+    st = (json.loads(m["content"]).get("styles") or [{}])[0]
+    _, fdir = _font((st.get("font") or {}).get("path") or m.get("font_path"))
+    return fdir, (m.get("font_size") or st.get("size") or 15) * CAPCUT_PX * (min(W, H) / 1080) * s["clip"]["scale"]["x"]
+
+
 def safe_zone(path: str) -> list[str]:
     """Text outside the SAFE_* box in a CapCut project or its subtitle preset: '<time> s "<text>": <where>' per line.
     The MP4 export moves such lines itself (_safe_y); CapCut projects and presets are only reported."""
@@ -641,12 +741,9 @@ def safe_zone(path: str) -> list[str]:
             m = index.get(s["material_id"], (None, None))[1]
             if not m:
                 continue
-            body = json.loads(m["content"])
-            st = (body.get("styles") or [{}])[0]
-            _, fdir = _font((st.get("font") or {}).get("path") or m.get("font_path"))
-            size = (m.get("font_size") or st.get("size") or 15) * CAPCUT_PX * (min(W, H) / 1080) * s["clip"]["scale"]["x"]
-            text = body.get("text", "")
-            lines, size = _fit(text, fdir, size, W * 0.9)
+            text = json.loads(m["content"]).get("text", "")
+            fdir, size = text_px(m, s, W, H)
+            lines, size = _fit(text, fdir, size, W * SAFE_W)
             font = ImageFont.truetype(str(fdir), max(1, round(size)))
             half_w = max(font.getlength(t) for t in lines) / 2
             half_h = size * 1.2 * len(lines) / 2

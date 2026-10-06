@@ -125,6 +125,7 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str 
     capcut_edit.set_subtitles(path, got["subtitles"])
     capcut_edit.subtitles_language(path, "th")
     capcut_edit.trim_pauses(path)
+    capcut_edit.tidy_subtitles(path)  # long lines: two lines at a Thai break, or a new subtitle
     (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "preset": preset, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
     ve.auto_color(path)
     return path

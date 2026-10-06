@@ -60,6 +60,11 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 @keyframes s{to{transform:rotate(360deg)}}
 .agent{border:1px dashed var(--acc);border-radius:10px;padding:10px;margin-top:8px}
 .agent code{display:block;background:#080a10;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal[hidden]{display:none}
+.modal .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;width:min(480px,100%);max-height:90vh;overflow:auto}
+.modal h3{margin:0 0 10px}.modal h4{margin:14px 0 6px;font-size:13.5px;color:var(--sub)}
+.opt{display:block;margin:5px 0;cursor:pointer}.prob{color:var(--warn);font-size:12.5px;margin:2px 0}
 @media (max-width:900px){.mid{grid-template-columns:1fr}.player{min-height:300px}}
   body.simple .media { display: none !important; }
 </style>
@@ -92,6 +97,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
     </div>
   </div>
 </main>
+<div class="modal" id="tm" hidden></div>
 <script>
 const $ = id => document.getElementById(id);
 const PATH = new URLSearchParams(location.search).get('path');
@@ -418,10 +424,49 @@ $('bAuto').onclick = () => run($('bAuto'), 'กำลังทำทุกขั
   const r = await api('draft/auto', {path: PATH}); await load(); say('✅ ' + r.steps.filter(Boolean).join(' · ') + ' · แก้บนไทม์ไลน์ได้เลย เห็นผลทันที');
 });
 
-$('bExport').onclick = () => run($('bExport'), 'กำลังส่งออกตัวจริง…', async () => {
+// ── text settings, checked before every export (MP4 or CapCut project) ──
+const TIDY = [['lines', 'ตัดเป็น 2 บรรทัดตามความหมาย', 'แนะนำ · ยาวเกิน 2 บรรทัดจะแยกเป็นซับใหม่ตามจังหวะพูด'],
+  ['split', 'แยกเป็นซับใหม่', 'บรรทัดเดียวเสมอ อ่านเร็ว'], ['shrink', 'ย่อตัวอักษร', 'ย่อได้ถึง 3/4 ถ้ายังยาวจะตัดบรรทัดแทน']];
+const WHERE = {'top bar': 'แถบบนของแอป', 'caption area at the bottom': 'แคปชันด้านล่าง', 'button column / frame edge': 'ปุ่มด้านขวา / ขอบจอ'};
+const probs = c => c.problems.length ? c.problems.map(p => `<div class="prob">⚠️ ${esc(p.replace(/[a-z][a-z /]+[a-z]/g, w => WHERE[w] || w))}</div>`).join('') + '<div class="hint">เลื่อนตำแหน่งขึ้นหรือลดขนาด แล้วกดบันทึกอีกครั้ง</div>' : '<div class="hint">✅ ทุกบรรทัดอยู่ในเขตปลอดภัย ไม่โดนปุ่มหรือแคปชันของแอป</div>';
+async function textSettings(label, go) {
+  const c = await api('draft/text-check?path=' + encodeURIComponent(PATH)), l = c.look || {}, m = $('tm');
+  const was = {size: l.size || 14, y: l.y ?? -0.44, color: (l.color || '#ffffff').toLowerCase(), stroke: l.stroke ?? 0.08};
+  m.innerHTML = `<div class="box"><h3>ตั้งค่าข้อความก่อน${label}</h3>
+    ${c.look ? `${T && T.look === 'pair' ? '<div class="hint">หน้าตาซับ "ข้อความปกติ + เน้น" ใช้ขนาดและตำแหน่งจากพรีเซ็ตใน MP4 · ค่าตรงนี้ใช้กับซับธรรมดาและโปรเจกต์ CapCut</div>' : ''}
+    <div class="row"><label>ขนาด</label><input type="range" id="tSize" min="8" max="24" step="0.5" value="${was.size}"><span id="tSizeV"></span></div>
+    <div class="row"><label>ตำแหน่ง</label><input type="range" id="tY" min="-0.6" max="0.6" step="0.01" value="${was.y}"><span id="tYV"></span></div>
+    <div class="row"><label>สี</label><input type="color" id="tColor" value="${was.color}"><label style="min-width:0">ขอบ</label><input type="range" id="tStroke" min="0" max="0.2" step="0.01" value="${was.stroke}"></div>
+    <h4>ซับที่ยาวเกินจอ</h4>${TIDY.map(([k, t, h], n) => `<label class="opt"><input type="radio" name="tMode" value="${k}" ${n ? '' : 'checked'}> ${t} <span class="hint">· ${h}</span></label>`).join('')}
+    <h4>ตรวจตำแหน่ง (${c.count} บรรทัด)</h4><div id="tProb">${probs(c)}</div>` : '<div class="hint">ยังไม่มีซับ · กด "ทำให้ครบ" ก่อน หรือส่งออกโดยไม่มีซับ</div>'}
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><button id="tCancel">ยกเลิก</button><button class="pri" id="tGo">บันทึกแล้ว${label}</button></div></div>`;
+  const show = () => { if (!c.look) return; $('tSizeV').textContent = $('tSize').value; $('tYV').textContent = Math.round((1 - $('tY').value) / 2 * 100) + '% จากบน'; };
+  let checked = false;
+  m.querySelectorAll('input').forEach(i => i.oninput = () => { show(); checked = false; $('tGo').textContent = 'บันทึกแล้ว' + label; }); show();
+  $('tCancel').onclick = () => { m.hidden = true; };
+  $('tGo').onclick = async () => {
+    if (c.look && !checked) {
+      const now = {size: +$('tSize').value, y: +$('tY').value, color: $('tColor').value.toLowerCase(), stroke: +$('tStroke').value};
+      const style = Object.fromEntries(Object.entries(now).filter(([k, v]) => v !== was[k]));  // only what changed: emphasised lines keep their colour
+      $('tGo').disabled = true;
+      try {
+        if (Object.keys(style).length) await api('draft/style', {path: PATH, ...style});
+        const r = await api('draft/tidy', {path: PATH, mode: m.querySelector('input[name=tMode]:checked').value});
+        const c2 = await api('draft/text-check?path=' + encodeURIComponent(PATH));
+        $('tProb').innerHTML = `<div class="hint">จัดแล้ว: 2 บรรทัด ${r.two_lines} · แยกใหม่ ${r.split} · ย่อ ${r.shrunk} · ย้ายคำเชื่อม ${r.moved_words}</div>` + probs(c2);
+        await reload(); live();
+        if (c2.problems.length) { checked = true; $('tGo').textContent = 'ยัง' + label + 'ต่อ'; return; }
+      } catch (e) { $('tProb').innerHTML = '<div class="prob">❌ ' + esc(e.message) + '</div>'; return; }
+      finally { $('tGo').disabled = false; }
+    }
+    m.hidden = true; go();
+  };
+  m.hidden = false;
+}
+$('bExport').onclick = () => textSettings('ส่งออก MP4', () => run($('bExport'), 'กำลังส่งออกตัวจริง…', async () => {
   const r = await api('draft/hf-export', {path: PATH}); say('✅ ได้ไฟล์แล้ว (' + r.seconds + ' วิ): ' + esc(r.file));
-});
-$('bCapcut').onclick = () => fetch('/api/kit/draft-open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: PATH})});
+})).catch(e => say('❌ ' + e.message));
+$('bCapcut').onclick = () => textSettings('เปิดใน CapCut', () => fetch('/api/kit/draft-open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: PATH})})).catch(e => say('❌ ' + e.message));
 $('bCover').onclick = () => { SEL = null; drawTL(); side(); $('coverH').scrollIntoView({behavior: 'smooth'}); };
 document.addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input,select,textarea')) return;
