@@ -27,7 +27,7 @@ for t in d['tracks']:
         assert a >= prev, ('overlap', a / 1e6, os.path.basename(v[s['material_id']]['path']))
         prev = a + s['target_timerange']['duration']
     assert prev <= d['duration'] + 50000, 'past end'
-shutil.copy(P, P.replace('.json', '.before_brollretime.json'))
+os.path.exists(P.replace('.json', '.before_brollretime.json')) or shutil.copy(P, P.replace('.json', '.before_brollretime.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 print(proj[:10], 'moved', moved, 'of', len(NEW))

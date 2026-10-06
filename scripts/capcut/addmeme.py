@@ -23,7 +23,7 @@ for a, b, t, vol in L:
     s['source_timerange'] = {'start': int(a * 1e6), 'duration': du}; s['target_timerange'] = {'start': int(t * 1e6), 'duration': du}; s['volume'] = vol
     tr['segments'].append(s)
 d['tracks'].append(tr)
-shutil.copy(P, P.replace('.json', '.before_meme.json'))
+os.path.exists(P.replace('.json', '.before_meme.json')) or shutil.copy(P, P.replace('.json', '.before_meme.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 print('stings', len(tr['segments']))

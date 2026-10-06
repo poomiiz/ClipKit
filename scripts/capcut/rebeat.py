@@ -93,7 +93,7 @@ for t in d['tracks']:
     for s in sorted(t['segments'], key=lambda s: s['target_timerange']['start']):
         assert s['target_timerange']['start'] >= prev - 1000, ('overlap', t['type'], s['target_timerange']['start'] / 1e6)
         prev = s['target_timerange']['start'] + s['target_timerange']['duration']
-shutil.copy(P, P.replace('.json', '.before_rebeat.json'))
+os.path.exists(P.replace('.json', '.before_rebeat.json')) or shutil.copy(P, P.replace('.json', '.before_rebeat.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 for ws, w, os_, o, e_txt, en in plan:
