@@ -93,7 +93,7 @@ for t in d['tracks']:
 
 for l in log: print(l)
 if dry: sys.exit(0)
-shutil.copy(P, P.replace('.json', '.before_resync.json'))
+os.path.exists(P.replace('.json', '.before_resync.json')) or shutil.copy(P, P.replace('.json', '.before_resync.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 print('resynced', proj[:20])

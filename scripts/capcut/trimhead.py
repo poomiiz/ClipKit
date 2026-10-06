@@ -31,7 +31,7 @@ for t in d['tracks']:
         assert s['target_timerange']['start'] >= prev - 1000 and s['target_timerange']['duration'] > 0
         prev = s['target_timerange']['start'] + s['target_timerange']['duration']
     assert prev <= d['duration'] + 50000
-shutil.copy(P, P.replace('.json', '.before_trimhead.json'))
+os.path.exists(P.replace('.json', '.before_trimhead.json')) or shutil.copy(P, P.replace('.json', '.before_trimhead.json'))  # keep the first original, never overwrite it
 json.dump(d, open(P, 'w', encoding='utf-8'), ensure_ascii=False)
 for tl in glob.glob(os.path.join(os.path.dirname(P), 'Timelines', '*', 'draft_content.json')): shutil.copy(P, tl)
 print('new duration', d['duration'] / 1e6)
