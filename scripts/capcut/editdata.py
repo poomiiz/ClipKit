@@ -123,8 +123,8 @@ def extract():
             if not av.is_file():  # a whole backup draft folder next to the approved one
                 av = drafts / c["ai_version"] / "draft_content.json"
             read(cur, n, "ai", json.loads(av.read_text(encoding="utf-8")))
-        hook = cur.execute("SELECT text FROM cards WHERE clip_id=? AND version='final' AND role='hook' ORDER BY start_s", (n,)).fetchone()
-        cur.execute("UPDATE clips SET hook=? WHERE id=?", (hook[0].replace("\n", " ") if hook else None, n))
+        hook = [r[0].replace("\n", " ") for r in cur.execute("SELECT text FROM cards WHERE clip_id=? AND version='final' AND role='hook' ORDER BY start_s", (n,))]
+        cur.execute("UPDATE clips SET hook=? WHERE id=?", (" / ".join(dict.fromkeys(hook)) or None, n))
     con.commit()
     for t in ("clips", "cuts", "cards", "inserts", "audio", "effects"):
         print(t, con.execute(f"SELECT COUNT(*) FROM {t} WHERE {'1' if t == 'clips' else 'version=' + chr(39) + 'final' + chr(39)}").fetchone()[0])
