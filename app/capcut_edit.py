@@ -400,7 +400,7 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
         text = json.loads(material["content"]).get("text", "")
         start = seg["target_timerange"]["start"] / US
         rows.append({"seg": seg, "material": material, "start": start, "spoken": said.get(text),
-                     "end": start + seg["target_timerange"]["duration"] / US, "text": render.unbreak(text)})
+                     "end": start + seg["target_timerange"]["duration"] / US, "text": text})
     moved = render.carry_joiners(rows)
     segments, words, two, split, shrunk = [], dict(said), 0, 0, 0
     for row in rows:

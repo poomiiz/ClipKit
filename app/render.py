@@ -98,6 +98,8 @@ def split_sub(text: str, spoken: list | None, t0: float, t1: float, font_file: P
     width = lambda t: font.getlength(t) * px / 100  # noqa: E731
     flat = unbreak(text)
     fit = lambda lines: min(1.0, max_w / max(width(t) for t in lines))  # noqa: E731
+    if "\n" in text.strip() and mode != "split" and fit(text.strip().split("\n")) == 1.0:
+        return [(t0, t1, text.strip(), spoken or [], 1.0)]  # line breaks someone chose, and they fit
     words = word_tokenize(flat, keep_whitespace=True)
     if mode == "shrink" and fit([flat]) >= 0.75:
         return [(t0, t1, flat, spoken or [], fit([flat]))]
@@ -118,17 +120,17 @@ def split_sub(text: str, spoken: list | None, t0: float, t1: float, font_file: P
 def carry_joiners(rows: list[dict]) -> int:
     """Subtitles that run straight on (< 0.3 s apart) read as one sentence: a joining word left at the end of one
     moves to the start of the next, a closing particle at the start of the next moves back. rows: start, end,
-    text (one line), spoken (word times from the row's start); changed in place. Returns how many moved."""
+    text, spoken (word times from the row's start); changed in place. Returns how many moved."""
     from pythainlp.tokenize import word_tokenize
     moved = 0
     for a, b in zip(rows, rows[1:]):
         if b["start"] - a["end"] >= 0.3:
             continue
-        wa = word_tokenize(a["text"], keep_whitespace=True)
-        wb = word_tokenize(b["text"], keep_whitespace=True)
+        wa = word_tokenize(unbreak(a["text"]), keep_whitespace=True)
+        wb = word_tokenize(unbreak(b["text"]), keep_whitespace=True)
         joined, n = wa + wb, len(wa)
         if sum(1 for w in wa if w.strip()) > 1 and wa[-1].strip() in OPENERS:
-            at = _clock(a["spoken"], a["end"] - a["start"])(len("".join(wa[:-1])) / len(a["text"]))
+            at = _clock(a["spoken"], a["end"] - a["start"])(len("".join(wa[:-1])) / len("".join(wa)))
             if at < 0.6:
                 continue
             t = round(a["start"] + at, 2)  # the joining word and its time go to the next line
