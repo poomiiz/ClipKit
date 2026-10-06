@@ -512,6 +512,7 @@
   .pl-btns span { display: flex; gap: 4px; }
   .pl-music { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .pl-music select { flex: 1; min-width: 200px; }
+  body.simple .media { display: none !important; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -523,6 +524,7 @@
     <button class="back" id="backBtn" onclick="goBack()" style="display:none">‹</button>
     <h1 id="title">ตัดต่อวิดีโอ</h1>
     <span class="chip" id="engine"><span class="chip-dot"></span> …</span>
+    <button class="small ghost" id="updBtn" style="display:none;margin-left:8px" onclick="doUpdate()">⬆️ อัปเดต ClipKit</button>
   </div>
   <!-- Step progress: where the editor is in the raw file -> finished clip flow -->
   <div id="stepper" style="display:none;gap:6px;padding:10px 18px 0;flex-wrap:wrap;font-size:13px"></div>
@@ -676,7 +678,7 @@
           <div class="tc-head"><div class="icon">✨</div><div class="titles">
             <h3>ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก ClipKit</p></div></div>
           <div class="row" id="saBtns" style="gap:8px;flex-wrap:wrap">
-            <button class="small" data-a="pair">คู่ประโยค · BPS</button>
+            <button class="small" data-a="pair">คู่ประโยค</button>
             <button class="small" data-a="none">ซับนิ่ง</button>
             <button class="small" data-a="pop">เด้งเข้า</button>
             <button class="small" data-a="karaoke">ไล่สีทีละคำ</button></div>
@@ -812,7 +814,7 @@
         </div>
 
         <!-- Background Music Card -->
-        <div class="tool-card" id="c-music">
+        <div class="tool-card media" id="c-music">
           <div class="tc-head">
             <div class="icon">🎵</div>
             <div class="titles">
@@ -988,7 +990,27 @@ function goBack() {
   if (prev) go(prev, false);
 }
 
+async function doUpdate() {
+  const b = document.getElementById('updBtn');
+  b.disabled = true; b.textContent = '⏳ กำลังอัปเดต…';
+  try {
+    const r = await api('update', {});
+    b.textContent = r.updated ? '✅ ' + r.note : '✅ ' + r.note;
+    if (r.updated) setTimeout(() => location.reload(), 6000);
+    else setTimeout(() => { b.disabled = false; b.textContent = '⬆️ อัปเดต ClipKit'; }, 3000);
+  } catch (e) { b.textContent = '❌ ' + e.message; b.disabled = false; }
+}
+
 api('config').then(c => {
+  if (c.team) document.getElementById('updBtn').style.display = '';
+  if (c.simple) {  // simple mode: cut, subtitles and title only
+    document.body.classList.add('simple');
+    for (const list of [STEPS, GUIDE, WZ])
+      for (let i = list.length - 1; i >= 0; i--)
+        if (['broll', 'music'].includes(list[i].key) || (list[i].screens || []).includes('s-stock')) list.splice(i, 1);
+    const snd = document.getElementById('animSound');
+    if (snd) { snd.checked = false; snd.parentElement.classList.add('media'); }
+  }
   const engineEl = document.getElementById('engine');
   if (engineEl) {
     engineEl.innerHTML = '<span class="chip-dot"></span> ' + (c.gpu ? 'GPU · large-v3' : 'CPU · medium');
@@ -2578,7 +2600,7 @@ async function saLoad(pick) {
   document.getElementById('saNote').textContent = r.anim === 'karaoke' && !r.has_word_times
     ? '⚠️ โปรเจกต์นี้ยังไม่มีเวลาของแต่ละคำ สีจะไล่ตามความยาวตัวอักษรแทน · กดถอดเสียงใหม่ (แท็บ 🎙️ ซับ) ให้ตรงเสียงพูด'
     : {none: 'ซับขึ้นนิ่งๆ', pop: 'แต่ละบรรทัดขยายเด้งเข้ามา', karaoke: 'คำที่กำลังพูดเปลี่ยนเป็นสีเหลือง',
-       pair: 'แบ่งเป็นช่วงสั้นตามจังหวะพูด · ตัวขาว + คำเน้นน้ำเงินขอบขาว (แบบ BPS ที่พี่ตัด)',}[r.anim];
+       pair: 'แบ่งเป็นช่วงสั้นตามจังหวะพูด · ตัวขาว + คำเน้นน้ำเงินขอบขาว',}[r.anim];
 }
 // motion on top of the clip: one row per subtitle line, a button per look, a ✓ where one is placed
 async function ovLoad() {
