@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import capcut_edit
+import video_edit
 from video_edit import FFMPEG, VideoEditError, probe
 
 US = 1_000_000
@@ -354,7 +355,10 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     mats = {m["id"]: m for m in draft["materials"].get("videos", [])}
     src = mats[segs[0]["material_id"]]["path"]
     if any(mats[s["material_id"]]["path"] != src for s in segs):
-        raise VideoEditError("main track mixes several source files - round 1 exports one raw clip only")
+        names = sorted({Path(mats[s["material_id"]]["path"]).name for s in segs})
+        raise VideoEditError("โปรเจกต์นี้แทร็กหลักมีหลายไฟล์ (" + ", ".join(names[:3]) + ") แบบที่ตัดมือใน CapCut: "
+                             "หน้าแก้คลิปของ ClipKit เปิดได้เฉพาะคลิปที่ตัดจากไฟล์ดิบไฟล์เดียว ให้กดปุ่ม CapCut เพื่อแก้ต่อ "
+                             "หรือสร้างโปรเจกต์ใหม่จากไฟล์ดิบ")
     if not Path(src).is_file():
         raise VideoEditError(f"raw file not found: {src}")
     info = probe(src)
@@ -491,10 +495,14 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                     last_b = a
         else:
             plan = placed.get("broll", [])
+        simple = video_edit.kitconfig.simple()  # simple mode: no b-roll, music or sound effects
+        if simple:
+            plan = []
         for k, it in enumerate(plan):
             if not Path(it["file"]).is_file():
                 raise VideoEditError(f"b-roll file missing: {it['file']}")
-            n = add("-i", it["file"])
+            # a still picture is one frame: loop it so it stays up for the whole span
+            n = add("-loop", "1", "-i", it["file"]) if video_edit.is_image(it["file"]) else add("-i", it["file"])
             a, e = float(it["start"]), float(it["start"]) + float(it["dur"])
             graph += (f";[{n}:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                       f"trim=0:{e - a:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB[br{k}];"
@@ -540,6 +548,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             raise VideoEditError(f"music file missing: {music_file}")
         music_vol = mus.get("volume", 0.12) if mus is not None else style.get("music_volume", 0.12)
         fx = (placed or {}).get("sfx", {"on": style.get("sfx", True), "volume": style.get("sfx_volume", 1.0)})
+        if simple:
+            music_file, fx = None, {"on": False, "volume": 0}
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,

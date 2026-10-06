@@ -61,6 +61,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .agent{border:1px dashed var(--acc);border-radius:10px;padding:10px;margin-top:8px}
 .agent code{display:block;background:#080a10;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
 @media (max-width:900px){.mid{grid-template-columns:1fr}.player{min-height:300px}}
+  body.simple .media { display: none !important; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=3">
 </head>
@@ -83,10 +84,10 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   <div class="tl">
     <div class="tlbar"><span class="t" id="tc">0:00.0 / 0:00</span>
       <span>ซูม</span><input type="range" id="zoom" min="10" max="160" value="40" style="width:140px">
-      <button id="bAddBr">+ ภาพประกอบตรงเส้นแดง</button>
+      <button id="bAddBr" class="media">+ ภาพประกอบตรงเส้นแดง</button>
       <span class="hint">คลิกชิ้นไหนเพื่อแก้ทางขวา · ลากภาพประกอบเพื่อเลื่อน ลากขอบขวาเพื่อยืด · Space เล่น/หยุด · Delete ลบ</span></div>
     <div class="tracks" id="tracks">
-      <div><div style="height:18px"></div><div class="lab">ข้อความ</div><div class="lab">ภาพประกอบ</div><div class="lab">ข้อความใหญ่</div><div class="lab">เพลง</div></div>
+      <div><div style="height:18px"></div><div class="lab">ข้อความ</div><div class="lab media">ภาพประกอบ</div><div class="lab">ข้อความใหญ่</div><div class="lab media">เพลง</div></div>
       <div class="scroll" id="scroll"><div class="inner" id="inner"></div></div>
     </div>
   </div>
@@ -103,6 +104,8 @@ async function api(path, body) {
   return j;
 }
 function say(html) { $('busy').innerHTML = html; }
+
+fetch('/api/video/config').then(r => r.json()).then(c => document.body.classList.toggle('simple', !!c.simple)).catch(() => {});
 
 async function load() {
   T = await api('draft/timeline?path=' + encodeURIComponent(PATH));
@@ -141,6 +144,7 @@ function drawTL() {
   inner.appendChild(ruler);
   const lane = () => { const l = document.createElement('div'); l.className = 'lane'; l.style.marginTop = '4px'; inner.appendChild(l); return l; };
   const lSub = lane(), lBr = lane(), lMo = lane(), lMu = lane();
+  lBr.classList.add('media'); lMu.classList.add('media');
   const blk = (laneEl, cls, a, b, html, sel) => {
     const d = document.createElement('div');
     d.className = 'blk ' + cls + (SEL && SEL.key === sel.key ? ' sel' : '');
@@ -251,12 +255,12 @@ function sideClip(s) {
     <h4 id="coverH">ปก</h4>
     ${st.cover ? `<img src="/api/kit/media?path=${encodeURIComponent(st.cover)}&t=${Date.now()}" style="width:140px;border-radius:10px;display:block">` : '<div class="hint">ยังไม่มีปก · กด "ทำให้ครบ" ระบบทำปกจากชื่อเรื่องให้</div>'}
     <div class="row"><button id="cAuto">✨ ทำปกใหม่อัตโนมัติ</button><button id="cEdit">แก้ปกเอง</button></div>
-    <h4>คำเน้นและภาพประกอบ</h4>
+    <h4>คำเน้น</h4>
     <div class="hint">${T.punch_picked ? 'Claude เลือกคำเน้นและคำค้นภาพแล้ว' : 'ยังใช้คำเน้นอัตโนมัติ (คำท้ายช่วง) · อยากได้คำที่ตรงใจความ + ภาพประกอบ ส่งคำสั่งนี้ให้ Claude'}</div>
     <div class="agent"><code>${esc(T.agent_command)}</code><button id="cp">คัดลอกคำสั่ง</button></div>
-    <h4>เสียงเอฟเฟกต์</h4>
-    <div class="row"><label><input type="checkbox" id="fx" ${PL.sfx.on ? 'checked' : ''}> pop ตอนคำเน้น · whoosh ตอนภาพประกอบ</label></div>
-    <div class="row"><label>ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>`;
+    <h4 class="media">เสียงเอฟเฟกต์</h4>
+    <div class="row media"><label><input type="checkbox" id="fx" ${PL.sfx.on ? 'checked' : ''}> pop ตอนคำเน้น · whoosh ตอนภาพประกอบ</label></div>
+    <div class="row media"><label>ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>`;
   s.querySelectorAll('.look').forEach(b => b.onclick = async () => { await api('draft/look', {path: PATH, style: {anim: b.dataset.k}}); await reload(); });
   fetch('/api/video/subtitle-presets').then(r => r.json()).then(r => {
     $('preset').innerHTML = r.presets.map(n => `<option${n === (st.preset || 'default') ? ' selected' : ''}>${esc(n)}</option>`).join('');
@@ -305,7 +309,7 @@ function sidePhrase(s, p) {
     <div class="row"><label>แบบ</label><select id="po" style="flex:1">
       <option value="pair">ขาว + สี</option><option value="white">ขาวอย่างเดียว</option><option value="color">สีอย่างเดียว</option>
       <option value="red">ขาว + แดง (จุดแรงสุด)</option><option value="hold">ขาวค้างจากท่อนก่อน + สี (ลิสต์)</option><option value="skip">ไม่ขึ้นซับ</option></select></div>
-    <div class="row"><label>หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
+    <div class="row media"><label>หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
     <div class="row"><label>ซับแปล (ทั้งประโยค)</label><input id="pc" style="flex:1" placeholder="ตัวเล็กด้านล่าง ถ้าพรีเซ็ตมีซับแปล"></div>
     <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นข้อความใหญ่กลางจอ</button></div>
     <div class="row"><button id="pcut" style="color:#fca5a5">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
