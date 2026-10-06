@@ -48,6 +48,7 @@ Everyone signs in with the one company account on their own machine. To keep the
 | `scripts/log_clip.py` | Log a finished clip: always to `<output>/logs/clips_log.jsonl`, plus central log on the office machine; `import` loads team files |
 | `scripts/clipkit.py` | Transcribe (Thai), pause-cut plan, ffmpeg render |
 | `scripts/capcut/` | Edit CapCut `draft_content.json`: cards, B-roll, SFX, trims, preview |
+| `scripts/capcut/editdata.py` | Approved CapCut drafts -> edits.sqlite (cuts, cards, inserts, audio, effects, AI-vs-person diff) -> Obsidian notes |
 | `scripts/bps/` | BPS3 episode pipeline (analyze, build, verify) |
 | `scripts/envato.py` | Envato search/download with this machine's Chrome (Playwright) |
 | `scripts/broll_picker.py` | Keyword plan -> Envato search -> HTML picker with thumbnails -> download ticked |
