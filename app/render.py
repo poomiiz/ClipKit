@@ -24,6 +24,24 @@ DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipK
 # subtitles stay inside this box (fractions of the frame) so the app never covers them
 SAFE_W, SAFE_TOP, SAFE_BOTTOM = 0.78, 0.11, 0.77
 LOUDNESS = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"  # every export at the level the platforms play (-14 LUFS)
+# a few ms of fade on both sides of every jump cut: a cut mid-waveform clicks
+EDGE_FADE = 0.008
+
+
+def edge_fades(dur: float) -> str:
+    """afade pair for one kept piece of audio (no click where two pieces meet)."""
+    return f"afade=t=in:d={EDGE_FADE},afade=t=out:st={max(0.0, dur - EDGE_FADE):.3f}:d={EDGE_FADE}"
+
+
+def normalize_loudness(mp4: Path) -> None:
+    """Re-level the sound of a finished MP4 in place (picture copied, not re-encoded)."""
+    tmp = mp4.with_name(mp4.stem + ".loud.mp4")
+    r = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(mp4), "-map", "0:v", "-map", "0:a", "-c:v", "copy",
+                        "-af", LOUDNESS, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode or not tmp.is_file():
+        raise VideoEditError("loudness pass failed: " + r.stderr.strip()[-400:])
+    tmp.replace(mp4)
 
 
 def _font(path: str | None) -> tuple[str, Path]:
@@ -389,7 +407,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         a = s["source_timerange"]["start"] / US
         b = a + s["source_timerange"]["duration"] / US
         parts.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}];"
-                     f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}]")
+                     f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS,{edge_fades(b - a)}[a{i}]")
         labels.append(f"[v{i}][a{i}]")
     graph = ";".join(parts) + ";" + "".join(labels) + f"concat=n={len(segs)}:v=1:a=1[vc][ac];" + \
         f"[vc]scale={vw}:{vh}[vs];color=black:s={W}x{H}:r={info.get("fps") or 30}[bg];[bg][vs]overlay={ox}:{oy}:shortest=1[vo]"
@@ -605,3 +623,51 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             "sfx": len(sfx) if fx["on"] else 0, "preview": preview,
             "karaoke_estimated": estimated, "pieces": len(segs), "safe_zone_moved": held.get("safe_moved", 0), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}
+
+
+def safe_zone(path: str) -> list[str]:
+    """Text outside the SAFE_* box in a CapCut project or its subtitle preset: '<time> s "<text>": <where>' per line.
+    The MP4 export moves such lines itself (_safe_y); CapCut projects and presets are only reported."""
+    from PIL import ImageFont
+    folder = Path(path)
+    draft = capcut_edit._load(folder)
+    W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
+    index = capcut_edit._index(draft)
+    problems = []
+    for track in draft["tracks"]:
+        if track.get("type") != "text":
+            continue
+        for s in track["segments"]:
+            m = index.get(s["material_id"], (None, None))[1]
+            if not m:
+                continue
+            body = json.loads(m["content"])
+            st = (body.get("styles") or [{}])[0]
+            _, fdir = _font((st.get("font") or {}).get("path") or m.get("font_path"))
+            size = (m.get("font_size") or st.get("size") or 15) * CAPCUT_PX * (min(W, H) / 1080) * s["clip"]["scale"]["x"]
+            text = body.get("text", "")
+            lines, size = _fit(text, fdir, size, W * 0.9)
+            font = ImageFont.truetype(str(fdir), max(1, round(size)))
+            half_w = max(font.getlength(t) for t in lines) / 2
+            half_h = size * 1.2 * len(lines) / 2
+            x = W / 2 + s["clip"]["transform"].get("x", 0) * W / 2
+            y = H / 2 - s["clip"]["transform"]["y"] * H / 2
+            where = []
+            if y - half_h < SAFE_TOP * H:
+                where.append("top bar")
+            if y + half_h > SAFE_BOTTOM * H:
+                where.append("caption area at the bottom")
+            if abs(x - W / 2) + half_w > SAFE_W * W / 2:
+                where.append("button column / frame edge")
+            if where:
+                problems.append(f'{s["target_timerange"]["start"] / US:.1f} s "{text[:30]}": ' + ", ".join(where))
+    style = _json(folder / "clipkit_style.json", {})
+    if style.get("anim", "none").startswith("pair"):  # the pair look draws lines from the preset, not the draft
+        look = pair_look(style)
+        for role in ("lead", "punch", "caption"):
+            if look[role]:
+                size, y = look[role][0] * CAPCUT_PX * (min(W, H) / 1080), H / 2 - look[role][1] * H / 2
+                if y - size * 0.6 < SAFE_TOP * H or y + size * 0.6 > SAFE_BOTTOM * H:
+                    problems.append(f'preset {style.get("preset") or "default"} {role} line (y {look[role][1]}): '
+                                    "under the top bar or the caption area")
+    return problems
