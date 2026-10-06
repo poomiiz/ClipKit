@@ -20,6 +20,10 @@ US = 1_000_000
 CAPCUT_PX = 5.2  # pixels per CapCut font-size unit per 1080 px of the canvas short side (same number the editor preview uses)
 FONTS = Path(__file__).resolve().parents[1] / "fonts"
 DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipKit so Thai always shapes
+# TikTok / Reels / Shorts draw their buttons on the right and the caption + sound bar at the bottom:
+# subtitles stay inside this box (fractions of the frame) so the app never covers them
+SAFE_W, SAFE_TOP, SAFE_BOTTOM = 0.78, 0.11, 0.77
+LOUDNESS = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"  # every export at the level the platforms play (-14 LUFS)
 
 
 def _font(path: str | None) -> tuple[str, Path]:
@@ -229,8 +233,9 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False) -> str:
         size, y, fill, stroke, width = part
         px = size * k
-        lines, px = _fit(words, font_file, px, W * 0.9, one)
-        return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{H / 2 - y * H / 2:.0f})\\fn{fam}"
+        lines, px = _fit(words, font_file, px, W * SAFE_W, one)
+        safe = _safe_y(H / 2 - y * H / 2, len(lines) * px, H, held)
+        return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{safe:.0f})\\fn{fam}"
                 f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
                 f"\\shad2{extra}}}" + "\\N".join(lines))
 
@@ -298,6 +303,15 @@ def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl
         out.append((toks[k][2], end, text(k)))
     out.append((toks[words[-1]][3], length, text(-1)))
     return [(a, min(b, length), t) for a, b, t in out if min(b, length) - a > 0.005]
+
+
+def _safe_y(cy: float, block: float, H: int, held: dict) -> float:
+    """Centre y of a text block of height ~block moved inside SAFE_TOP..SAFE_BOTTOM; counts each move in held."""
+    half = block * 0.6
+    safe = min(max(cy, H * SAFE_TOP + half), H * SAFE_BOTTOM - half)
+    if safe != cy:
+        held["safe_moved"] = held.get("safe_moved", 0) + 1
+    return safe
 
 
 def _ass_color(rgb: list[float]) -> str:
@@ -437,7 +451,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
-        lines, size = _fit(body.get("text", ""), fdir, size, W * 0.9)
+        lines, size = _fit(body.get("text", ""), fdir, size, W * SAFE_W)
+        y = _safe_y(y, len(lines) * size, H, held)
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
             estimated += spoken is None
@@ -459,7 +474,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         font_files.add(hfile)
         kk = min(W, H) / 1080 * CAPCUT_PX
         for n, h in enumerate(hook):
-            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * 0.9, True)
+            lines, px = _fit(h["text"], hfile, h["size"] * kk, W * SAFE_W, True)
             an = {"up": 2, "down": 8}.get(h["grow"], 5)
             events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
                           f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"
@@ -577,7 +592,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                 ms = max(0, round(t * 1000))
                 graph += f";[{n}:a]adelay={ms}|{ms},volume={(0.5 if kind == 'pop' else 0.35) * fx['volume']:.3f}[s{k}]"
                 mix.append(f"[s{k}]")
-        graph += f";{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first[aout]"
+        graph += f";{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first,{LOUDNESS}[aout]"
         cmd = [FFMPEG, "-y", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
                "-c:v", "libx264", "-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
@@ -588,5 +603,5 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             "broll": [it["query"] for it in plan], "broll_items": plan, "music": Path(music_file).name if music_file else None,
             "music_file": music_file or "", "music_volume": music_vol, "sfx_on": fx["on"], "sfx_volume": fx["volume"],
             "sfx": len(sfx) if fx["on"] else 0, "preview": preview,
-            "karaoke_estimated": estimated, "pieces": len(segs), "skipped_tracks": skipped,
+            "karaoke_estimated": estimated, "pieces": len(segs), "safe_zone_moved": held.get("safe_moved", 0), "skipped_tracks": skipped,
             "duration": probe(str(target))["duration"]}
