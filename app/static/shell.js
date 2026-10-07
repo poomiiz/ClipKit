@@ -2,19 +2,16 @@
 (() => {
   // The KB widget owns its cross-origin frame; same-origin preview frames share their parent's lease.
   if (window !== window.top) { try { if (window.parent.location.origin === location.origin) return; } catch {} }
-  const session_id = crypto.randomUUID(), payload = JSON.stringify({session_id});
-  let timer = null, leaving = false;
-  async function heartbeat() {
-    if (leaving) return;
-    try {
-      const r = await fetch('/api/window/heartbeat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: payload});
-      if (r.status === 404 || (r.ok && !(await r.json()).managed)) { clearInterval(timer); return; }
-      if (!r.ok) console.error('ClipKit window registration failed:', r.status);
-    } catch (e) { console.error('ClipKit window connection failed:', e.message); }
+  const session_id = crypto.randomUUID();
+  let connection;
+  function connect() {
+    connection = new EventSource('/api/window/watch?session_id=' + session_id);
+    connection.onmessage = e => { if (!JSON.parse(e.data).managed) connection.close(); };
+    connection.onerror = () => { if (connection.readyState === EventSource.CLOSED) connection.close(); };
   }
-  timer = setInterval(heartbeat, 15000); heartbeat();
-  window.addEventListener('pagehide', () => { leaving = true; clearInterval(timer); navigator.sendBeacon('/api/window/release', payload); });
-  window.addEventListener('pageshow', e => { if (e.persisted) { leaving = false; timer = setInterval(heartbeat, 15000); heartbeat(); } });
+  connect();
+  window.addEventListener('pagehide', () => connection.close());
+  window.addEventListener('pageshow', e => { if (e.persisted) connect(); });
 })();
 (() => {
   if (window !== window.top) return;   // embedded inside the editor: no second sidebar

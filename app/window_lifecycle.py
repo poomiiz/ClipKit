@@ -1,13 +1,15 @@
 """A managed launcher exits after its last browser window closes."""
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
 from collections.abc import Callable
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 
 class WindowLifecycle:
@@ -23,7 +25,7 @@ class WindowLifecycle:
     def heartbeat(self, session_id: UUID) -> None:
         with self.lock:
             if self.enabled:
-                # Background browser tabs throttle timers; normal close uses release.
+                # Lease expiry also covers crashed clients that never send release.
                 self.leases[session_id] = self.clock() + 180
                 self.seen_window = True
 
@@ -62,26 +64,21 @@ class WindowLifecycle:
 def window_router(lifecycle: WindowLifecycle) -> APIRouter:
     router = APIRouter(prefix="/api/window", tags=["window"])
 
-    async def session(request: Request) -> UUID:
-        # sendBeacon may use text/plain; validate its small JSON payload explicitly.
-        raw = await request.body()
-        if len(raw) > 256:
-            raise HTTPException(400, "Invalid window session")
-        try:
-            body = json.loads(raw)
-            return UUID(body["session_id"])
-        except (ValueError, TypeError, KeyError, AttributeError) as exc:
-            raise HTTPException(400, "Invalid window session") from exc
+    @router.get("/watch")
+    async def watch(session_id: UUID):
+        async def events():
+            try:
+                while True:
+                    lifecycle.heartbeat(session_id)
+                    yield f"data: {json.dumps(lifecycle.status())}\n\n"
+                    if not lifecycle.enabled:
+                        return
+                    await asyncio.sleep(5)
+            finally:
+                lifecycle.release(session_id)
 
-    @router.post("/heartbeat")
-    async def heartbeat(request: Request):
-        lifecycle.heartbeat(await session(request))
-        return lifecycle.status()
-
-    @router.post("/release")
-    async def release(request: Request):
-        lifecycle.release(await session(request))
-        return lifecycle.status()
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-store"})
 
     @router.get("/status")
     def status():
