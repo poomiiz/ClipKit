@@ -68,6 +68,9 @@ Install `requirements-dev.txt`, then run `python scripts/smoke_test.py`.
 The checks use temporary drafts and do not require footage or network.
 For an unconfigured machine, set `CLIP_KIT_CONFIG` to `config.example.json`.
 Windows CI runs these checks on pushes and pull requests.
+With FFmpeg installed, `python scripts/media_test.py` additionally generates
+test footage and checks real cut output, decode, cache reuse, interrupted renders
+and retries. Generated media is temporary and contains no client material.
 
 The app is a local desktop tool; open it through `http://127.0.0.1:8770`
 or `http://localhost:8770`. Browser requests from other origins are rejected.

@@ -190,6 +190,64 @@ def subtitle_font_dependencies_work():
     assert family and ImageFont.truetype(str(path), 30).getlength("ทดสอบภาษาไทย") > 0
 
 
+def speech_settings_and_failures():
+    import os
+    from types import SimpleNamespace
+    from unittest.mock import Mock, patch
+    import video_edit
+    previous = video_edit._model
+    cfg = {"whisper_model": "small", "whisper_device": "cpu", "models_dir": "cache-one"}
+    constructor = Mock(return_value=object())
+    try:
+        video_edit._model = None
+        with patch.dict(sys.modules, {"faster_whisper": SimpleNamespace(WhisperModel=constructor)}), \
+                patch.dict(os.environ, {"VIDEO_WHISPER_MODEL": ""}), \
+                patch.object(video_edit.kitconfig, "_load", return_value=cfg), \
+                patch.object(video_edit, "_has_cuda", return_value=True):
+            first, engine = video_edit._get_model()
+            assert engine == "small/cpu/int8", engine
+            constructor.assert_called_once_with("small", device="cpu", compute_type="int8", download_root="cache-one")
+            assert video_edit._get_model()[0] is first
+            assert constructor.call_count == 1
+            cfg["models_dir"] = "cache-two"
+            video_edit._get_model()
+            assert constructor.call_count == 2
+            cfg["whisper_model"] = "medium"
+            video_edit._get_model()
+            assert constructor.call_args.args == ("medium",)
+            video_edit._get_model("tiny")
+            assert constructor.call_args.args == ("tiny",)
+            cfg["whisper_device"] = "cuda"
+            constructor.side_effect = RuntimeError("GPU load failed")
+            with patch.object(video_edit, "_enable_cuda_libs"):
+                try:
+                    video_edit._get_model()
+                except video_edit.VideoEditError as exc:
+                    assert "GPU load failed" in str(exc)
+                else:
+                    raise AssertionError("model failure was hidden")
+            assert constructor.call_args.kwargs["device"] == "cuda"
+            assert video_edit._model is None
+            with patch.object(video_edit, "_has_cuda", return_value=False):
+                count = constructor.call_count
+                try:
+                    video_edit._get_model()
+                except video_edit.VideoEditError as exc:
+                    assert "CUDA is unavailable" in str(exc)
+                else:
+                    raise AssertionError("unavailable GPU was hidden")
+                assert constructor.call_count == count
+    finally:
+        video_edit._model = previous
+    for start, end, window in ((0, 10, 1), (0, 10, 0), (-1, 10, 15), (5, 2, 15), (0, float("nan"), 15)):
+        try:
+            video_edit.transcribe("unused.mp4", start, end, window=window)
+        except video_edit.VideoEditError:
+            pass
+        else:
+            raise AssertionError("invalid transcription input was accepted")
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"

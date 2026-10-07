@@ -96,14 +96,15 @@ def disk():
 
 def asr():
     import tempfile
-    wav = Path(tempfile.gettempdir()) / "clipkit_doctor.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=3", str(wav)], check=True)
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "clipkit.py"), "transcribe", str(wav), "--out",
-                        str(wav.with_suffix(".json"))], capture_output=True, text=True)
-    # a pure tone has no speech: "no speech found" proves the model loaded and ran
-    if r.returncode != 0 and "no speech found" not in r.stderr:
-        raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr else "transcribe failed")
-    return "Whisper loaded and ran"
+    with tempfile.TemporaryDirectory(prefix="clipkit-doctor-") as tmp:
+        wav = Path(tmp) / "tone.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=3", str(wav)], check=True, timeout=30)
+        code = "import sys; sys.path.insert(0, sys.argv[1]); import video_edit; video_edit.transcribe(sys.argv[2], 0, 3)"
+        r = subprocess.run([sys.executable, "-c", code, str(ROOT / "app"), str(wav)],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr else "transcribe failed")
+    return "Configured Whisper loaded and ran through the editor's transcription path"
 
 
 for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("node", node), ("config + folders", config),

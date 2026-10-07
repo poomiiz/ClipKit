@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import time
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -40,11 +41,12 @@ CAPCUT_TEMPLATE_DRAFT = os.environ.get("CAPCUT_TEMPLATE_DRAFT", "")
 #   large-v3 cuda/float16   52s, cleanest Thai      <- default
 #   large-v3 cuda/int8_f16  72s, garbled, unusable
 #   medium   cpu/int8      233s, drops whole spans
-# So: best model on the GPU, and only fall back to CPU if CUDA is missing.
+# Device and model come from the user's settings; load errors never change them silently.
 WHISPER_MODEL = os.environ.get("VIDEO_WHISPER_MODEL", "large-v3")
 WHISPER_CPU_FALLBACK = os.environ.get("VIDEO_WHISPER_CPU_MODEL", "medium")
 
 _model = None
+_model_lock = threading.Lock()
 
 
 class VideoEditError(RuntimeError):
@@ -273,25 +275,26 @@ def _get_model(model_size: str | None = None):
     global _model
     from faster_whisper import WhisperModel
 
-    if _has_cuda():
-        _enable_cuda_libs()
-        # int8_float16: large-v3 in about half the VRAM of float16 with near-identical accuracy, so it fits on an
-        # 8 GB card next to the local LLM that keeps its own share loaded
-        wanted = (model_size or WHISPER_MODEL, "cuda", "int8_float16")
-    else:
-        wanted = (model_size or WHISPER_CPU_FALLBACK, "cpu", "int8")
-
-    if _model is None or _model[0] != wanted:
-        name, device, compute = wanted
-        root = kitconfig._load().get("models_dir") or None  # chosen drive; None = the default cache on C:
-        try:
-            _model = (wanted, WhisperModel(name, device=device, compute_type=compute, download_root=root))
-        except Exception as exc:
-            if device == "cpu":
-                raise VideoEditError(f"cannot load speech model {name}: {exc}") from exc
-            fallback = (WHISPER_CPU_FALLBACK, "cpu", "int8")
-            _model = (fallback, WhisperModel(fallback[0], device="cpu", compute_type="int8", download_root=root))
-    return _model[1], "/".join(_model[0])
+    cfg = kitconfig._load()
+    name = model_size or os.environ.get("VIDEO_WHISPER_MODEL") or cfg.get("whisper_model") or "large-v3"
+    device = cfg.get("whisper_device") or "cuda"
+    if device not in {"cpu", "cuda"}:
+        raise VideoEditError("whisper_device must be cpu or cuda")
+    root = cfg.get("models_dir") or None
+    compute = "int8_float16" if device == "cuda" else "int8"
+    wanted = (name, device, compute, root)
+    with _model_lock:
+        if _model is None or _model[0] != wanted:
+            if device == "cuda":
+                if not _has_cuda():
+                    raise VideoEditError("CUDA is unavailable; choose CPU in Settings or repair the GPU runtime")
+                _enable_cuda_libs()
+            _model = None  # release the cached model before allocating its replacement
+            try:
+                _model = (wanted, WhisperModel(name, device=device, compute_type=compute, download_root=root))
+            except Exception as exc:
+                raise VideoEditError(f"cannot load speech model {name} on {device}: {exc}") from exc
+        return _model[1], "/".join(wanted[:3])
 
 
 # English terms written the way finished subtitles have them (05, 06):
@@ -345,6 +348,10 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
     Runs in short windows on purpose: on a long file the recogniser sometimes
     returns nothing for the first half-minute, which silently loses subtitles.
     """
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (start, end, window)):
+        raise VideoEditError("transcription times and window must be finite numbers")
+    if start < 0 or end <= start or window <= 1:
+        raise VideoEditError("transcription requires 0 <= start < end and window > 1 second")
     model, _engine = _get_model(model_size)
     temp_dir = Path(os.environ.get("TEMP", "/tmp"))
     full = temp_dir / f"ve_{uuid.uuid4().hex}.wav"
