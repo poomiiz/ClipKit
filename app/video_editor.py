@@ -6,6 +6,7 @@ import subprocess
 import os
 import sys
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from video_edit import VideoEditError
 
 router = APIRouter(prefix="/api/video", tags=["video-editor"])
 _transcribe_jobs: dict[str, subprocess.Popen[str]] = {}
+_transcribe_lock = threading.Lock()
 _APP_DIR = Path(__file__).resolve().parent
 
 
@@ -209,19 +211,21 @@ def start_project_transcription(req: ScanRequest) -> dict[str, Any]:
     if not folder.is_dir():
         raise HTTPException(status_code=400, detail="folder not found")
     key = str(folder).lower()
-    active = _transcribe_jobs.get(key)
-    if active and active.poll() is None:
-        raise HTTPException(status_code=409, detail="bot is already transcribing this project")
+    takes = len(video_edit.scan_folder(str(folder)))
     output = folder / "transcripts"
     output.mkdir(parents=True, exist_ok=True)
-    log = (output / "bot.log").open("a", encoding="utf-8")
-    process = subprocess.Popen(
-        [sys.executable, str(_APP_DIR / "transcribe_folder.py"), str(folder)],
-        cwd=str(_APP_DIR), stdout=log, stderr=subprocess.STDOUT, text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    _transcribe_jobs[key] = process
-    return {"status": "running", "takes": len(video_edit.scan_folder(str(folder)))}
+    with _transcribe_lock:
+        active = _transcribe_jobs.get(key)
+        if active and active.poll() is None:
+            raise HTTPException(status_code=409, detail="bot is already transcribing this project")
+        with (output / "bot.log").open("a", encoding="utf-8") as log:
+            process = subprocess.Popen(
+                [sys.executable, str(_APP_DIR / "transcribe_folder.py"), str(folder)],
+                cwd=str(_APP_DIR), stdout=log, stderr=subprocess.STDOUT, text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        _transcribe_jobs[key] = process
+    return {"status": "running", "takes": takes}
 
 
 @router.get("/projects/transcribe/status")
@@ -231,7 +235,9 @@ def project_transcription_status(path: str = Query(...)) -> dict[str, Any]:
     process = _transcribe_jobs.get(key)
     output = folder / "transcripts"
     completed = len([file for file in output.glob("*.json") if file.name != "status.json"]) if output.is_dir() else 0
-    return {"status": "running" if process and process.poll() is None else "idle",
+    code = process.poll() if process else None
+    status = "idle" if process is None else "running" if code is None else "done" if code == 0 else "failed"
+    return {"status": status, "code": code,
             "completed": completed, "takes": len(video_edit.scan_folder(str(folder)))}
 
 

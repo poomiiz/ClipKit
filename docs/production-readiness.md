@@ -18,7 +18,7 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
   External framing is denied, same-origin previews are allowed, and MIME sniffing is disabled. Regression checks cover both
   readable endpoints and a setup command without actually starting setup.
   Host protection uses [Starlette's existing middleware](https://www.starlette.io/middleware/).
-- All 14 smoke checks passed locally. A Windows CI workflow now runs the same
+- All 18 smoke checks passed locally. A Windows CI workflow now runs the same
   checks with development dependencies and the example config. Hosted CI has
   not run yet. A fresh temporary Python 3.12 virtual environment installed
   requirements-dev.txt successfully and passed all 14 checks with the example
@@ -54,12 +54,24 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
 - Settings and workspace config writes now publish a completed temporary file
   atomically. A simulated replacement failure preserves the previous config,
   cleans the temporary file and remains visible; invalid device values are rejected.
+- Settings read/modify/write operations are serialized within the app so
+  simultaneous changes preserve both fields. A two-worker regression passed.
+  This lock does not coordinate separate running ClipKit processes.
+- Copied preview media now uses source/version-specific names and publishes
+  only complete copies. A regression verified equal-name/equal-size sources,
+  cache reuse, interrupted copying, updated sources and retry preservation.
 - Real headless Chromium loaded the cover and motion preview iframe bodies
   against an isolated local server. X-Frame-Options SAMEORIGIN and CSP
   frame-ancestors self retain external framing protection without breaking
   ClipKit's nested previews.
 - A limited pattern scan of 116 tracked files found no matching credential or
   machine-path patterns. This is not a complete secrets or public-content audit.
+- Folder transcription now reserves/checks its process under a lock and closes
+  the parent's log handle after launch. Exit status is reported as done/failed,
+  with no live handle reported as idle rather than inferred completion.
+  The UI labels failed and unknown jobs honestly, enables retry after termination,
+  shows status-read errors, and renders generated review text with textContent.
+  Process regression and Node execution of the actual status function passed.
 
 ## Speech settings
 

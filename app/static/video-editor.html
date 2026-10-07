@@ -1245,24 +1245,33 @@ async function startTranscription(path, button) {
     await api('projects/transcribe', {path});
     document.getElementById('transcribeStatus').textContent = '🤖 Fast Pass กำลังถอดและสรุป…';
     window.clearInterval(state.transcribePoll);
-    state.transcribePoll = window.setInterval(() => refreshTranscription(path), 3000);
-    refreshTranscription(path);
+    state.transcribePoll = window.setInterval(() => refreshTranscription(path, button), 3000);
+    refreshTranscription(path, button);
   } catch (e) {
     button.disabled = false;
     document.getElementById('transcribeStatus').textContent = '❌ ' + e.message;
   }
 }
 
-async function refreshTranscription(path) {
+async function refreshTranscription(path, button) {
   try {
     const status = await api('projects/transcribe/status?path=' + encodeURIComponent(path));
     const label = document.getElementById('transcribeStatus');
     if (!label) return;
     label.textContent = status.status === 'running'
       ? '🤖 Fast Pass ' + status.completed + '/' + status.takes + ' Take'
-      : 'Fast Pass เสร็จ ' + status.completed + '/' + status.takes + ' ไฟล์ · พร้อมเคาะหัวข้อ';
-    if (status.status !== 'running') { window.clearInterval(state.transcribePoll); showTranscriptResults(path); }
-  } catch (_) {}
+      : status.status === 'done' ? 'Fast Pass เสร็จ ' + status.completed + '/' + status.takes + ' ไฟล์ · พร้อมเคาะหัวข้อ'
+      : status.status === 'failed' ? '❌ ถอดเสียงไม่สำเร็จ (รหัส ' + status.code + ') · ดู transcripts/bot.log'
+      : 'ยังไม่มีงานถอดเสียงทำงาน · พบผลเดิม ' + status.completed + ' ไฟล์';
+    if (status.status !== 'running') {
+      window.clearInterval(state.transcribePoll);
+      if (button) button.disabled = false;
+      if (status.status === 'done') await showTranscriptResults(path);
+    }
+  } catch (e) {
+    const label = document.getElementById('transcribeStatus');
+    if (label) label.textContent = '❌ อ่านสถานะไม่ได้: ' + e.message;
+  }
 }
 
 async function showTranscriptResults(path) {
@@ -1272,7 +1281,9 @@ async function showTranscriptResults(path) {
     const div = document.createElement('div');
     div.className = 'tile';
     const review = item.review || {};
-    div.innerHTML = '<div class="ico">📝</div><div class="body"><div class="t1">' + (review.title || item.file) + '</div><div class="t2">' + (review.hook || review.summary || 'กดอ่านบทถอดเสียง') + '</div></div><div class="go">อ่าน ›</div>';
+    div.innerHTML = '<div class="ico">📝</div><div class="body"><div class="t1"></div><div class="t2"></div></div><div class="go">อ่าน ›</div>';
+    div.querySelector('.t1').textContent = review.title || item.file;
+    div.querySelector('.t2').textContent = review.hook || review.summary || 'กดอ่านบทถอดเสียง';
     div.onclick = () => { const text = document.createElement('pre'); text.className = 'hint'; text.style.whiteSpace = 'pre-wrap'; text.textContent = item.markdown; div.replaceWith(text); };
     box.appendChild(div);
   });
