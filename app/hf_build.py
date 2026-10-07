@@ -18,13 +18,25 @@ import video_edit
 
 def _local(out: Path, path: str, name: str | None = None) -> str:
     """A file the composition points at, inside its own folder (the renderer takes only local or https files).
-    Small files (b-roll, music, effects, font) are copied once; same name = same file."""
+    Cache by source identity and version so equally named media cannot collide."""
     import shutil
-    src = Path(path)
-    dst = out / "media" / (name or src.name)
+    import hashlib
+    import tempfile
+    src = Path(path).resolve()
+    stamp = src.stat()
+    key = hashlib.sha256(json.dumps([str(src), stamp.st_size, stamp.st_mtime_ns]).encode()).hexdigest()[:16]
+    dst = out / "media" / f"{key}-{name or src.name}"
     dst.parent.mkdir(exist_ok=True)
-    if not dst.is_file() or dst.stat().st_size != src.stat().st_size:
-        shutil.copy2(src, dst)
+    if not dst.is_file():
+        pending = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=dst.parent, prefix=".media-", delete=False) as stream:
+                pending = Path(stream.name)
+            shutil.copy2(src, pending)
+            pending.replace(dst)
+        finally:
+            if pending is not None:
+                pending.unlink(missing_ok=True)
     return "media/" + quote(dst.name)
 
 

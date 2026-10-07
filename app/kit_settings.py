@@ -39,6 +39,7 @@ def capcut_default_drafts() -> str:
 router = APIRouter(prefix="/api/kit", tags=["kit-settings"])
 _jobs: dict[str, dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
+_config_lock = threading.Lock()
 
 
 def _read_config() -> dict[str, Any]:
@@ -115,7 +116,6 @@ class ConfigUpdate(BaseModel):
 
 @router.post("/config")
 def save_config(body: ConfigUpdate) -> dict[str, Any]:
-    cfg = _read_config()
     bad = [k for k in body.values if k not in FOLDER_KEYS + TEXT_KEYS]
     if bad:
         raise HTTPException(400, f"unknown setting: {', '.join(bad)}")
@@ -124,8 +124,10 @@ def save_config(body: ConfigUpdate) -> dict[str, Any]:
     missing = [f"{k}={v}" for k, v in body.values.items() if k in FOLDER_KEYS and v and not Path(v).is_dir()]
     if missing:
         raise HTTPException(400, "folder not found: " + "; ".join(missing))
-    cfg.update({k: v for k, v in body.values.items()})
-    _write_config(cfg)
+    with _config_lock:
+        cfg = _read_config()
+        cfg.update(body.values)
+        _write_config(cfg)
     return {"saved": True, "note": "restart the app for scripts already running to pick up new paths"}
 
 
@@ -141,17 +143,18 @@ def set_workspace(body: Workspace) -> dict[str, Any]:
         raise HTTPException(400, "choose a full folder path, e.g. D:\\ClipKit")
     if not Path(root.anchor).exists():
         raise HTTPException(400, f"drive not found: {root.anchor}")
-    cfg = _read_config()
     paths = {k: str(root / sub) for k, sub in WORKSPACE_LAYOUT.items()}
     for p in paths.values():
         Path(p).mkdir(parents=True, exist_ok=True)
-    cfg.update(paths)
-    cfg["workspace"] = str(root)
-    if not cfg.get("capcut_drafts") or not Path(cfg["capcut_drafts"]).is_dir():
-        found = capcut_default_drafts()
-        if found:
-            cfg["capcut_drafts"] = found
-    _write_config(cfg)
+    with _config_lock:
+        cfg = _read_config()
+        cfg.update(paths)
+        cfg["workspace"] = str(root)
+        if not cfg.get("capcut_drafts") or not Path(cfg["capcut_drafts"]).is_dir():
+            found = capcut_default_drafts()
+            if found:
+                cfg["capcut_drafts"] = found
+        _write_config(cfg)
     return {"saved": True, "paths": paths, "capcut_drafts": cfg.get("capcut_drafts", "")}
 
 

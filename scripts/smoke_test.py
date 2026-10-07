@@ -283,6 +283,152 @@ def settings_preserve_config_on_failure():
             assert json.loads(target.read_text()) == saved
 
 
+def concurrent_settings_are_preserved():
+    from concurrent.futures import ThreadPoolExecutor
+    from unittest.mock import patch
+    import threading
+    import time
+    import kit_settings
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "config.json"
+        target.write_text('{}', encoding="utf-8")
+        read = kit_settings._read_config
+        barrier = threading.Barrier(2)
+        def delayed_read():
+            value = read()
+            time.sleep(0.05)
+            return value
+        def save(values):
+            barrier.wait(timeout=5)
+            kit_settings.save_config(kit_settings.ConfigUpdate(values=values))
+        with patch.object(kit_settings, "CONFIG", target), patch.object(kit_settings, "_read_config", delayed_read):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                tasks = [pool.submit(save, {"card_font": "test"}), pool.submit(save, {"whisper_model": "small"})]
+                for task in tasks:
+                    task.result(timeout=5)
+        assert json.loads(target.read_text()) == {"card_font": "test", "whisper_model": "small"}
+
+
+def local_media_cannot_collide():
+    from urllib.parse import unquote
+    from unittest.mock import patch
+    import hf_build
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        out = root / "out"
+        out.mkdir()
+        a, b = root / "a", root / "b"
+        a.mkdir(); b.mkdir()
+        first, second = a / "clip.mp4", b / "clip.mp4"
+        first.write_bytes(b"first")
+        second.write_bytes(b"other")
+        p = out / unquote(hf_build._local(out, str(first)))
+        q = out / unquote(hf_build._local(out, str(second)))
+        assert p != q and p.read_bytes() == b"first" and q.read_bytes() == b"other"
+        with patch("shutil.copy2", side_effect=AssertionError("cache missed")):
+            assert out / unquote(hf_build._local(out, str(first))) == p
+        first.write_bytes(b"changed")
+        with patch("shutil.copy2", side_effect=OSError("interrupted copy")):
+            try:
+                hf_build._local(out, str(first))
+            except OSError:
+                pass
+            else:
+                raise AssertionError("copy failure was hidden")
+        assert set((out / "media").iterdir()) == {p, q}
+        r = out / unquote(hf_build._local(out, str(first)))
+        assert r != p and r.read_bytes() == b"changed" and p.read_bytes() == b"first"
+
+
+def transcription_process_status_is_truthful():
+    from unittest.mock import Mock, patch
+    from fastapi import HTTPException
+    import video_editor
+    with tempfile.TemporaryDirectory() as tmp:
+        key = str(Path(tmp).resolve()).lower()
+        worker = Mock()
+        worker.poll.return_value = None
+        try:
+            with patch.object(video_editor.video_edit, "scan_folder", return_value=[{}]), \
+                    patch.object(video_editor.subprocess, "Popen", return_value=worker) as launch:
+                request = video_editor.ScanRequest(path=tmp)
+                assert video_editor.project_transcription_status(tmp)["status"] == "idle"
+                video_editor.start_project_transcription(request)
+                assert launch.call_args.kwargs["stdout"].closed, "parent log handle leaked"
+                assert video_editor.project_transcription_status(tmp)["status"] == "running"
+                try:
+                    video_editor.start_project_transcription(request)
+                except HTTPException as exc:
+                    assert exc.status_code == 409
+                else:
+                    raise AssertionError("duplicate transcription started")
+                assert launch.call_count == 1
+                worker.poll.return_value = 1
+                assert video_editor.project_transcription_status(tmp)["status"] == "failed"
+                worker.poll.return_value = 0
+                assert video_editor.project_transcription_status(tmp)["status"] == "done"
+        finally:
+            video_editor._transcribe_jobs.pop(key, None)
+
+
+def transcription_ui_does_not_claim_failed_work_is_done():
+    page = (ROOT / "app" / "static" / "video-editor.html").read_text(encoding="utf-8")
+    source = page[page.index("async function refreshTranscription("):page.index("async function showTranscriptResults(")]
+    test = """
+    const source = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+    const assert = require('assert');
+    (async () => {
+      for (const status of ['running', 'done', 'failed', 'idle', 'error']) {
+        const label = {textContent: ''}, button = {disabled: true};
+        let shown = 0, cleared = 0;
+        const api = async () => { if (status === 'error') throw Error('offline'); return {status,code:1,completed:1,takes:2}; };
+        const fn = new Function('api','document','window','state','showTranscriptResults', source + ';return refreshTranscription;')(
+          api, {getElementById:()=>label}, {clearInterval:()=>cleared++}, {transcribePoll:1}, async()=>shown++);
+        await fn('folder', button);
+        assert.strictEqual(shown, status === 'done' ? 1 : 0);
+        assert.strictEqual(label.textContent.includes('พร้อมเคาะหัวข้อ'), status === 'done');
+        if (['done','failed','idle'].includes(status)) { assert(!button.disabled); assert.strictEqual(cleared,1); }
+        if (status === 'error') assert(label.textContent.includes('offline'));
+      }
+    })().catch(e=>{console.error(e);process.exit(1)});
+    """
+    result = subprocess.run(["node", "-e", test], input=json.dumps(source), capture_output=True,
+                            text=True, encoding="utf-8", timeout=30)
+    assert result.returncode == 0, result.stderr
+
+
+def launcher_does_not_open_a_dead_server():
+    import os
+    command = """
+    $script:launches = 0
+    function git { return 'ClipKit' }
+    function Start-Sleep { }
+    function Invoke-WebRequest {
+        if ($env:CLIPKIT_LAUNCH_CASE -eq 'ready') { return @{StatusCode=200} }
+        throw 'not ready'
+    }
+    function Start-Process {
+        $script:launches++
+        return @{HasExited=$true}
+    }
+    try {
+        & $env:CLIPKIT_START_TEST
+        if ($env:CLIPKIT_LAUNCH_CASE -eq 'ready' -and $script:launches -eq 1) { exit 0 }
+        exit 2
+    } catch {
+        if ($env:CLIPKIT_LAUNCH_CASE -eq 'failed' -and
+            $_.Exception.Message -like 'ClipKit could not start*' -and $script:launches -eq 1) { exit 0 }
+        Write-Error $_; exit 3
+    }
+    """
+    for case in ("ready", "failed"):
+        result = subprocess.run(["powershell", "-NoProfile", "-Command", command],
+                                env={**os.environ, "CLIPKIT_START_TEST": str(ROOT / "app" / "start.ps1"),
+                                     "CLIPKIT_LAUNCH_CASE": case},
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"
