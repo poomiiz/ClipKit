@@ -400,7 +400,7 @@ def transcription_ui_does_not_claim_failed_work_is_done():
 def launcher_does_not_open_a_dead_server():
     import os
     command = """
-    $script:launches = 0
+    $global:clipkitTestLaunches = 0
     function git { return 'ClipKit' }
     function Start-Sleep { }
     function Invoke-WebRequest {
@@ -408,16 +408,16 @@ def launcher_does_not_open_a_dead_server():
         throw 'not ready'
     }
     function Start-Process {
-        $script:launches++
+        $global:clipkitTestLaunches++
         return @{HasExited=$true}
     }
     try {
         & $env:CLIPKIT_START_TEST
-        if ($env:CLIPKIT_LAUNCH_CASE -eq 'ready' -and $script:launches -eq 1) { exit 0 }
+        if ($env:CLIPKIT_LAUNCH_CASE -eq 'ready' -and $global:clipkitTestLaunches -eq 1) { exit 0 }
         exit 2
     } catch {
         if ($env:CLIPKIT_LAUNCH_CASE -eq 'failed' -and
-            $_.Exception.Message -like 'ClipKit could not start*' -and $script:launches -eq 1) { exit 0 }
+            $_.Exception.Message -like 'ClipKit could not start*' -and $global:clipkitTestLaunches -eq 1) { exit 0 }
         Write-Error $_; exit 3
     }
     """
