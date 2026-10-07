@@ -114,5 +114,60 @@ def helper_check():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def live_check():
+    """Opt-in Windows acceptance on a fresh port; never controls the user's instance."""
+    import ctypes
+    import json
+    import socket
+    import time
+    import urllib.request
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    root = Path(__file__).resolve().parents[1]
+    command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+               str(root / "app" / "control.ps1"), "-Port", str(port), "-Python", sys.executable]
+    records = []
+    handle = None
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    ntdll = ctypes.WinDLL("ntdll")
+    ntdll.NtSuspendProcess.argtypes = ntdll.NtResumeProcess.argtypes = [ctypes.c_void_p]
+    try:
+        for action in ("start", "restart", "shutdown"):
+            started = time.monotonic()
+            result = subprocess.run(command + ["-Action", action], capture_output=True,
+                                    text=True, timeout=85)
+            assert result.returncode == 0, result.stdout + result.stderr
+            record = json.loads(result.stdout)
+            record.update(action=action, seconds=round(time.monotonic() - started, 2), port=port)
+            records.append(record)
+            if action != "shutdown":
+                health = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/window/health", timeout=3))
+                assert health["ready"] and health["instance"] == record["instance"]
+            if action == "start":
+                handle = kernel.OpenProcess(0x0800, False, record["instance"])
+                assert handle and ntdll.NtSuspendProcess(handle) == 0
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/api/window/health", timeout=1)
+                except TimeoutError:
+                    pass
+                else:
+                    raise AssertionError("Test instance did not hang")
+        assert records[0]["instance"] != records[1]["instance"]
+        with socket.socket() as sock:
+            assert sock.connect_ex(("127.0.0.1", port)) != 0
+    finally:
+        if handle:
+            ntdll.NtResumeProcess(handle)
+            kernel.CloseHandle(handle)
+        if len(records) < 3:
+            subprocess.run(command + ["-Action", "shutdown"], timeout=45)
+    print(json.dumps(records))
+
+
 if __name__ == "__main__":
-    main()
+    live_check() if "--live" in sys.argv else main()
