@@ -159,6 +159,37 @@ def setup_stops_after_package_failure():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def story_input_is_validated():
+    import video_edit
+    with tempfile.TemporaryDirectory() as tmp:
+        raw = str(Path(tmp) / "raw.mp4")
+        path = video_edit.stories_file(raw)
+        phrases = [{"start": 0, "end": 10, "text": "test"}]
+        assert video_edit.stories_from_agent(raw, phrases) is None
+        for value in ([], {}, [None], [{"start": 0, "end": 10, "title": None}],
+                      [{"start": -1, "end": 10, "title": "x"}],
+                      [{"start": 10, "end": 0, "title": "x"}],
+                      [{"start": True, "end": 10, "title": "x"}],
+                      [{"start": 0, "end": float("inf"), "title": "x"}]):
+            path.write_text(json.dumps(value), encoding="utf-8")
+            try:
+                video_edit.stories_from_agent(raw, phrases)
+            except video_edit.VideoEditError:
+                pass
+            else:
+                raise AssertionError(f"invalid story accepted: {value}")
+        path.write_text(json.dumps([{"start": 0, "end": 10, "title": " valid "}]), encoding="utf-8")
+        result = video_edit.stories_from_agent(raw, phrases)
+        assert result[0]["title"] == "valid" and result[0]["end"] == 10
+
+
+def subtitle_font_dependencies_work():
+    import render
+    from PIL import ImageFont
+    family, path = render._font(None)
+    assert family and ImageFont.truetype(str(path), 30).getlength("ทดสอบภาษาไทย") > 0
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"

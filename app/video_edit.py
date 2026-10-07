@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import re
 import shutil
@@ -748,8 +749,21 @@ def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[s
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
-        items = [(float(i["start"]), float(i["end"]), str(i.get("title", "")).strip(),
-                  str(i.get("summary", "")).strip()) for i in raw]
+        if not isinstance(raw, list) or not raw:
+            raise ValueError("expected a non-empty story list")
+        items = []
+        for i in raw:
+            if not isinstance(i, dict):
+                raise ValueError("each story must be an object")
+            start, end = i["start"], i["end"]
+            title, summary = i.get("title", ""), i.get("summary", "")
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (start, end)):
+                raise ValueError("story times must be finite numbers")
+            if start < 0 or end <= start:
+                raise ValueError("story must have 0 <= start < end")
+            if not isinstance(title, str) or not title.strip() or not isinstance(summary, str):
+                raise ValueError("story needs a non-empty title and a text summary")
+            items.append((start, end, title.strip(), summary.strip()))
     except (ValueError, KeyError, TypeError) as exc:
         raise VideoEditError(f"{path.name} is not a story list: {exc}") from exc
     out = []
