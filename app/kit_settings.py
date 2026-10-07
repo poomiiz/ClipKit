@@ -37,6 +37,7 @@ def capcut_default_drafts() -> str:
 
 router = APIRouter(prefix="/api/kit", tags=["kit-settings"])
 _jobs: dict[str, dict[str, Any]] = {}
+_jobs_lock = threading.Lock()
 
 
 def _read_config() -> dict[str, Any]:
@@ -45,24 +46,30 @@ def _read_config() -> dict[str, Any]:
 
 
 def _run_job(name: str, cmd: list[str], cwd: Path = KIT) -> None:
-    job = _jobs[name] = {"status": "running", "log": "", "started": time.time()}
+    job = _jobs[name]
     try:
         p = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, encoding="utf-8", errors="replace")
         for line in p.stdout:
-            job["log"] += line
+            job["log"] = (job["log"] + line)[-6000:]
         p.wait()
         job["status"] = "done" if p.returncode == 0 else "failed"
         job["code"] = p.returncode
     except Exception as exc:  # report, never swallow
         job["status"] = "failed"
-        job["log"] += f"\n{exc}"
+        job["log"] = (job["log"] + f"\n{exc}")[-6000:]
 
 
 def _start(name: str, cmd: list[str]) -> dict[str, Any]:
-    if _jobs.get(name, {}).get("status") == "running":
-        raise HTTPException(409, f"{name} is already running")
-    threading.Thread(target=_run_job, args=(name, cmd), daemon=True).start()
+    with _jobs_lock:
+        if _jobs.get(name, {}).get("status") == "running":
+            raise HTTPException(409, f"{name} is already running")
+        _jobs[name] = {"status": "running", "log": "", "started": time.time()}
+        try:
+            threading.Thread(target=_run_job, args=(name, cmd), daemon=True).start()
+        except Exception as exc:
+            _jobs[name].update(status="failed", log=str(exc)[-6000:])
+            raise
     return {"job": name, "status": "running"}
 
 

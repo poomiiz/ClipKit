@@ -11,8 +11,9 @@ sys.path.insert(0, str(HERE))
 
 import uvicorn  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
-from fastapi.responses import RedirectResponse  # noqa: E402
+from fastapi.responses import RedirectResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 
 # first run on a new machine: create config.json from the example (same as setup.ps1) so the app can open
 # and the Settings page can show what is still missing; the folders stay unset until the person picks them
@@ -41,13 +42,20 @@ import video_editor  # noqa: E402
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
 
 app = FastAPI(title="Video to CapCut", version="1.0.0")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False)
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
 
 
 @app.middleware("http")
 async def no_cache_html(request, call_next):
+    # Browser pages must not operate the editor on behalf of another website.
+    origin = request.headers.get("origin")
+    if (origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}") or request.headers.get("sec-fetch-site") == "cross-site":
+        return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
     response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
     if request.url.path.endswith(".html") or request.url.path == "/":
         response.headers["Cache-Control"] = "no-store, must-revalidate"
     return response

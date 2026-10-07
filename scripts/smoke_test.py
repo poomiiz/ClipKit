@@ -95,6 +95,70 @@ def pictures_are_stills():
     assert video_edit.is_image("a.JPG") and video_edit.is_image("b.png") and not video_edit.is_image("c.mp4")
 
 
+def background_jobs_are_reserved_and_bounded():
+    from unittest.mock import patch
+    import kit_settings
+    from fastapi import HTTPException
+    name = "smoke-job"
+    try:
+        with patch.object(kit_settings.threading.Thread, "start"):
+            kit_settings._start(name, [sys.executable])
+            try:
+                kit_settings._start(name, [sys.executable])
+            except HTTPException as exc:
+                assert exc.status_code == 409
+            else:
+                raise AssertionError("a second job started before the worker ran")
+        kit_settings._run_job(name, [sys.executable, "-c", "print('x' * 12000); print('tail')"])
+        state = kit_settings.job(name)
+        assert state["status"] == "done"
+        assert len(kit_settings._jobs[name]["log"]) <= 6000
+        assert state["log"].endswith("tail\n")
+        with patch.object(kit_settings.threading.Thread, "start", side_effect=RuntimeError("no thread")):
+            try:
+                kit_settings._start(name, [])
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("thread failure was hidden")
+        assert kit_settings.job(name)["status"] == "failed"
+    finally:
+        kit_settings._jobs.pop(name, None)
+
+
+def local_browser_boundary():
+    from fastapi.testclient import TestClient
+    from app import app
+    with TestClient(app, base_url="http://127.0.0.1:8770") as client:
+        assert client.get("/video-editor.html").status_code == 200
+        assert client.get("/", headers={"host": "untrusted.example"}).status_code == 400
+        for headers in ({"origin": "https://untrusted.example"}, {"origin": "null"},
+                        {"origin": "http://127.0.0.1:9999"}, {"sec-fetch-site": "cross-site"}):
+            assert client.get("/api/kit/job/unused", headers=headers).status_code == 403
+            assert client.post("/api/kit/setup", headers=headers).status_code == 403
+        response = client.get("/api/kit/job/unused", headers={"origin": "http://127.0.0.1:8770"})
+        assert response.status_code == 200
+        assert response.headers["x-frame-options"] == "DENY"
+
+
+def setup_stops_after_package_failure():
+    import os
+    command = """
+    function ffmpeg { }
+    function npx { }
+    function python { $global:LASTEXITCODE = 17 }
+    try { & $env:CLIPKIT_SETUP_TEST; exit 2 }
+    catch {
+        if ($_.Exception.Message -like 'Installing Python packages failed*') { exit 0 }
+        Write-Error $_; exit 3
+    }
+    """
+    result = subprocess.run(["powershell", "-NoProfile", "-Command", command],
+                            env={**os.environ, "CLIPKIT_SETUP_TEST": str(ROOT / "scripts" / "setup.ps1")},
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"
