@@ -423,14 +423,8 @@ def launcher_does_not_open_a_dead_server():
     command = """
     $global:clipkitTestLaunches = 0
     function git { return 'ClipKit' }
-    function Start-Sleep { }
-    function Invoke-WebRequest {
-        if ($env:CLIPKIT_LAUNCH_CASE -eq 'ready') { return @{StatusCode=200} }
-        throw 'not ready'
-    }
     function Start-Process {
         $global:clipkitTestLaunches++
-        return @{HasExited=$true}
     }
     try {
         & $env:CLIPKIT_START_TEST
@@ -438,16 +432,24 @@ def launcher_does_not_open_a_dead_server():
         exit 2
     } catch {
         if ($env:CLIPKIT_LAUNCH_CASE -eq 'failed' -and
-            $_.Exception.Message -like 'ClipKit could not start*' -and $global:clipkitTestLaunches -eq 1) { exit 0 }
+            $_.Exception.Message -like 'ClipKit could not start*' -and $global:clipkitTestLaunches -eq 0) { exit 0 }
         Write-Error $_; exit 3
     }
     """
-    for case in ("ready", "failed"):
-        result = subprocess.run(["powershell", "-NoProfile", "-Command", command],
-                                env={**os.environ, "CLIPKIT_START_TEST": str(ROOT / "app" / "start.ps1"),
-                                     "CLIPKIT_LAUNCH_CASE": case},
-                                capture_output=True, text=True, timeout=30)
-        assert result.returncode == 0, result.stdout + result.stderr
+    with tempfile.TemporaryDirectory() as tmp:
+        launcher = Path(tmp) / "start.ps1"
+        launcher.write_text((ROOT / "app" / "start.ps1").read_text(encoding="utf-8"), encoding="utf-8")
+        (Path(tmp) / "control.ps1").write_text("""
+        param($Action, $Port)
+        if ($env:CLIPKIT_LAUNCH_CASE -eq 'failed') { throw 'ClipKit could not start (mocked controller).' }
+        Write-Output '{"state":"succeeded","instance":123}'
+        """, encoding="utf-8")
+        for case in ("ready", "failed"):
+            result = subprocess.run(["powershell", "-NoProfile", "-Command", command],
+                                    env={**os.environ, "CLIPKIT_START_TEST": str(launcher),
+                                         "CLIPKIT_LAUNCH_CASE": case},
+                                    capture_output=True, text=True, timeout=30)
+            assert result.returncode == 0, result.stdout + result.stderr
 
 
 def capcut_unused_materials_are_pruned_safely():

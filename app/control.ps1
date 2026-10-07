@@ -70,6 +70,7 @@ function Stop-ClipKitVerified($Snapshot) {
     try {
         $null = $native.Handle # Pin the process handle before the final identity recheck.
         Assert-ClipKitSame $Snapshot (Get-ClipKitProcess $Snapshot.ProcessId)
+        if ($native.HasExited) { return }
         $native.Kill()
         if (-not $native.WaitForExit(5000)) { throw 'ClipKit process did not stop.' }
     } finally { $native.Dispose() }
@@ -138,7 +139,9 @@ function Invoke-ClipKitControl([string]$Operation) {
         if ($current) {
             Assert-ClipKitOwned $current
             Assert-ClipKitSame $owner $current
-            $children = @(Get-ClipKitChildren $current)
+            $seen = [Collections.Generic.HashSet[int]]::new()
+            $children = @(@(Get-ClipKitChildren $current) + $children |
+                Where-Object { $seen.Add([int]$_.ProcessId) })
         }
         foreach ($child in $children) { Stop-ClipKitVerified $child }
         if ($current) { Stop-ClipKitVerified $owner }
