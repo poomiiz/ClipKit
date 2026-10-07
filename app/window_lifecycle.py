@@ -1,91 +1,67 @@
-"""A managed launcher exits after its last browser window closes."""
+"""Explicit host controls; closing a browser window never stops ClipKit."""
 from __future__ import annotations
 
-import asyncio
-import json
-import threading
-import time
+import os
+import subprocess
+import sys
 from collections.abc import Callable
-from uuid import UUID
+from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
 
-class WindowLifecycle:
-    def __init__(self, enabled: bool, clock: Callable[[], float] = time.monotonic):
-        self.enabled = enabled
-        self.clock = clock
-        self.started = clock()
-        self.seen_window = False
-        self.leases: dict[UUID, float] = {}
-        self.requests = 0
-        self.lock = threading.Lock()
-
-    def heartbeat(self, session_id: UUID) -> None:
-        with self.lock:
-            if self.enabled:
-                # Lease expiry also covers crashed clients that never send release.
-                self.leases[session_id] = self.clock() + 180
-                self.seen_window = True
-
-    def release(self, session_id: UUID) -> None:
-        with self.lock:
-            if session_id in self.leases:
-                # Refresh/navigation gets time to renew the same window's lease.
-                self.leases[session_id] = min(self.leases[session_id], self.clock() + 15)
-
-    def request_started(self) -> None:
-        with self.lock:
-            self.requests += 1
-
-    def request_finished(self) -> None:
-        with self.lock:
-            self.requests -= 1
-
-    def _prune(self, now: float) -> None:
-        for session_id in list(self.leases):
-            if self.leases[session_id] <= now:
-                del self.leases[session_id]
-
-    def should_stop(self, busy: bool = False) -> bool:
-        with self.lock:
-            now = self.clock()
-            self._prune(now)
-            return (self.enabled and not busy and self.requests == 0 and not self.leases
-                    and (self.seen_window or now - self.started >= 120))
-
-    def status(self) -> dict:
-        with self.lock:
-            self._prune(self.clock())
-            return {"managed": self.enabled, "windows": len(self.leases)}
+def launch_control(action: str, port: int) -> None:
+    if action not in {"restart", "shutdown"} or not 1 <= port <= 65535:
+        raise ValueError("Invalid ClipKit control action")
+    here = Path(__file__).resolve().parent
+    with (here / "control.log").open("ab") as log:
+        subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                          str(here / "control.ps1"), "-Action", action, "-Port", str(port),
+                          "-Python", sys.executable, "-ExpectedPid", str(os.getpid())],
+                         cwd=str(here), stdout=log, stderr=subprocess.STDOUT,
+                         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
 
 
-def window_router(lifecycle: WindowLifecycle) -> APIRouter:
+def window_router(port: int, exit_server: Callable[[], None],
+                  busy: Callable[[], bool], ready: Callable[[], bool]) -> APIRouter:
     router = APIRouter(prefix="/api/window", tags=["window"])
 
     @router.get("/watch")
-    async def watch(session_id: UUID):
-        async def events():
-            try:
-                while True:
-                    lifecycle.heartbeat(session_id)
-                    yield f"data: {json.dumps(lifecycle.status())}\n\n"
-                    if not lifecycle.enabled:
-                        return
-                    await asyncio.sleep(5)
-            finally:
-                lifecycle.release(session_id)
-
-        return StreamingResponse(events(), media_type="text/event-stream",
+    def watch():
+        # Cached clients close their former lease connection after this single event.
+        return StreamingResponse(iter(['data: {"managed": false, "windows": 0}\n\n']),
+                                 media_type="text/event-stream",
                                  headers={"Cache-Control": "no-store"})
 
     @router.get("/status")
     def status():
-        return lifecycle.status()
+        return {"managed": False, "windows": 0}
 
     @router.get("/health")
     def health():
-        return {"ready": True, "managed": lifecycle.enabled}
+        return {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy()}
+
+    def control(action: str):
+        try:
+            launch_control(action, port)
+        except OSError as exc:
+            raise HTTPException(503, "เปิดตัวควบคุม ClipKit ไม่ได้") from exc
+        return {"action": action, "accepted": True, "instance": os.getpid()}
+
+    @router.post("/restart", status_code=202)
+    def restart():
+        return control("restart")
+
+    @router.post("/shutdown", status_code=202)
+    def shutdown():
+        return control("shutdown")
+
+    @router.post("/exit", status_code=202, include_in_schema=False)
+    def exit_after_response(instance: int, background_tasks: BackgroundTasks):
+        if instance != os.getpid():
+            raise HTTPException(409, "ClipKit instance changed")
+        background_tasks.add_task(exit_server)
+        return {"accepted": True}
 
     return router

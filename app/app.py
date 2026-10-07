@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-import asyncio
-from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -41,11 +39,10 @@ if os.name == "nt":
 
 import kit_settings  # noqa: E402
 import video_editor  # noqa: E402
-from window_lifecycle import WindowLifecycle, window_router  # noqa: E402
+from window_lifecycle import window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
 WIDGET_ORIGINS = ("http://localhost:8765", "http://127.0.0.1:8765")
-windows = WindowLifecycle(os.environ.get("CLIPKIT_MANAGED_WINDOW") == "1")
 
 
 def jobs_running() -> bool:
@@ -58,33 +55,21 @@ def jobs_running() -> bool:
     return any(job.get("status") == "running" for job in list(video_editor._story_jobs.values()))
 
 
-@asynccontextmanager
-async def lifespan(app):
-    async def watch_windows():
-        while True:
-            await asyncio.sleep(1)
-            if windows.should_stop(busy=jobs_running()):
-                app.state.server.should_exit = True
-                return
-    watcher = asyncio.create_task(watch_windows()) if windows.enabled else None
-    try:
-        yield
-    finally:
-        if watcher:
-            watcher.cancel()
-            with suppress(asyncio.CancelledError):
-                await watcher
+def exit_server():
+    app.state.exit_requested = True
+    app.state.server.should_exit = True
 
-app = FastAPI(title="Video to CapCut", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Video to CapCut", version="1.0.0")
+app.state.exit_requested = False
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False)
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
-app.include_router(window_router(windows))
+app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested))
 
 
 @app.middleware("http")
 async def no_cache_html(request, call_next):
-    # The local dashboard may embed pages and read readiness, never operate APIs.
+    # The local dashboard may embed pages, read readiness and use explicit host controls.
     origin = request.headers.get("origin")
     try:
         referrer = urlsplit(request.headers.get("referer", ""))
@@ -99,18 +84,16 @@ async def no_cache_html(request, call_next):
                          and (origin is None or origin in WIDGET_ORIGINS))
     widget_health = (request.method == "GET" and request.url.path == "/api/window/health"
                      and origin in WIDGET_ORIGINS)
+    widget_control = (request.method == "POST" and request.url.path in
+                      {"/api/window/restart", "/api/window/shutdown"} and origin in WIDGET_ORIGINS)
     foreign = ((origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}")
                or request.headers.get("sec-fetch-site") == "cross-site")
-    if foreign and not (widget_navigation or widget_health):
+    if foreign and not (widget_navigation or widget_health or widget_control):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
-    windows.request_started()
-    try:
-        response = await call_next(request)
-    finally:
-        windows.request_finished()
+    response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page else "")
-    if widget_health:
+    if widget_health or widget_control:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
     if is_page:
@@ -134,6 +117,7 @@ if __name__ == "__main__":
     if sys.stdout:  # pythonw (autostart) has no console
         print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info",
-                           log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG))
+                           log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG,
+                           timeout_graceful_shutdown=10))
     app.state.server = server
     server.run()

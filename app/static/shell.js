@@ -1,19 +1,5 @@
 // ClipKit app shell: draws the sidebar on every page and marks where you are.
 (() => {
-  // The KB widget owns its cross-origin frame; same-origin preview frames share their parent's lease.
-  if (window !== window.top) { try { if (window.parent.location.origin === location.origin) return; } catch {} }
-  const session_id = crypto.randomUUID();
-  let connection;
-  function connect() {
-    connection = new EventSource('/api/window/watch?session_id=' + session_id);
-    connection.onmessage = e => { if (!JSON.parse(e.data).managed) connection.close(); };
-    connection.onerror = () => { if (connection.readyState === EventSource.CLOSED) connection.close(); };
-  }
-  connect();
-  window.addEventListener('pagehide', () => connection.close());
-  window.addEventListener('pageshow', e => { if (e.persisted) connect(); });
-})();
-(() => {
   if (window !== window.top) return;   // embedded inside the editor: no second sidebar
   const I = {
     home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
@@ -42,6 +28,74 @@
     `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html">${svg('settings')}<span>ตั้งค่า</span></a>` +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
   document.body.prepend(aside);
+  // Manual system controls: closing a page no longer owns the server lifetime.
+  const controls = document.createElement('div');
+  controls.className = 'sb-controls';
+  controls.innerHTML = '<div class="sb-control-buttons"><button type="button" id="ckRestart">↻ รีสตาร์ต</button>' +
+    '<button type="button" id="ckShutdown">⏻ ปิดระบบ</button></div>' +
+    '<div id="ckSystemStatus" role="status" aria-live="polite"></div>';
+  aside.insertBefore(controls, document.getElementById('sbVer'));
+  const systemStatus = document.getElementById('ckSystemStatus');
+  const systemButtons = controls.querySelectorAll('button');
+  const health = () => fetch('/api/window/health', {cache: 'no-store', signal: AbortSignal.timeout(2000)})
+    .then(async r => r.ok ? r.json() : null).catch(() => null);
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  async function systemControl(action) {
+    if ([...systemButtons].some(b => b.disabled)) return;
+    systemButtons.forEach(b => b.disabled = true);
+    try {
+      const before = await health();
+      if ((!before || before.busy) && !confirm((action === 'restart' ? 'รีสตาร์ต' : 'ปิด') +
+          ' ClipKit? งานที่กำลังประมวลผลจะถูกหยุด')) return;
+      systemStatus.textContent = action === 'restart' ? 'กำลังรีสตาร์ต…' : 'กำลังปิดระบบ…';
+      let accepted, queued;
+      try {
+        const response = await fetch('/api/window/' + action, {method: 'POST', signal: AbortSignal.timeout(3000)});
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        accepted = await response.json();
+      } catch (error) {
+        // The dashboard's host worker remains available when this server is hung.
+        if (location.port !== '8770') throw error;
+        const response = await fetch('http://localhost:8765/bot/api/video-editor/control', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, signal: AbortSignal.timeout(5000),
+          body: JSON.stringify({action, request_id: crypto.randomUUID()})
+        });
+        if (!response.ok) throw new Error('ส่งคำสั่งกู้คืนไม่ได้ (' + response.status + ')');
+        queued = await response.json();
+        systemStatus.textContent = 'รอคำสั่งจากเครื่อง · ไม่เกิน 1 นาที';
+      }
+      const deadline = Date.now() + (queued ? 90000 : 30000);
+      while (Date.now() < deadline) {
+        await pause(1000);
+        if (queued) {
+          const response = await fetch('http://localhost:8765/bot/api/video-editor/control/' + queued.request_id,
+            {cache: 'no-store', signal: AbortSignal.timeout(3000)});
+          if (!response.ok) throw new Error('อ่านผลคำสั่งไม่ได้ (' + response.status + ')');
+          const result = await response.json();
+          if (result.state === 'failed' || result.state === 'superseded') throw new Error(result.error || 'คำสั่งไม่สำเร็จ');
+          if (result.state !== 'succeeded') continue;
+          if (action === 'shutdown') { systemStatus.textContent = 'ปิดระบบแล้ว · เปิดอีกครั้งจากไอคอน ClipKit'; return; }
+        }
+        const current = await health();
+        if (action === 'shutdown' && !current) {
+          systemStatus.textContent = 'ปิดระบบแล้ว · เปิดอีกครั้งจากไอคอน ClipKit';
+          return;
+        }
+        if (action === 'restart' && current?.ready && current.instance !== (accepted?.instance ?? before?.instance)) {
+          location.reload();
+          return;
+        }
+      }
+      throw new Error('ยังยืนยันผลไม่ได้ ลองอีกครั้งหรือใช้ปุ่มบนหน้า MoonRacle');
+    } catch (error) {
+      systemStatus.textContent = 'ไม่สำเร็จ: ' + error.message;
+    } finally {
+      systemButtons.forEach(b => b.disabled = false);
+    }
+  }
+  document.getElementById('ckRestart').onclick = () => systemControl('restart');
+  document.getElementById('ckShutdown').onclick = () => systemControl('shutdown');
+  // End manual system controls.
   // raw files on the left, the projects cut from each one underneath (click a raw file = pick its stories again)
   window.ckLoadProjects = async () => {
     const box = document.getElementById('sbProjects');
@@ -177,7 +231,7 @@
           do { await new Promise(x => setTimeout(x, 1500)); j = await fetch('/api/kit/job/update').then(x => x.json()); }
           while (j.status === 'running');
           if (j.status !== 'done') throw new Error((j.log || '').trim().split('\n').pop());
-          bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด ClipKit ใหม่ให้ครบทุกส่วน';
+          bar.firstChild.textContent = '✅ อัปเดตแล้ว · กดรีสตาร์ตเพื่อใช้เวอร์ชันใหม่';
           go.remove(); later.textContent = 'ปิด';
         } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
       };
