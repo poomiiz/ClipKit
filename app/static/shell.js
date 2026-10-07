@@ -73,7 +73,9 @@
   };
   window.ckLoadProjects();
   // light refresh: coming back to the window re-reads the project list (work done in CapCut / Studio / chat)
-  window.addEventListener('focus', () => window.ckLoadProjects());
+  const refreshProjects = () => (window.ckRefreshHome || window.ckLoadProjects)();
+  window.addEventListener('focus', refreshProjects);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshProjects(); });
   // a new version installed while this page was open: one small bar to reload, nothing reloads by itself
   let seenCommit = null;
   setInterval(() => fetch('/api/kit/version').then(r => r.json()).then(v => {
