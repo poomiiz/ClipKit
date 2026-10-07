@@ -107,6 +107,6 @@ let CAN = false;
 fetch('/api/kit/library').then(r => r.json()).then(j => { CAN = j.can_create; $('newBox').style.display = CAN ? '' : 'none'; ALL = [...j.ours, ...j.hyperframes]; draw(); })
   .catch(e => { $('grid').textContent = '❌ ' + e.message; });
 </script>
-<script src="/shell.js?v=6"></script>
+<script src="/shell.js?v=7"></script>
 </body>
 </html>
