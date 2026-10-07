@@ -18,7 +18,7 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
   External framing is denied, same-origin previews are allowed, and MIME sniffing is disabled. Regression checks cover both
   readable endpoints and a setup command without actually starting setup.
   Host protection uses [Starlette's existing middleware](https://www.starlette.io/middleware/).
-- All 18 smoke checks passed locally. A Windows CI workflow now runs the same
+- All 19 smoke checks passed locally. A Windows CI workflow now runs the same
   checks with development dependencies and the example config. Hosted CI has
   not run yet. A fresh temporary Python 3.12 virtual environment installed
   requirements-dev.txt successfully and passed all 14 checks with the example
@@ -72,6 +72,10 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
   The UI labels failed and unknown jobs honestly, enables retry after termination,
   shows status-read errors, and renders generated review text with textContent.
   Process regression and Node execution of the actual status function passed.
+- The launcher monitors the server it starts and refuses to open a browser when
+  startup fails or readiness times out. Its error points to the existing logs
+  and doctor. PowerShell checks cover an already-ready server and failed startup
+  using mocked process/browser calls; no user browser is opened by these checks.
 
 ## Speech settings
 
@@ -98,3 +102,15 @@ These checks do not establish production editing quality.
   publishing. Keep config.json and media outside version control.
 
 No production deployment or public release has been performed.
+
+## Input needed for final acceptance
+
+The configured footage folder exists. Its top-level videos and immediate
+subfolder candidates include branding, motion and mockup assets; no candidate
+has been confirmed as the representative Thai talking-head pilot. Do not use
+those files to claim editorial, subtitle-accuracy or native CapCut acceptance.
+
+Awaiting the pilot source path and the owner's choice of project license
+(Apache-2.0 or MIT were offered). The owner must watch the first pilot before
+batch release. No second machine or fresh Windows environment is available
+in this session; the isolated Python installation result is narrower evidence.
