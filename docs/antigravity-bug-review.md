@@ -27,6 +27,10 @@ are reported observations, not independent proof of CapCut internals.
 
 ## Acceptance still needed
 
+Verification: all 20 checks in scripts/smoke_test.py passed after the patch.
+This includes preservation of helper cycles and removal of unreachable
+subtitle/click material records. These checks do not launch CapCut.
+
 Obtain the team's exact ClipKit version/commit, original generated draft before
 manual repairs, and associated error/log. Rebuild from raw media with CapCut
 closed, retain backups, then open at least two generated projects in CapCut 9.6
