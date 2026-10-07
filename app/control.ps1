@@ -36,7 +36,7 @@ function Assert-ClipKitSame($Before, $Current) {
         $Before.CreationDate -ne $Current.CreationDate -or
         $Before.CommandLine -ne $Current.CommandLine -or
         $Before.ParentProcessId -ne $Current.ParentProcessId)) {
-        throw 'Process identity changed; refusing to stop a replacement process.'
+        throw "Process identity changed for PID $($Before.ProcessId); refusing to stop a replacement process."
     }
 }
 
@@ -61,15 +61,17 @@ function Get-ClipKitChildren($Owner) {
     return $children
 }
 
-function Stop-ClipKitVerified($Snapshot) {
+function Stop-ClipKitVerified($Snapshot, [switch]$Descendant) {
     if ($Snapshot.ProcessId -eq $PID) { throw 'Refusing to stop the controller itself.' }
     $current = Get-ClipKitProcess $Snapshot.ProcessId
     if (-not $current) { return }
-    Assert-ClipKitSame $Snapshot $current
+    try { Assert-ClipKitSame $Snapshot $current }
+    catch { if ($Descendant) { return }; throw }
     $native = [Diagnostics.Process]::GetProcessById($Snapshot.ProcessId)
     try {
         $null = $native.Handle # Pin the process handle before the final identity recheck.
-        Assert-ClipKitSame $Snapshot (Get-ClipKitProcess $Snapshot.ProcessId)
+        try { Assert-ClipKitSame $Snapshot (Get-ClipKitProcess $Snapshot.ProcessId) }
+        catch { if ($Descendant) { return }; throw }
         if ($native.HasExited) { return }
         $native.Kill()
         if (-not $native.WaitForExit(5000)) { throw 'ClipKit process did not stop.' }
@@ -100,11 +102,18 @@ function Start-ClipKitServer {
     if (-not [IO.Path]::IsPathRooted($pythonPath)) { throw 'Python must have an absolute executable path.' }
     $env:VIDEO_EDITOR_PORT = "$Port"
     $env:CLIPKIT_MANAGED_WINDOW = '0'
-    $server = Start-Process -FilePath $pythonPath -ArgumentList ('"' + $clipkitAppScript + '"') `
-        -WorkingDirectory $clipkitAppDir -WindowStyle Hidden -PassThru -ErrorAction Stop `
-        -RedirectStandardError (Join-Path $clipkitAppDir 'video_editor.log') `
-        -RedirectStandardOutput (Join-Path $clipkitAppDir 'video_editor.out.log')
-    Wait-ClipKitReady $server.Id
+    # Close inherited capture handles so the host worker can receive its result.
+    $spawn = @'
+import pathlib, subprocess, sys
+app = pathlib.Path(sys.argv[1])
+with (app.parent / 'video_editor.out.log').open('ab') as out, (app.parent / 'video_editor.log').open('ab') as err:
+    server = subprocess.Popen([sys.executable, str(app)], cwd=app.parent, stdin=subprocess.DEVNULL,
+                              stdout=out, stderr=err, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
+print(server.pid)
+'@
+    $serverId = & $pythonPath -c $spawn $clipkitAppScript
+    if ($LASTEXITCODE -ne 0) { throw 'ClipKit launcher failed.' }
+    Wait-ClipKitReady ([int]$serverId)
 }
 
 function Invoke-ClipKitControl([string]$Operation) {
@@ -143,7 +152,7 @@ function Invoke-ClipKitControl([string]$Operation) {
             $children = @(@(Get-ClipKitChildren $current) + $children |
                 Where-Object { $seen.Add([int]$_.ProcessId) })
         }
-        foreach ($child in $children) { Stop-ClipKitVerified $child }
+        foreach ($child in $children) { Stop-ClipKitVerified $child -Descendant }
         if ($current) { Stop-ClipKitVerified $owner }
         $wait.Restart()
         while (Get-ClipKitPortOwner) {
