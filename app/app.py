@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -38,13 +40,44 @@ if os.name == "nt":
 
 import kit_settings  # noqa: E402
 import video_editor  # noqa: E402
+from window_lifecycle import WindowLifecycle, window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
+windows = WindowLifecycle(os.environ.get("CLIPKIT_MANAGED_WINDOW") == "1")
 
-app = FastAPI(title="Video to CapCut", version="1.0.0")
+
+def jobs_running() -> bool:
+    with kit_settings._jobs_lock:
+        if any(job.get("status") == "running" for job in kit_settings._jobs.values()):
+            return True
+    with video_editor._transcribe_lock:
+        if any(proc.poll() is None for proc in video_editor._transcribe_jobs.values()):
+            return True
+    return any(job.get("status") == "running" for job in list(video_editor._story_jobs.values()))
+
+
+@asynccontextmanager
+async def lifespan(app):
+    async def watch_windows():
+        while True:
+            await asyncio.sleep(1)
+            if windows.should_stop(busy=jobs_running()):
+                app.state.server.should_exit = True
+                return
+    watcher = asyncio.create_task(watch_windows()) if windows.enabled else None
+    try:
+        yield
+    finally:
+        if watcher:
+            watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher
+
+app = FastAPI(title="Video to CapCut", version="1.0.0", lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False)
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
+app.include_router(window_router(windows))
 
 
 @app.middleware("http")
@@ -53,7 +86,11 @@ async def no_cache_html(request, call_next):
     origin = request.headers.get("origin")
     if (origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}") or request.headers.get("sec-fetch-site") == "cross-site":
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
-    response = await call_next(request)
+    windows.request_started()
+    try:
+        response = await call_next(request)
+    finally:
+        windows.request_finished()
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
@@ -75,5 +112,7 @@ app.mount("/", StaticFiles(directory=str(HERE / "static"), html=True), name="sta
 if __name__ == "__main__":
     if sys.stdout:  # pythonw (autostart) has no console
         print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info",
-                log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info",
+                           log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG))
+    app.state.server = server
+    server.run()
