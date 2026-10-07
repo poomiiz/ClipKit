@@ -93,6 +93,41 @@ def _track(draft: dict, kind: str, segs: list[dict], render_index: int) -> None:
 _T: dict[str, Any] = {}
 
 
+def _prune_materials(draft: dict) -> int:
+    """Keep materials reachable from the draft, including helper-to-helper references."""
+    def strings(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from strings(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from strings(item)
+
+    groups = draft["materials"]
+    index = {m["id"]: m for group in groups.values() if isinstance(group, list)
+             for m in group if isinstance(m, dict) and m.get("id")}
+    pending = list(strings({k: v for k, v in draft.items() if k != "materials"}))
+    pending.extend(strings({k: v for k, v in groups.items() if not isinstance(v, list)}))
+    # ID-less entries can carry global settings or references; preserve them.
+    pending.extend(s for group in groups.values() if isinstance(group, list)
+                   for m in group if not isinstance(m, dict) or not m.get("id") for s in strings(m))
+    kept = set()
+    while pending:
+        ref = pending.pop()
+        if ref in index and ref not in kept:
+            kept.add(ref)
+            pending.extend(strings(index[ref]))
+    removed = 0
+    for key, group in groups.items():
+        if isinstance(group, list):
+            live = [m for m in group if not isinstance(m, dict) or not m.get("id") or m["id"] in kept]
+            removed += len(group) - len(live)
+            groups[key] = live
+    return removed
+
+
 def build(path: str) -> tuple[Path, list[str]]:
     """Returns the new project folder and what this machine lacks (shown to the person, never hidden)."""
     if not TEMPLATES.is_file():
@@ -234,6 +269,7 @@ def build(path: str) -> tuple[Path, list[str]]:
                 last = s["target_timerange"]["start"] + s["target_timerange"]["duration"]
         clicks = keep
     _track(draft, "audio", clicks, 0)
+    _prune_materials(draft)
     capcut_edit._save(dst, draft, "capcut_build")
 
     mu = t["music"]

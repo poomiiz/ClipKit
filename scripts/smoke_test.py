@@ -429,6 +429,23 @@ def launcher_does_not_open_a_dead_server():
         assert result.returncode == 0, result.stdout + result.stderr
 
 
+def capcut_unused_materials_are_pruned_safely():
+    import capcut_build
+    draft = {"tracks": [{"segments": [{"material_id": "video", "extra_material_refs": ["helper"]}]}],
+             "materials": {"videos": [{"id": "video"}, {"id": "unused-video"}],
+                           "texts": [{"id": "removed-subtitle"}],
+                           "helpers": [{"id": "helper", "nested": {"ref": "child"}},
+                                       {"id": "child", "ref": "helper"}, {"global_ref": "global"},
+                                       {"id": "global"}, {"id": "discarded-click"}],
+                           "config": {"keep": True}}}
+    assert capcut_build._prune_materials(draft) == 3
+    assert [m["id"] for m in draft["materials"]["videos"]] == ["video"]
+    assert draft["materials"]["texts"] == []
+    assert {m.get("id") for m in draft["materials"]["helpers"]} == {"helper", "child", "global", None}
+    assert draft["materials"]["config"] == {"keep": True}
+    assert capcut_build._prune_materials(draft) == 0
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"
