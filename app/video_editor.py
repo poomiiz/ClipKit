@@ -840,15 +840,9 @@ def update() -> dict[str, Any]:
     r = git("pull", "-q", "--ff-only")
     if r.returncode != 0:
         raise HTTPException(400, "อัปเดตไม่ได้ เพราะมีไฟล์ในโฟลเดอร์ ClipKit ถูกแก้ด้วยมือ ให้สั่ง clipkit repair")
-    import sys
-    import threading
-    def restart():
-        import os
-        import time
-        time.sleep(1)
-        subprocess.Popen([sys.executable, *sys.argv], cwd=str(Path(__file__).parent))
-        os._exit(0)
-    threading.Thread(target=restart, daemon=True).start()
+    import os
+    from window_lifecycle import launch_control
+    launch_control("restart", int(os.environ.get("VIDEO_EDITOR_PORT", "8770")))
     return {"updated": True, "note": "อัปเดตแล้ว กำลังเปิดใหม่"}
 
 
