@@ -2,7 +2,8 @@ param(
     [ValidateSet('start', 'restart', 'shutdown')][string]$Action = 'start',
     [ValidateRange(1, 65535)][int]$Port = 8770,
     [string]$Python = '',
-    [int]$ExpectedPid = 0
+    [int]$ExpectedPid = 0,
+    [long]$IssuedAt = 0
 )
 $ErrorActionPreference = 'Stop'
 $clipkitAppDir = [IO.Path]::GetFullPath($PSScriptRoot)
@@ -175,6 +176,9 @@ if ($MyInvocation.InvocationName -ne '.') {
         try { $acquired = $mutex.WaitOne(60000) }
         catch [Threading.AbandonedMutexException] { $acquired = $true }
         if (-not $acquired) { throw 'Another ClipKit control command is still running.' }
+        if ($IssuedAt -gt 0 -and ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $IssuedAt) -gt 20) {
+            throw 'ClipKit command expired before it could run. Refresh the page and try again.'
+        }
         Invoke-ClipKitControl $Action | ConvertTo-Json -Compress
     } finally {
         if ($acquired) { $mutex.ReleaseMutex() }

@@ -26,7 +26,7 @@ def main():
             assert health.status_code == 200 and health.json()["managed"] is False
             assert health.json()["instance"] == os.getpid()
             for action in ("restart", "shutdown"):
-                result = client.post("/api/window/" + action, headers=headers)
+                result = client.post("/api/window/" + action + "?control=v2", headers=headers)
                 assert result.status_code == 202 and result.json()["instance"] == os.getpid()
                 launch.assert_called_with(action, 8770)
                 if origin.endswith(":8765"):
@@ -36,10 +36,12 @@ def main():
         launch.reset_mock()
         for origin in ("null", "https://untrusted.example", "http://localhost:8766"):
             for action in ("restart", "shutdown"):
-                assert client.post("/api/window/" + action, headers={"origin": origin}).status_code == 403
+                assert client.post("/api/window/" + action + "?control=v2", headers={"origin": origin}).status_code == 403
         launch.assert_not_called()
         with patch("window_lifecycle.launch_control", side_effect=OSError("not available")):
-            assert client.post("/api/window/restart").status_code == 503
+            assert client.post("/api/window/restart?control=v2").status_code == 503
+        assert client.post("/api/window/restart").status_code == 409
+        launch.assert_not_called()
         assert client.post("/api/window/exit?instance=0").status_code == 409
         assert not app.state.server.should_exit
         assert client.post("/api/window/exit?instance=" + str(os.getpid())).status_code == 202

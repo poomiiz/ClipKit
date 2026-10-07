@@ -50,7 +50,7 @@
       systemStatus.textContent = action === 'restart' ? 'กำลังรีสตาร์ต…' : 'กำลังปิดระบบ…';
       let accepted, queued;
       try {
-        const response = await fetch('/api/window/' + action, {method: 'POST', signal: AbortSignal.timeout(3000)});
+        const response = await fetch('/api/window/' + action + '?control=v2', {method: 'POST', signal: AbortSignal.timeout(3000)});
         if (!response.ok) throw new Error('HTTP ' + response.status);
         accepted = await response.json();
       } catch (error) {
