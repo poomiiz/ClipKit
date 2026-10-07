@@ -2336,9 +2336,14 @@ function projCard(d) {
     '<div class="nm"></div><div class="mt">' + when + (d.duration ? ' · ' + Math.round(d.duration) + ' วิ' : '') + '</div>' +
     '<div class="acts"><button data-a="open">เปิด</button><button data-a="rename">แก้ชื่อ</button><button data-a="del" class="del">ลบ</button></div>';
   el.querySelector('.nm').textContent = d.name;
+  if (d.external_changed) {
+    el.querySelector('.mt').textContent += ' · แก้จาก CapCut แล้ว';
+    el.querySelector('[data-a=open]').textContent = 'เปิด CapCut';
+  }
   el.title = d.name;
   el._d = d;
   const open = async () => {
+    if (d.external_changed) { await kit('draft-open', d.path); return; }
     if (d.kind === 'capcut') { openDraft(d.i); return; }
     const r = await kit('draft-open', d.path);
     if (r && r.url) window.open(r.url, '_blank');

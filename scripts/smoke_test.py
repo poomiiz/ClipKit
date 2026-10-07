@@ -82,6 +82,8 @@ def outside_edit_is_caught():
         _fake_project(f, "X")
         capcut_edit._save(f, capcut_edit._load(f), "smoke")
         (f / "draft_content.json").write_text('{"id": "X", "tracks": [], "materials": {}, "edited": 1}', encoding="utf-8")
+        listed = capcut_edit.list_drafts(t)
+        assert len(listed) == 1 and listed[0]["external_changed"], "external edits disappeared from the read-only list"
         try:
             capcut_edit._load(f)
         except VideoEditError:
