@@ -145,7 +145,26 @@ def local_browser_boundary():
         for path in ("/motion.html", "/motion/hook-title/index.html"):
             preview = client.get(path, headers={"sec-fetch-site": "same-origin"})
             assert preview.status_code == 200
-            assert preview.headers["x-frame-options"] == "SAMEORIGIN"
+            assert "x-frame-options" not in preview.headers
+        for parent in ("http://localhost:8765", "http://127.0.0.1:8765"):
+            headers = {"referer": parent + "/dashboard/", "sec-fetch-site": "cross-site",
+                       "sec-fetch-dest": "iframe", "sec-fetch-mode": "navigate"}
+            for path in ("/video-editor.html", "/library.html"):
+                preview = client.get(path, headers=headers)
+                assert preview.status_code == 200
+                assert parent in preview.headers["content-security-policy"]
+                assert "x-frame-options" not in preview.headers
+                assert "access-control-allow-origin" not in preview.headers
+            health_headers = {"origin": parent, "sec-fetch-site": "cross-site"}
+            health = client.get("/api/window/health", headers=health_headers)
+            assert health.status_code == 200 and health.json()["ready"] is True
+            assert health.headers["access-control-allow-origin"] == parent
+            assert client.get("/api/kit/config", headers=health_headers).status_code == 403
+            assert client.post("/api/kit/setup", headers=health_headers).status_code == 403
+        headers["referer"] = "https://untrusted.example/dashboard/"
+        assert client.get("/video-editor.html", headers=headers).status_code == 403
+        assert client.get("/api/window/health", headers={"origin": "null"}).status_code == 403
+        assert client.get("/video-editor.html", headers={"referer": "http://["}).status_code == 400
 
 
 def setup_stops_after_package_failure():

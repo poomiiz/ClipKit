@@ -7,6 +7,7 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -43,6 +44,7 @@ import video_editor  # noqa: E402
 from window_lifecycle import WindowLifecycle, window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
+WIDGET_ORIGINS = ("http://localhost:8765", "http://127.0.0.1:8765")
 windows = WindowLifecycle(os.environ.get("CLIPKIT_MANAGED_WINDOW") == "1")
 
 
@@ -82,9 +84,24 @@ app.include_router(window_router(windows))
 
 @app.middleware("http")
 async def no_cache_html(request, call_next):
-    # Browser pages must not operate the editor on behalf of another website.
+    # The local dashboard may embed pages and read readiness, never operate APIs.
     origin = request.headers.get("origin")
-    if (origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}") or request.headers.get("sec-fetch-site") == "cross-site":
+    try:
+        referrer = urlsplit(request.headers.get("referer", ""))
+    except ValueError:
+        return JSONResponse({"detail": "Invalid referrer"}, status_code=400)
+    referrer_origin = f"{referrer.scheme}://{referrer.netloc}"
+    is_page = request.url.path.endswith(".html") or request.url.path == "/"
+    widget_navigation = (request.method == "GET" and is_page
+                         and request.headers.get("sec-fetch-dest") == "iframe"
+                         and request.headers.get("sec-fetch-mode") == "navigate"
+                         and referrer_origin in WIDGET_ORIGINS
+                         and (origin is None or origin in WIDGET_ORIGINS))
+    widget_health = (request.method == "GET" and request.url.path == "/api/window/health"
+                     and origin in WIDGET_ORIGINS)
+    foreign = ((origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}")
+               or request.headers.get("sec-fetch-site") == "cross-site")
+    if foreign and not (widget_navigation or widget_health):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
     windows.request_started()
     try:
@@ -92,10 +109,14 @@ async def no_cache_html(request, call_next):
     finally:
         windows.request_finished()
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
-    if request.url.path.endswith(".html") or request.url.path == "/":
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page else "")
+    if widget_health:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    if is_page:
         response.headers["Cache-Control"] = "no-store, must-revalidate"
+    else:
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
     return response
 
 
