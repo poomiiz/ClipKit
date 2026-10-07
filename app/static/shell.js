@@ -1,5 +1,22 @@
 // ClipKit app shell: draws the sidebar on every page and marks where you are.
 (() => {
+  // The KB widget owns its cross-origin frame; same-origin preview frames share their parent's lease.
+  if (window !== window.top) { try { if (window.parent.location.origin === location.origin) return; } catch {} }
+  const session_id = crypto.randomUUID(), payload = JSON.stringify({session_id});
+  let timer = null, leaving = false;
+  async function heartbeat() {
+    if (leaving) return;
+    try {
+      const r = await fetch('/api/window/heartbeat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: payload});
+      if (r.status === 404 || (r.ok && !(await r.json()).managed)) { clearInterval(timer); return; }
+      if (!r.ok) console.error('ClipKit window registration failed:', r.status);
+    } catch (e) { console.error('ClipKit window connection failed:', e.message); }
+  }
+  timer = setInterval(heartbeat, 15000); heartbeat();
+  window.addEventListener('pagehide', () => { leaving = true; clearInterval(timer); navigator.sendBeacon('/api/window/release', payload); });
+  window.addEventListener('pageshow', e => { if (e.persisted) { leaving = false; timer = setInterval(heartbeat, 15000); heartbeat(); } });
+})();
+(() => {
   if (window !== window.top) return;   // embedded inside the editor: no second sidebar
   const I = {
     home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',

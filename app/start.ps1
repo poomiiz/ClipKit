@@ -4,6 +4,7 @@ $app = $PSScriptRoot
 # the team edition runs on its own port, so it never opens the other ClipKit on the same machine
 $port = if ((git -C "$app\.." remote get-url origin 2>$null) -like "*ClipKit-Team*") { 8771 } else { 8770 }
 $env:VIDEO_EDITOR_PORT = "$port"
+$env:CLIPKIT_MANAGED_WINDOW = '1'
 $url = "http://127.0.0.1:$port/video-editor.html"
 $up = $false
 try { $up = (Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2).StatusCode -eq 200 } catch {}
