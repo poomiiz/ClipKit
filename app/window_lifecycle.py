@@ -84,4 +84,8 @@ def window_router(lifecycle: WindowLifecycle) -> APIRouter:
     def status():
         return lifecycle.status()
 
+    @router.get("/health")
+    def health():
+        return {"ready": True, "managed": lifecycle.enabled}
+
     return router
