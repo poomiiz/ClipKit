@@ -538,6 +538,7 @@
       <span class="new-copy"><b>เลือกวิดีโอหรือโฟลเดอร์</b><span>หรือลากไฟล์มาวางที่นี่</span></span>
     </button>
     <div class="proj-head"><b>ทำงานต่อ</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
+      <button type="button" class="small" id="refreshProjects" onclick="loadHomeDrafts()">↻ โหลดรายการใหม่</button>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
@@ -2283,6 +2284,10 @@ async function draftGrade() {
 <script>
 // home = CapCut-style: "new" drop zone on top, every existing CapCut project below
 async function loadHomeDrafts() {
+  if (loadHomeDrafts.loading) return;
+  loadHomeDrafts.loading = true;
+  const refresh = document.getElementById('refreshProjects');
+  refresh.disabled = true; refresh.textContent = 'กำลังโหลด…';
   const box = document.getElementById('homeDrafts');
   try {
     const [data, hf] = await Promise.all([api('drafts'), fetch('/api/kit/hf-projects').then(r => r.json()).catch(() => ({projects: []}))]);
@@ -2306,8 +2311,13 @@ async function loadHomeDrafts() {
     if (want || raw || tools) history.replaceState(null, '', location.pathname);
     if (want) ckOpenProject(want);
     if (raw) ckOpenRaw(raw);
-  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.textContent = '❌ ' + e.message; }
+  finally { loadHomeDrafts.loading = false; refresh.disabled = false; refresh.textContent = '↻ โหลดรายการใหม่'; }
 }
+window.ckRefreshHome = () => {
+  if (document.getElementById('s-home').classList.contains('on') && !selSet.size) loadHomeDrafts();
+  else if (window.ckLoadProjects) window.ckLoadProjects();
+};
 // sidebar click / ?open=<path>: open that project here (CapCut = workbench, HyperFrames = Studio)
 window.ckOpenRaw = path => openPicked({kind: 'file', path});
 window.ckOpenProject = async path => {

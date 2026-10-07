@@ -38,6 +38,25 @@ if __name__ == "__main__":
                 assert len(writes) == 1 and writes[0].endswith("/api/kit/draft-open"), writes
                 assert page.locator("#bExport").is_disabled()
                 print("PASS unavailable project and safe CapCut handoff")
+                projects = []
+
+                def home_api(route, request):
+                    if request.url.split('?')[0].endswith('/api/video/drafts'):
+                        route.fulfill(json={"drafts": projects})
+                    else:
+                        route.fulfill(json={"groups": [], "projects": []})
+
+                page.unroute("**/api/**", api)
+                page.route("**/api/**", home_api)
+                page.goto(f"http://127.0.0.1:{server.server_port}/video-editor.html", wait_until="networkidle")
+                projects.append({"name": "New project", "path": "test/new", "modified": 1})
+                page.evaluate("window.dispatchEvent(new Event('focus'))")
+                page.wait_for_function("document.querySelectorAll('#homeDrafts .proj').length === 1")
+                projects[0]["name"] = "Updated project"
+                page.locator("#refreshProjects").click()
+                page.wait_for_function("document.querySelector('#homeDrafts .nm').textContent === 'Updated project'")
+                assert page.locator("#refreshProjects").is_enabled()
+                print("PASS new and updated projects refresh on focus and button")
             finally:
                 browser.close()
     finally:
