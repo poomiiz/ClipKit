@@ -124,6 +124,21 @@ async function load() {
   drawTL(); side();
   live();
 }
+function loadFailed(e) {
+  $('title').textContent = PATH.split(/[\\/]/).pop();
+  $('busy').textContent = '';
+  $('empty').textContent = 'ยังเปิดตัวอย่างโปรเจกต์นี้ใน ClipKit ไม่ได้';
+  $('v').style.display = 'none';
+  document.querySelector('.tl').hidden = true;
+  ['bAuto', 'bCover', 'bExport', 'bAddBr', 'zoom'].forEach(id => $(id).disabled = true);
+  $('side').replaceChildren();
+  const h = document.createElement('h3'); h.textContent = 'เปิดแก้ต่อใน CapCut';
+  const p = document.createElement('p'); p.textContent = 'กดปุ่มด้านบนเพื่อเปิด CapCut แล้วเลือกโปรเจกต์นี้จากรายการ';
+  const detail = document.createElement('details'), summary = document.createElement('summary');
+  summary.textContent = 'ดูสาเหตุ';
+  const reason = document.createElement('p'); reason.textContent = e.message;
+  detail.append(summary, reason); $('side').append(h, p, detail);
+}
 let building = null, again = false;
 async function live() {
   if (building) { again = true; return; }
@@ -436,8 +451,9 @@ $('bAddBr').onclick = () => {
 async function run(btn, text, fn) {
   document.querySelectorAll('.top button').forEach(b => b.disabled = true);
   say('<span class="spin"></span> ' + text);
-  try { await fn(); } catch (e) { say('❌ ' + e.message); }
-  document.querySelectorAll('.top button').forEach(b => b.disabled = false);
+  const disabled = [...document.querySelectorAll('.top button')].filter(b => !T && ['bAuto', 'bCover', 'bExport'].includes(b.id));
+  try { await fn(); } catch (e) { $('busy').textContent = '❌ ' + e.message; }
+  document.querySelectorAll('.top button').forEach(b => b.disabled = disabled.includes(b));
 }
 $('bAuto').onclick = () => run($('bAuto'), 'กำลังทำทุกขั้น… (1–3 นาที)', async () => {
   const r = await api('draft/auto', {path: PATH}); await load(); say('✅ ' + r.steps.filter(Boolean).join(' · ') + ' · แก้บนไทม์ไลน์ได้เลย เห็นผลทันที');
@@ -536,9 +552,12 @@ $('bExport').onclick = () => run($('bExport'), 'กำลังส่งออ�
   if (!await checkText('ส่งออก MP4')) return say('');
   const r = await api('draft/hf-export', {path: PATH}); say('✅ ได้ไฟล์แล้ว (' + r.seconds + ' วิ): ' + esc(r.file));
 });
-$('bCapcut').onclick = () => run($('bCapcut'), 'กำลังจัดซับก่อนเปิดใน CapCut…', async () => {
-  if (!await checkText('เปิดใน CapCut')) return say('');
-  await fetch('/api/kit/draft-open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: PATH})}); say('');
+$('bCapcut').onclick = () => run($('bCapcut'), T ? 'กำลังจัดซับก่อนเปิดใน CapCut…' : 'กำลังเปิด CapCut…', async () => {
+  if (T && !await checkText('เปิดใน CapCut')) return say('');
+  const r = await fetch('/api/kit/draft-open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: PATH})});
+  const result = await r.json();
+  if (!r.ok) throw new Error(result.detail || 'เปิด CapCut ไม่สำเร็จ');
+  say('เปิด CapCut แล้ว');
 });
 $('bCover').onclick = () => { SEL = null; drawTL(); side(); $('adv').open = true; $('coverH').scrollIntoView({behavior: 'smooth'}); };
 document.addEventListener('keydown', e => {
@@ -549,7 +568,7 @@ document.addEventListener('keydown', e => {
     const b = PL.broll[SEL.i]; b.start = Math.max(0, +(b.start + (e.key === 'ArrowLeft' ? -0.1 : 0.1)).toFixed(2)); drawTL(); clearTimeout(window._sv); window._sv = setTimeout(savePL, 400);
   }
 });
-if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(e => say('❌ ' + e.message));
+if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(loadFailed);
 </script>
 <script src="/hyperframes-player.js"></script>
 <script src="/shell.js?v=6"></script>
