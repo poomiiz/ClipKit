@@ -138,7 +138,12 @@ def local_browser_boundary():
             assert client.post("/api/kit/setup", headers=headers).status_code == 403
         response = client.get("/api/kit/job/unused", headers={"origin": "http://127.0.0.1:8770"})
         assert response.status_code == 200
-        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["x-frame-options"] == "SAMEORIGIN"
+        assert response.headers["content-security-policy"] == "frame-ancestors 'self'"
+        for path in ("/motion.html", "/motion/hook-title/index.html"):
+            preview = client.get(path, headers={"sec-fetch-site": "same-origin"})
+            assert preview.status_code == 200
+            assert preview.headers["x-frame-options"] == "SAMEORIGIN"
 
 
 def setup_stops_after_package_failure():
@@ -246,6 +251,36 @@ def speech_settings_and_failures():
             pass
         else:
             raise AssertionError("invalid transcription input was accepted")
+
+
+def settings_preserve_config_on_failure():
+    from unittest.mock import patch
+    from fastapi import HTTPException
+    import kit_settings
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "config.json"
+        original = {"whisper_device": "cuda", "custom": "keep me"}
+        target.write_text(json.dumps(original), encoding="utf-8")
+        with patch.object(kit_settings, "CONFIG", target):
+            with patch.object(Path, "replace", side_effect=OSError("simulated disk failure")):
+                try:
+                    kit_settings.save_config(kit_settings.ConfigUpdate(values={"whisper_device": "cpu"}))
+                except OSError:
+                    pass
+                else:
+                    raise AssertionError("save failure was hidden")
+            assert json.loads(target.read_text()) == original
+            assert list(Path(tmp).iterdir()) == [target], "temporary settings file leaked"
+            kit_settings.save_config(kit_settings.ConfigUpdate(values={"whisper_device": "cpu"}))
+            saved = json.loads(target.read_text())
+            assert saved == {"whisper_device": "cpu", "custom": "keep me"}
+            try:
+                kit_settings.save_config(kit_settings.ConfigUpdate(values={"whisper_device": "unknown"}))
+            except HTTPException as exc:
+                assert exc.status_code == 400
+            else:
+                raise AssertionError("invalid device setting was accepted")
+            assert json.loads(target.read_text()) == saved
 
 
 def name_check_works():

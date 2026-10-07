@@ -15,12 +15,15 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
 - HTTP boundary: only localhost and 127.0.0.1 Host headers are accepted;
   requests with foreign/null Origin or cross-site browser metadata are rejected
   before endpoints execute. Same-origin UI and local script requests remain usable.
-  Framing is denied and MIME sniffing disabled. Regression checks cover both
+  External framing is denied, same-origin previews are allowed, and MIME sniffing is disabled. Regression checks cover both
   readable endpoints and a setup command without actually starting setup.
   Host protection uses [Starlette's existing middleware](https://www.starlette.io/middleware/).
-- All 13 smoke checks passed locally. A Windows CI workflow now runs the same
+- All 14 smoke checks passed locally. A Windows CI workflow now runs the same
   checks with development dependencies and the example config. Hosted CI has
-  not run yet; clean-machine installation remains unverified.
+  not run yet. A fresh temporary Python 3.12 virtual environment installed
+  requirements-dev.txt successfully and passed all 14 checks with the example
+  config. This verifies Python dependency completeness on this host; full OS
+  installation, GPU dependencies and installation on a separate machine remain unverified.
 - Setup now stops on failed native installer, package, model or doctor commands
   instead of continuing with an incomplete installation.
   A PowerShell regression simulates pip exit 17 and verifies setup stops before
@@ -48,6 +51,15 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
   path with configured large-v3/CUDA on a generated 3-second tone. This verifies
   model loading and inference, not speech accuracy. Doctor uses isolated temporary
   files and a bounded subprocess timeout instead of the legacy CLI defaults.
+- Settings and workspace config writes now publish a completed temporary file
+  atomically. A simulated replacement failure preserves the previous config,
+  cleans the temporary file and remains visible; invalid device values are rejected.
+- Real headless Chromium loaded the cover and motion preview iframe bodies
+  against an isolated local server. X-Frame-Options SAMEORIGIN and CSP
+  frame-ancestors self retain external framing protection without breaking
+  ClipKit's nested previews.
+- A limited pattern scan of 116 tracked files found no matching credential or
+  machine-path patterns. This is not a complete secrets or public-content audit.
 
 ## Speech settings
 

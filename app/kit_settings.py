@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,19 @@ _jobs_lock = threading.Lock()
 def _read_config() -> dict[str, Any]:
     src = CONFIG if CONFIG.is_file() else EXAMPLE
     return json.loads(src.read_text(encoding="utf-8-sig"))
+
+
+def _write_config(cfg: dict[str, Any]) -> None:
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=CONFIG.parent,
+                                         prefix=".clipkit-config-", suffix=".tmp", delete=False) as stream:
+            pending = Path(stream.name)
+            stream.write(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n")
+        pending.replace(CONFIG)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
 
 
 def _run_job(name: str, cmd: list[str], cwd: Path = KIT) -> None:
@@ -105,11 +119,13 @@ def save_config(body: ConfigUpdate) -> dict[str, Any]:
     bad = [k for k in body.values if k not in FOLDER_KEYS + TEXT_KEYS]
     if bad:
         raise HTTPException(400, f"unknown setting: {', '.join(bad)}")
+    if "whisper_device" in body.values and body.values["whisper_device"] not in {"cpu", "cuda"}:
+        raise HTTPException(400, "whisper_device must be cpu or cuda")
     missing = [f"{k}={v}" for k, v in body.values.items() if k in FOLDER_KEYS and v and not Path(v).is_dir()]
     if missing:
         raise HTTPException(400, "folder not found: " + "; ".join(missing))
     cfg.update({k: v for k, v in body.values.items()})
-    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_config(cfg)
     return {"saved": True, "note": "restart the app for scripts already running to pick up new paths"}
 
 
@@ -135,7 +151,7 @@ def set_workspace(body: Workspace) -> dict[str, Any]:
         found = capcut_default_drafts()
         if found:
             cfg["capcut_drafts"] = found
-    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_config(cfg)
     return {"saved": True, "paths": paths, "capcut_drafts": cfg.get("capcut_drafts", "")}
 
 
