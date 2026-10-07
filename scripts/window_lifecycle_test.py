@@ -114,6 +114,11 @@ def helper_check():
                             env={**os.environ, "CLIPKIT_CONTROL_TEST": str(Path(__file__).resolve().parents[1] / "app" / "control.ps1")},
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
+    expired = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                             str(Path(__file__).resolve().parents[1] / "app" / "control.ps1"),
+                             "-Action", "start", "-Port", "61999", "-IssuedAt", "1"],
+                             capture_output=True, text=True, timeout=30)
+    assert expired.returncode != 0 and "expired" in (expired.stdout + expired.stderr)
 
 
 def live_check():
