@@ -18,7 +18,7 @@ Task: 9160a2ce-9aa8-446d-9b9a-20aa52b24a53
   External framing is denied, same-origin previews are allowed, and MIME sniffing is disabled. Regression checks cover both
   readable endpoints and a setup command without actually starting setup.
   Host protection uses [Starlette's existing middleware](https://www.starlette.io/middleware/).
-- All 19 smoke checks passed locally. A Windows CI workflow now runs the same
+- All 20 smoke checks passed locally. A Windows CI workflow now runs the same
   checks with development dependencies and the example config. Hosted CI has
   not run yet. A fresh temporary Python 3.12 virtual environment installed
   requirements-dev.txt successfully and passed all 14 checks with the example
@@ -104,6 +104,12 @@ These checks do not establish production editing quality.
 No production deployment or public release has been performed.
 
 ## Input needed for final acceptance
+
+The antigravity reports were reviewed and a confirmed unused-material builder
+defect was fixed. The 20th regression checks transitive references, cycles,
+global entries and repeat pruning. See antigravity-bug-review.md; the team's
+installed revision and original failing project are still needed for native
+CapCut verification. The Markdown reports do not contain those artifacts.
 
 The configured footage folder exists. Its top-level videos and immediate
 subfolder candidates include branding, motion and mockup assets; no candidate
