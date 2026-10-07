@@ -143,7 +143,11 @@ def list_drafts(root: str | None = None) -> list[dict[str, Any]]:
         if not (folder / "draft_content.json").is_file():
             continue
         try:
-            draft = _load(folder)
+            # Listing is read-only: an external edit blocks writes, not discovery.
+            content = (folder / "draft_content.json").read_text(encoding="utf-8")
+            draft = json.loads(content)
+            seal = folder / SEAL
+            changed = seal.is_file() and json.loads(seal.read_text(encoding="utf-8")).get("draft_content") != _digest(content)
         except (VideoEditError, json.JSONDecodeError):
             continue
         video = next((t for t in draft.get("tracks", []) if t["type"] == "video"), None)
@@ -152,6 +156,7 @@ def list_drafts(root: str | None = None) -> list[dict[str, Any]]:
         sources = {source for source in sources if isinstance(source, str) and Path(source).is_file()}
         out.append({
             "name": folder.name,
+            "external_changed": changed,
             "path": str(folder),
             "duration": round(draft.get("duration", 0) / US, 2),
             "segments": len(video["segments"]) if video else 0,
