@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>🎬 ตัดต่อวิดีโอ → CapCut</title>
+<title>ClipKit — ตัดคลิป</title>
 <style>
   :root {
     --bg: #0c0f17;
@@ -522,7 +522,7 @@
 
   <!-- Top Sticky Navigation -->
   <div class="top">
-    <button class="back" id="backBtn" onclick="goBack()" style="display:none">‹</button>
+    <button class="back" id="backBtn" onclick="goBack()" aria-label="กลับหน้าก่อนหน้า" style="display:none">‹</button>
     <h1 id="title">ตัดต่อวิดีโอ</h1>
     <span class="chip" id="engine"><span class="chip-dot"></span> …</span>
     <button class="small ghost" id="updBtn" style="display:none;margin-left:8px" onclick="doUpdate()">⬆️ อัปเดต ClipKit</button>
@@ -532,15 +532,16 @@
 
   <!-- Screen 1: Home -->
   <div class="screen on" id="s-home">
-    <div class="new-zone" onclick="openPicker()">
-      <div class="nz-plus">+</div>
-      <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
-    </div>
-    <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
+    <div class="home-intro"><h2>เริ่มตัดคลิป</h2><p>เลือกวิดีโอ → เลือกช่วงและทำซับ → ดูตัวอย่างและส่งออก</p></div>
+    <button type="button" class="new-zone" onclick="openPicker()">
+      <span class="nz-plus" aria-hidden="true">+</span>
+      <span class="new-copy"><b>เลือกวิดีโอหรือโฟลเดอร์</b><span>หรือลากไฟล์มาวางที่นี่</span></span>
+    </button>
+    <div class="proj-head"><b>ทำงานต่อ</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
-      <span class="hint" id="selHint">ลากคลุมเพื่อเลือกหลายโปรเจกต์ · Ctrl+คลิก เลือกทีละอัน</span></div>
+      <details class="hint" id="selHint"><summary>เลือกหลายโปรเจกต์</summary>ลากคลุมโปรเจกต์ หรือกด Ctrl ค้างแล้วคลิก</details></div>
     <div id="homeDrafts" class="proj-grid"><div class="hint">กำลังอ่านโปรเจกต์…</div></div>
     <div id="recentWrap" class="recent-list"></div>
   </div>
@@ -631,7 +632,7 @@
           <div id="wzShow"></div>
           <details id="wzMoreBox"><summary>ปรับเพิ่ม</summary><div id="wzMore"></div></details>
           <div class="wz-nav"><button class="ghost" id="wzPrev">← ก่อนหน้า</button><button id="wzNext">ถัดไป →</button></div>
-          <div class="hint" style="margin-top:10px">คีย์ลัด: 1–7 สลับเครื่องมือ · Enter ปุ่มหลัก · Ctrl+E ส่งออก · ↑↓ เลือกข้อความ · Ctrl+C / Ctrl+V คัดลอกตำแหน่งข้อความ · Ctrl+S บันทึกตำแหน่ง</div>
+          <details class="hint" style="margin-top:10px"><summary>คีย์ลัด</summary>1–7 สลับเครื่องมือ · Enter ปุ่มหลัก · Ctrl+E ส่งออก · ↑↓ เลือกข้อความ · Ctrl+C / Ctrl+V คัดลอกตำแหน่งข้อความ · Ctrl+S บันทึกตำแหน่ง</details>
         </div>
       </div>
       <div id="wzHold" style="display:none"></div>
