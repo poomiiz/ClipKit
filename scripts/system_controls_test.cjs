@@ -43,5 +43,6 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
   assert.match(test.status.textContent,/foreign process refused/); assert(!test.reloaded());
   assert(test.buttons.every(b=>!b.disabled));
   assert(!source.includes('new EventSource('), 'closed pages must not control process lifetime');
+  assert(source.includes('?control=v2'), 'stale pages must not issue a control action');
   console.log('PASS standalone controls: changed-instance restart, shutdown, hung-server fallback, failure, no auto-start');
 })().catch(error=>{console.error(error);process.exitCode=1});

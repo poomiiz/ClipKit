@@ -4,10 +4,11 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 
@@ -18,7 +19,8 @@ def launch_control(action: str, port: int) -> None:
     with (here / "control.log").open("ab") as log:
         subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                           str(here / "control.ps1"), "-Action", action, "-Port", str(port),
-                          "-Python", sys.executable, "-ExpectedPid", str(os.getpid())],
+                          "-Python", sys.executable, "-ExpectedPid", str(os.getpid()),
+                          "-IssuedAt", str(int(time.time()))],
                          cwd=str(here), stdout=log, stderr=subprocess.STDOUT,
                          creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
 
@@ -42,7 +44,10 @@ def window_router(port: int, exit_server: Callable[[], None],
     def health():
         return {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy()}
 
-    def control(action: str):
+    def control(action: str, control_version: str):
+        # Cached pages from before explicit controls must not issue a delayed restart.
+        if control_version != "v2":
+            raise HTTPException(409, "หน้านี้เก่าเกินไป กรุณารีเฟรช ClipKit ก่อนสั่งระบบ")
         try:
             launch_control(action, port)
         except OSError as exc:
@@ -50,12 +55,12 @@ def window_router(port: int, exit_server: Callable[[], None],
         return {"action": action, "accepted": True, "instance": os.getpid()}
 
     @router.post("/restart", status_code=202)
-    def restart():
-        return control("restart")
+    def restart(control_version: str = Query("", alias="control")):
+        return control("restart", control_version)
 
     @router.post("/shutdown", status_code=202)
-    def shutdown():
-        return control("shutdown")
+    def shutdown(control_version: str = Query("", alias="control")):
+        return control("shutdown", control_version)
 
     @router.post("/exit", status_code=202, include_in_schema=False)
     def exit_after_response(instance: int, background_tasks: BackgroundTasks):
