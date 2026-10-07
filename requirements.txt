@@ -5,3 +5,5 @@ playwright>=1.45
 fastapi>=0.110
 uvicorn>=0.29
 opencv-python>=4.8,<5  # OpenCV 5 dropped CascadeClassifier (face finding)
+Pillow>=10
+fonttools>=4

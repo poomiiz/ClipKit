@@ -34,27 +34,28 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
     live player shows it: made once per cut list and skin strength."""
     import hashlib
     import subprocess
-    key = hashlib.md5(json.dumps([[(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, render.EDGE_FADE, 2]).encode()).hexdigest()[:10]
+    import tempfile
+    source = Path(src).resolve()
+    stamp = source.stat()
+    key = hashlib.md5(json.dumps([str(source), stamp.st_size, stamp.st_mtime_ns, [(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, render.EDGE_FADE, 2]).encode()).hexdigest()[:10]
     dst = out / "media" / f"footage_{key}.mp4"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
-        for old in dst.parent.glob("footage_*.mp4"):
-            try:
-                old.unlink()
-            except OSError:  # still open in the editor's player: removed on a later build
-                pass
         a, b = min(s["media_start"] for s in segs), max(s["media_start"] + s["dur"] for s in segs)
         parts = "".join(f"[0:v]trim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},setpts=PTS-STARTPTS[v{i}];"
                         f"[0:a]atrim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},asetpts=PTS-STARTPTS,{render.edge_fades(s['dur'])}[a{i}];"
                         for i, s in enumerate(segs))
         graph = parts + "".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[cv][ca];[cv]scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))'" + \
             (f",{render.SKIN_FILTER.format(skin=skin)}" if skin > 0 else "") + "[sv]"  # smoothing after the size-down: 4x less work
-        r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
-                            "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
-                            "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                            str(dst)], capture_output=True, text=True, encoding="utf-8", errors="replace")
-        if r.returncode or not dst.is_file():
-            raise render.VideoEditError("could not prepare the footage: " + r.stderr[-300:])
+        with tempfile.TemporaryDirectory(dir=dst.parent, prefix=".proxy-") as tmp:
+            pending = Path(tmp) / "footage.mp4"
+            r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
+                                "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
+                                "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                                str(pending)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if r.returncode or not pending.is_file() or not pending.stat().st_size:
+                raise render.VideoEditError("could not prepare the footage: " + r.stderr[-300:])
+            pending.replace(dst)
     return "media/" + dst.name
 
 
