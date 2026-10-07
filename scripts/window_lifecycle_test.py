@@ -1,4 +1,5 @@
 """Managed-window lifecycle checks; no server/process is started or stopped."""
+import asyncio
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -50,13 +51,31 @@ def main():
     app = FastAPI()
     app.include_router(window_router(life))
     with TestClient(app) as client:
-        assert client.post("/api/window/heartbeat", json={"session_id": str(first)}).json()["windows"] == 1
-        assert client.post("/api/window/release", content='{"session_id":"' + str(first) + '"}',
-                           headers={"content-type": "text/plain"}).status_code == 200
-        for payload in ({"session_id": "bad"}, {}, [], {"session_id": 10}):
-            assert client.post("/api/window/heartbeat", json=payload).status_code == 400
-        assert client.post("/api/window/release", content="x" * 257).status_code == 400
-    print("ok managed windows: startup, expiry, refresh, multiple windows, requests, jobs, validation")
+        assert client.get("/api/window/watch?session_id=bad").status_code == 422
+        assert client.get("/api/window/watch").status_code == 422
+        assert client.get("/api/window/status").json() == {"managed": True, "windows": 0}
+
+    async def stream_disconnect():
+        watched = WindowLifecycle(True, lambda: now[0])
+        watch = next(route.endpoint for route in window_router(watched).routes
+                     if route.path == "/api/window/watch")
+        response = await watch(session_id=first)
+        stream = response.body_iterator
+        assert '"managed": true' in await anext(stream)
+        assert watched.status()["windows"] == 1
+        await stream.aclose()  # browser disconnect/cancellation closes the generator
+        now[0] += 14
+        assert not watched.should_stop()
+        now[0] += 1
+        assert watched.should_stop()
+
+    asyncio.run(stream_disconnect())
+    app = FastAPI()
+    app.include_router(window_router(unmanaged))
+    with TestClient(app) as client:
+        response = client.get(f"/api/window/watch?session_id={first}")
+        assert response.status_code == 200 and '"managed": false' in response.text
+    print("ok managed windows: startup, expiry, refresh, multiple windows, requests, jobs, validation, stream close")
 
 
 if __name__ == "__main__":
