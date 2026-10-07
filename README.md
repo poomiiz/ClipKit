@@ -61,3 +61,15 @@ Everyone signs in with the one company account on their own machine. To keep the
 - No video, footage, client files, fonts or passwords in this repo. Media stays on the shared drive.
 - Machine paths only in `config.json` (git-ignored).
 - New look = new subtitle preset in `presets/` (by chat or `scripts/preset_from_capcut.py`).
+
+## Development checks
+
+Install `requirements-dev.txt`, then run `python scripts/smoke_test.py`.
+The checks use temporary drafts and do not require footage or network.
+For an unconfigured machine, set `CLIP_KIT_CONFIG` to `config.example.json`.
+Windows CI runs these checks on pushes and pull requests.
+
+The app is a local desktop tool; open it through `http://127.0.0.1:8770`
+or `http://localhost:8770`. Browser requests from other origins are rejected.
+See [release readiness](docs/production-readiness.md) for verified results and
+the remaining real-media, installation and licensing acceptance gates.
