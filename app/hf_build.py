@@ -41,6 +41,7 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
     dst = out / "media" / f"footage_{key}.mp4"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
+        # ponytail: keep old proxies for open previews; explicit project cache cleanup if disk use grows.
         a, b = min(s["media_start"] for s in segs), max(s["media_start"] + s["dur"] for s in segs)
         parts = "".join(f"[0:v]trim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},setpts=PTS-STARTPTS[v{i}];"
                         f"[0:a]atrim={s['media_start'] - a:.3f}:{s['media_start'] - a + s['dur']:.3f},asetpts=PTS-STARTPTS,{render.edge_fades(s['dur'])}[a{i}];"

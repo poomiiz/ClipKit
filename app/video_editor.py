@@ -3,6 +3,7 @@ pauses worth trimming, and hand the result to CapCut as a ready draft."""
 from __future__ import annotations
 
 import subprocess
+import os
 import sys
 import json
 from pathlib import Path
@@ -807,10 +808,12 @@ def draft_sound_clear(req: DraftPath) -> dict[str, Any]:
 
 @router.get("/config")
 def config() -> dict[str, Any]:
+    cfg = video_edit.kitconfig._load()
     return {
-        "drafts_root": video_edit.kitconfig.CFG.get("capcut_drafts", ""),
+        "drafts_root": cfg.get("capcut_drafts", ""),
         "template_draft": video_edit.CAPCUT_TEMPLATE_DRAFT or "(newest draft in folder)",
-        "whisper_model": video_edit.WHISPER_MODEL,
+        "whisper_model": os.environ.get("VIDEO_WHISPER_MODEL") or cfg.get("whisper_model") or "large-v3",
+        "whisper_device": cfg.get("whisper_device") or "cuda",
         "whisper_cpu_fallback": video_edit.WHISPER_CPU_FALLBACK,
         "gpu": video_edit._has_cuda(),
         "local_llm": video_edit.LOCAL_LLM_URL,

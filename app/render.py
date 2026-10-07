@@ -69,7 +69,8 @@ def _font(path: str | None) -> tuple[str, Path]:
     f = Path(path) if path and Path(path).is_file() else DEFAULT_FONT
     if not f.is_file():
         raise VideoEditError(f"font file missing: {f}")
-    return TTFont(str(f), fontNumber=0)["name"].getDebugName(1), f
+    with TTFont(str(f), fontNumber=0) as font:
+        return font["name"].getDebugName(1), f
 
 
 # where a Thai line may break: a new thought may start a line, a closing particle never does
