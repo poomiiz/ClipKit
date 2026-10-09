@@ -1383,6 +1383,27 @@ def fill_subtitle_gaps(path: str, min_gap: float = 1.0, preview: bool = False,
     return result
 
 
+def relisten(path: str, text: str, pad: float = 0.4) -> str:
+    """What the speech model hears again over one subtitle line's time (a little wider), for a line that reads
+    cut short or missing words. Nothing on the timeline changes."""
+    from video_edit import transcribe
+
+    draft = _load(Path(path))
+    source = next((m.get("path") for m in draft["materials"].get("videos", []) if m.get("path")), None)
+    if not source or not Path(source).is_file():
+        raise VideoEditError(f"source video not found: {source}")
+    line = next((s for s in read_draft(path)["subtitles"] if s["text"] == text), None)
+    if line is None:
+        raise VideoEditError(f"subtitle line not found: {text}")
+    heard = []
+    for tl_start, tl_end, src_start in timeline_to_source(draft):
+        lo, hi = max(line["start"] - pad, tl_start), min(line["end"] + pad, tl_end)
+        if hi - lo >= 0.3:
+            offset = src_start + (lo - tl_start)
+            heard += [p["text"] for p in transcribe(source, offset, offset + (hi - lo))]
+    return " ".join(heard)
+
+
 def set_line_time(path: str, text: str, start: float, end: float) -> dict[str, Any]:
     """Move / stretch one subtitle line on the timeline (the timeline editor)."""
     if end - start < 0.3:
