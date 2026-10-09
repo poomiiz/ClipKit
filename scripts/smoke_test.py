@@ -213,6 +213,20 @@ def subtitles_stay_on_one_line():
     assert p["caption_shadow"] and p["second"] and p["second_at"] == (0.3, -6.0) and p["caption_lang"] == "en"
 
 
+def hand_fixes_are_learned():
+    # the same misheard word had to be fixed by hand in every clip
+    import spelling
+    keep = spelling.FILE
+    with tempfile.TemporaryDirectory() as t:
+        spelling.FILE = Path(t) / "corrections.json"
+        try:
+            assert spelling.learn("มันน่าจะดีคัป", "มันน่าจะดีครับ") == [("คัป", "ครับ")]
+            assert spelling.fix("โอเคคัป") == "โอเคครับ"
+            assert spelling.fix("ไปที่กองทัพ") == "ไปที่กองทัพ"  # whole words only
+        finally:
+            spelling.FILE = keep
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"
