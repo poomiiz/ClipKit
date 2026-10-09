@@ -193,6 +193,32 @@ def _fit(text: str, font_file: Path, size: float, max_w: float, one: bool = Fals
     return lines, size if widest <= max_w else size * max_w / widest
 
 
+def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: float) -> list[tuple[str, float, float, float]]:
+    """A subtitle that never takes two lines and never leaves the frame: text too wide for one line becomes
+    pieces shown one after another over a..b (cut where the thought breaks, _best_break), each in time with its
+    share of the letters. Only a single word wider than the frame is drawn smaller. [(piece, start, end, px)]"""
+    from PIL import ImageFont
+    from pythainlp.tokenize import word_tokenize
+    font = ImageFont.truetype(str(font_file), 100)
+    width = lambda t: font.getlength(t) * px / 100  # noqa: E731
+
+    def cut(words: list[str]) -> list[str]:
+        whole = "".join(words).strip()
+        if width(whole) <= max_w or len([w for w in words if w.strip()]) < 2:
+            return [whole] if whole else []
+        i = _best_break(words, width, max_w) or len(words) // 2
+        return cut(words[:i]) + cut(words[i:])
+
+    pieces = cut(word_tokenize(unbreak(text), keep_whitespace=True))
+    total = sum(len(x.replace(" ", "")) for x in pieces) or 1
+    out, t = [], a
+    for x in pieces:
+        end = t + (b - a) * len(x.replace(" ", "")) / total
+        out.append((x, t, end, min(px, px * max_w / width(x)) if width(x) else px))
+        t = end
+    return out
+
+
 def _json(path: Path, empty: Any) -> Any:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else empty
 
@@ -237,9 +263,14 @@ def pair_look(style: dict) -> dict[str, Any]:
         p = json.loads(f.read_text(encoding="utf-8"))
         part = lambda r: (float(r["size"]), float(r["y"]), _rgb(r["color"]), _rgb(r["outline"]),  # noqa: E731
                           float(r["outline_width"]))
+        second = p.get("second")
         return {"lead": part(p["normal"]), "punch": part(p["emphasis"]),
                 "caption": part(p["caption"]) if p.get("caption") else None,
-                "caption_lang": (p.get("caption") or {}).get("language", "en")}
+                "caption_lang": (p.get("caption") or {}).get("language", "en"),
+                "caption_shadow": bool((p.get("caption") or {}).get("shadow")),
+                # the second person's short reactions: off the centre line and tilted, for movement on screen
+                "second": part(second) if second else None,
+                "second_at": (float(second.get("x", 0.3)), float(second.get("rotation", -6))) if second else None}
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise VideoEditError(f"preset {f.name} is broken: {exc}") from exc
 
@@ -252,17 +283,40 @@ def _shown(lead: str, punch: str, opts: dict | None, prev_white: str) -> tuple[s
     options measured from real hand-edited clips: "pair" white lead + coloured punch (default), "white" white
     only, "color" coloured only, "red" punch in red for the strongest point, "hold" keeps the previous white line
     while the coloured line changes (lists), "skip" no subtitle (filler). "show": [white, colour] = shorter
-    rewritten words on screen (timing still comes from the spoken words). Returns (white, colour, colour rgb)."""
+    rewritten words on screen (timing still comes from the spoken words). "color": "#rrggbb" = this line's own
+    emphasis colour. "second": a short line from the second person (pair_look "second"). Returns (white, colour, colour rgb)."""
     o = opts or {}
     w, c = o.get("show") or (lead, punch)
     look = o.get("look", "pair")
+    rgb = RED if look == "red" else (_rgb(o["color"]) if o.get("color") else None)  # "color": "#rrggbb" = this line's own
     if look == "skip":
         return "", "", None
     if look == "white":
         return " ".join(x for x in (w, c) if x), "", None
     if look == "color":
-        return "", " ".join(x for x in (w, c) if x), None
-    return (prev_white if look == "hold" else w), c, (RED if look == "red" else None)
+        return "", " ".join(x for x in (w, c) if x), rgb
+    return (prev_white if look == "hold" else w), c, rgb
+
+
+def upper_row(look: dict, W: int, H: int) -> float:
+    """y of the first of two stacked emphasis beats: just above the second, never on it, and no lower than the
+    normal text's row."""
+    size, y = look["punch"][:2]
+    return max(look["lead"][1], y + 2.1 * size * CAPCUT_PX * min(W, H) / 1080 / H)
+
+
+def stacks(looks: list[str | None]) -> dict[int, int]:
+    """Emphasis-only phrases in a row come in two beats, one row each: {first: second}. The first goes on the upper
+    row and stays until the second is done; then the next pair starts. A held white line is not stacked: there the
+    emphasis replaces the one before."""
+    out, n = {}, 0
+    while n + 1 < len(looks):
+        if looks[n] == "color" and looks[n + 1] == "color":
+            out[n] = n + 1
+            n += 2
+        else:
+            n += 1
+    return out
 
 
 # the clip title over the first seconds, measured from hand-edited clips: one or two lines, each line white,
@@ -367,22 +421,28 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
             phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1], "", None))
     k = min(W, H) / 1080 * CAPCUT_PX
 
-    def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False) -> str:
+    def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False, x: float = 0, rot: float = 0) -> str:
+        # one line only, never off screen: a long subtitle goes on as the next piece, in time with the voice (one_line)
         size, y, fill, stroke, width = part
-        px = size * k
-        lines, fitted = _fit(words, font_file, px, W * held.get("box", safe_box({}))["w"], one)
-        if fitted < px:  # too long even on two lines: shown smaller, listed for the editor to re-split
-            held.setdefault("shrunk", []).append({"at": round(a, 2), "text": words})
-        px = fitted
-        safe = _safe_y(H / 2 - y * H / 2, len(lines) * px, H, held)
-        return (f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({W / 2:.0f},{safe:.0f})\\fn{fam}"
-                f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
-                f"\\shad2{extra}}}" + "\\N".join(lines))
+        out = []
+        room = W * (held.get("box", safe_box({}))["w"] - abs(x))  # off-centre text has less width before the edge
+        shad = 5 if part is look["caption"] and look["caption_shadow"] else 2  # the reading subtitle's dark shadow
+        for piece, pa, pb, px in one_line(words, font_file, size * k, room, a, b):
+            if px < size * k:  # one word wider than the frame: shown smaller, listed for the editor
+                held.setdefault("shrunk", []).append({"at": round(pa, 2), "text": piece})
+            safe = _safe_y(H / 2 - y * H / 2, px, H, held)
+            out.append(f"Dialogue: 0,{_ts(pa)},{_ts(pb)},S,,0,0,0,,{{\\an5\\pos({W / 2 + x * W / 2:.0f},{safe:.0f})\\frz{-rot:g}\\fn{fam}"
+                       f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
+                       f"\\shad{shad}{extra if pa == a else ''}}}" + piece)
+        return "\n".join(out)
 
     out = []
+    # stays until the next phrase, but not through a long pause after its last word
+    ends = [min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, ph[4] + 1.5) for n, ph in enumerate(phrases)]
+    pairs = stacks([(ph[6] or {}).get("look") for ph in phrases])  # emphasis in two beats, one row each
+    thai = look["caption_lang"] == "th"  # the reading subtitle is the whole spoken line, going on with the voice
     for n, (lead, punch, a, hit, last, query, opts) in enumerate(phrases):
-        # stays until the next phrase, but not through a long pause after its last word
-        b = min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, last + 1.5)
+        b = ends[n]
         # the punch lands when it is said, but never leaves the lead alone on screen for long (slow talkers)
         hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
         white, colour, rgb = _shown(lead, punch, opts, held["white"])
@@ -400,13 +460,20 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
             out.append(line(white, look["lead"], a, b, "" if held_on else "\\fad(80,0)", bool(colour)))
         if colour:
             part = look["punch"] if rgb is None else look["punch"][:2] + (rgb,) + look["punch"][3:]
-            out.append(line(colour, part, hit if white else a, b, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(white)))
-        if look["caption"] and not held.get("en"):
+            end = b
+            if n in pairs:  # first of two beats: the upper row, on until the second beat is done
+                part, end = part[:1] + (upper_row(look, W, H),) + part[2:], ends[pairs[n]]
+            out.append(line(colour, part, hit if white else a, end, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(white)))
+        second = (opts or {}).get("second")
+        if second and look["second"] and a >= held.get("until", 0):  # the second person's short reaction
+            x, rot = look["second_at"]
+            out.append(line(second, look["second"], a, b, "\\fad(120,0)", x=x, rot=rot))
+        if look["caption"] and not held.get("en") and not thai:
             out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
     # the preset's small bottom caption, one translated line per spoken line (clipkit_caption.json, by the agent)
     en = (held.get("en") or {}).get(text)
-    if look["caption"] and en and phrases:  # shown under the title too
-        out.append(line(en, look["caption"], phrases[0][2], t1))
+    if look["caption"] and phrases and (thai or en):  # shown under the title too
+        out.append(line(unbreak(text) if thai else en, look["caption"], phrases[0][2], t1))
     return out
 
 
