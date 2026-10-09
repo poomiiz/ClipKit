@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
 results = []
+sys.stdout.reconfigure(encoding="utf-8")
 
 
 def check(name, fn, optional=False):
@@ -20,6 +21,9 @@ def check(name, fn, optional=False):
         results.append((True, name, detail or ""))
     except Exception as e:  # report every failure, keep checking the rest
         results.append(("WARN" if optional else False, name, str(e)))
+    ok, _, detail = results[-1]
+    # printed as each check ends, so the app can name the check that hung when it times out
+    print(f"{'WARN' if ok == 'WARN' else 'OK  ' if ok else 'FAIL'} {name:18} {detail}", flush=True)
 
 
 def py():
@@ -44,7 +48,7 @@ def node():
     # the MP4 export and the live preview run HyperFrames through npx
     if not shutil.which("npx"):
         raise RuntimeError("Node.js not found (npx missing) - install Node.js LTS from nodejs.org")
-    return subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip()
+    return subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
 
 
 def config():
@@ -68,7 +72,7 @@ def gpu():
     if not shutil.which("nvidia-smi"):
         raise RuntimeError("no NVIDIA GPU found; set whisper_device to cpu in config.json")
     out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                         capture_output=True, text=True, check=True).stdout.strip()
+                         capture_output=True, text=True, check=True, timeout=30).stdout.strip()
     return out
 
 
@@ -97,9 +101,9 @@ def disk():
 def asr():
     import tempfile
     wav = Path(tempfile.gettempdir()) / "clipkit_doctor.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=3", str(wav)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=3", str(wav)], check=True, timeout=60)
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "clipkit.py"), "transcribe", str(wav), "--out",
-                        str(wav.with_suffix(".json"))], capture_output=True, text=True)
+                        str(wav.with_suffix(".json"))], capture_output=True, text=True, timeout=300)
     # a pure tone has no speech: "no speech found" proves the model loaded and ran
     if r.returncode != 0 and "no speech found" not in r.stderr:
         raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr else "transcribe failed")
@@ -114,7 +118,4 @@ check("preview font", font, optional=True)
 if "--asr" in sys.argv:
     check("speech-to-text", asr)
 
-sys.stdout.reconfigure(encoding="utf-8")
-for ok, name, detail in results:
-    print(f"{'WARN' if ok == 'WARN' else 'OK  ' if ok else 'FAIL'} {name:18} {detail}")
 sys.exit(0 if all(r[0] for r in results) else 1)
