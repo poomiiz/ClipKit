@@ -40,6 +40,31 @@
     document.documentElement.classList.toggle('sb-mini', mini);
     try { localStorage.setItem('ck_sb_mini', mini ? '1' : '0'); } catch {}
   };
+  // drag the right edge to widen the sidebar (remembered on this machine)
+  const SB_MIN = 180, SB_MAX = 520;
+  let sbW = 0;
+  const setW = w => { sbW = Math.min(SB_MAX, Math.max(SB_MIN, w)); document.documentElement.style.setProperty('--sb-user-w', sbW + 'px'); };
+  try { const w = +localStorage.getItem('ck_sb_w'); if (w) setW(w); } catch {}
+  const grip = document.createElement('div');
+  grip.className = 'sb-grip';
+  grip.title = 'ลากเพื่อขยาย / ย่อแถบซ้าย · ดับเบิลคลิก = ขนาดเดิม';
+  aside.append(grip);
+  grip.onpointerdown = e => {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    document.documentElement.classList.add('sb-drag');
+    const w0 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sb-w')), x0 = e.clientX;
+    grip.onpointermove = ev => setW(w0 + ev.clientX - x0);
+    grip.onpointerup = () => {
+      grip.onpointermove = grip.onpointerup = null;
+      document.documentElement.classList.remove('sb-drag');
+      try { if (sbW) localStorage.setItem('ck_sb_w', Math.round(sbW)); } catch {}
+    };
+  };
+  grip.ondblclick = () => {
+    document.documentElement.style.removeProperty('--sb-user-w');
+    try { localStorage.removeItem('ck_sb_w'); } catch {}
+  };
   // raw files on the left, the projects cut from each one underneath (click a raw file = pick its stories again)
   window.ckLoadProjects = async () => {
     const box = document.getElementById('sbProjects');
