@@ -827,10 +827,10 @@ def update() -> dict[str, Any]:
         raise HTTPException(400, "ต่อ GitHub ไม่ได้ ลองเช็กเน็ตแล้วกดใหม่")
     if git("rev-parse", "HEAD").stdout == git("rev-parse", "@{u}").stdout:
         return {"updated": False, "note": "เป็นตัวล่าสุดแล้ว"}
-    r = git("pull", "-q", "--ff-only")
-    if r.returncode != 0:
-        raise HTTPException(400, "อัปเดตไม่ได้ เพราะมีไฟล์ในโฟลเดอร์ ClipKit ถูกแก้ด้วยมือ ให้สั่ง clipkit repair")
     import sys
+    r = subprocess.run([sys.executable, str(root / "scripts" / "update.py")], capture_output=True, text=True, timeout=300)
+    if r.returncode != 0:
+        raise HTTPException(400, "อัปเดตไม่ได้: " + (r.stderr or r.stdout).strip()[-300:])
     import threading
     def restart():
         import os
