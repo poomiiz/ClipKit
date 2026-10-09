@@ -409,23 +409,30 @@ def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.
 
 def _drop_loops(words: list[list], most: int = 2) -> list[list]:
     """The batched decoder has no temperature fallback, so it can get stuck saying one phrase over and over
-    (IMG_6414: "แค่มีสต๊อค" 13 times in 13 s). A run of the same 1-8 word pieces said more than `most` times
-    in a row keeps its first `most`."""
+    (IMG_6414: "แค่มีสต๊อค" 13 times in 13 s, as one-letter pieces). A run of the same 4-40 letters said more
+    than `most` times in a row keeps its first `most`."""
+    text = "".join(w[2] for w in words)
+    starts, at = [], 0
+    for w in words:
+        starts.append(at)
+        at += len(w[2])
     out: list[list] = []
-    i = 0
-    while i < len(words):
-        for k in range(1, 9):
-            unit = [w[2].strip() for w in words[i:i + k]]
-            n = 1
-            while [w[2].strip() for w in words[i + n * k:i + (n + 1) * k]] == unit:
-                n += 1
-            if n > most and len("".join(unit)) * n >= 12:
-                out += words[i:i + most * k]
-                i += n * k
-                break
-        else:
-            out.append(words[i])
-            i += 1
+    keep = skip = 0  # letters [keep, skip) are extra repeats
+    for i, w in enumerate(words):
+        off = starts[i]
+        if off >= skip:
+            for size in range(4, 41):
+                unit = text[off:off + size]
+                if len(unit) < size:
+                    break
+                n = 1
+                while text[off + n * size:off + (n + 1) * size] == unit:
+                    n += 1
+                if n > most and unit.strip():
+                    keep, skip = off + most * size, off + n * size
+                    break
+        if not keep <= off < skip:
+            out.append(w)
     return out
 
 
