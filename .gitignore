@@ -9,5 +9,7 @@ app/sfx_builtin/
 project_templates/
 *.log
 motion/collection/
-presets/my-style.json
+presets/my-*.json
+presets/previews/
+presets/parts/
 corrections.json
