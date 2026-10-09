@@ -332,14 +332,43 @@ def library() -> dict[str, Any]:
     """Everything the motion library page shows: our own templates (ready to use) and the sorted HyperFrames
     registry (motion/library/hyperframes.json, rebuilt by scripts/catalog_hf.py)."""
     ours = [{"name": k, "title": v.get("label", k), "role": v.get("role", "ข้อความ"), "mood": v.get("mood", ""),
-             "source": "clipkit"} for k, v in motion_templates().items()]
+             "source": "clipkit", "bg": (KIT / "motion" / k / "preview-bg.jpg").is_file()}
+            for k, v in motion_templates().items()]
     ours += [{"name": d.name, "title": "ปก " + d.name.split("-")[-1].upper(), "role": "ปก", "mood": "", "source": "clipkit"}
              for d in sorted((KIT / "motion").glob("cover-*")) if (d / "index.html").is_file()]
     hf_file = KIT / "motion" / "library" / "hyperframes.json"
     hf = json.loads(hf_file.read_text(encoding="utf-8")) if hf_file.is_file() else []
+    # subtitle styles: the person's own (my-*, local only) and the team's (team-*), each with its GIF preview
+    from urllib.parse import quote
+    import style_lab_api
+    col = style_lab_api.style_lab.collection()
+    styles = [{"name": s["name"], "title": s["name"].split("-", 1)[1], "description": s["about"], "role": "ซับ",
+               "mood": "", "source": "style", "own": s["name"].startswith("my-"),
+               "gif": "/api/style/file?path=" + quote(s["gif"]) if s["gif"] else ""}
+              for s in col["presets"] + col["team"]]
+    hidden = set(_read_config().get("library_hidden") or [])
+    keep = lambda rows: [r for r in rows if f'{r.get("source", "hyperframes")}:{r["name"]}' not in hidden]  # noqa: E731
     # making new templates is the owner's job: only a machine whose config.json has "creator": true
     # (set by hand, not from the Settings page) sees the create buttons
-    return {"ours": ours, "hyperframes": hf, "can_create": bool(_read_config().get("creator"))}
+    return {"ours": keep(ours), "styles": keep(styles), "hyperframes": keep(hf), "hidden": len(hidden),
+            "can_create": bool(_read_config().get("creator"))}
+
+
+class Hide(BaseModel):
+    keys: list[str]        # "<source>:<name>"; empty with restore=True brings every hidden item back
+    restore: bool = False
+
+
+@router.post("/library/hide")
+def library_hide(body: Hide) -> dict[str, Any]:
+    """Take items off this machine's library page (repo items come back with every update, so they are hidden,
+    not deleted); restore=True with no keys shows them all again."""
+    cfg = _read_config()
+    hidden = set(cfg.get("library_hidden") or [])
+    hidden = set() if body.restore and not body.keys else hidden - set(body.keys) if body.restore else hidden | set(body.keys)
+    cfg["library_hidden"] = sorted(hidden)
+    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"hidden": len(hidden)}
 
 
 @router.get("/motion-templates")
@@ -694,8 +723,9 @@ def bug_report(body: BugReport) -> dict[str, Any]:
     f.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     md = chr(10).join([report["text"], "", f"- page: {report['page']}",
                      f"- version: {report['version']} ({report['commit']})",
-                     f"- machine: {report['machine']}", f"- time: {report['time']}", "", "errors:", "```",
+                     f"- time: {report['time']}", "", "errors:", "```",
                      *report["errors"], "```"])
+    md = md.replace(str(Path.home()), "~")   # the issue is public: no machine name or user folder in it
     title = report["text"].splitlines()[0][:80]
     url = "https://github.com/poomiiz/ClipKit/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
     return {"saved": str(f), "issue_url": url}

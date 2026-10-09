@@ -9,7 +9,7 @@ Check with your eyes and ears on the real output, not on the plan. Grab frames w
 
 1. **Story** - opens on the promise; one idea; ends on a full sentence plus a button.
 2. **Duplicates** - no point already made in an earlier clip of the series.
-3. **Subtitles** - every card matches what is said at that moment; names and brands spelled right; no gap > 1 s while someone talks.
+3. **Subtitles** - every card matches what is said at that moment; names and brands spelled right; no gap > 1 s while someone talks. The `ClipKit: ตรวจคำผิด` check has been run on every project, whichever speech model (`whisper_model`) made the subtitles.
 4. **Thai text** - no broken vowels or tone marks; long cards wrapped by hand.
 5. **Cuts** - no cut inside a word or syllable; no flash frames.
 6. **Inserts** - each on its keyword; framed on the subject; no watermark; no banding.
