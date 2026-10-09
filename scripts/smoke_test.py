@@ -194,6 +194,25 @@ def pictures_are_stills():
     assert video_edit.is_image("a.JPG") and video_edit.is_image("b.png") and not video_edit.is_image("c.mp4")
 
 
+def subtitles_stay_on_one_line():
+    # a long subtitle wrapped to two lines and ran off the frame: it goes on as the next piece instead
+    import render
+    from PIL import ImageFont
+    f, px, w = render.DEFAULT_FONT, 120.0, 900.0
+    font = ImageFont.truetype(str(f), 100)
+    text = "ถ้าเราไม่รู้ว่าคุณค่าของเราอยู่ตรงไหน เราก็จะไม่มีวันรู้ว่าควรขายอะไรให้ใคร in a very long English tail"
+    pieces = render.one_line(text, f, px, w, 1.0, 9.0)
+    assert len(pieces) > 1 and "".join(x for x, *_ in pieces).replace(" ", "") == text.replace(" ", ""), pieces
+    for piece, a, b, size in pieces:
+        assert "\n" not in piece and 1.0 <= a < b <= 9.0, piece
+        assert font.getlength(piece) * size / 100 <= w + 1, (piece, font.getlength(piece) * size / 100)
+    # two emphasis lines in a row stack in two beats; a held white line keeps them replacing each other
+    assert render.stacks(["color", "color", "color", None, "hold", "color"]) == {0: 1}
+    assert render.stacks(["color", "hold", "color"]) == {}
+    p = render.pair_look({"preset": "4-levels"})
+    assert p["caption_shadow"] and p["second"] and p["second_at"] == (0.3, -6.0) and p["caption_lang"] == "en"
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"
