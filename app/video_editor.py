@@ -115,6 +115,7 @@ class DraftStyleRequest(BaseModel):
     y: float | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     stroke: float | None = None
+    line_h: float | None = Field(default=None, ge=0.8, le=2.5)
 
 
 class DraftTrimRequest(BaseModel):
@@ -584,6 +585,36 @@ def draft_subs(req: DraftSubsRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+class TidyRequest(BaseModel):
+    path: str
+    mode: str = Field(default="lines", pattern="^(lines|split|shrink)$")
+
+
+@router.get("/draft/text-check")
+def draft_text_check(path: str = Query(...)) -> dict[str, Any]:
+    """What the text settings page shows before an export: the subtitle look and the lines outside the safe zone."""
+    import render
+    try:
+        subs = capcut_edit.read_draft(path)["subtitles"]
+        f = Path(path) / "clipkit_style.json"
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        return {"look": subs[0] if subs else None, "count": len(subs), "problems": render.safe_zone(path),
+                "subs": [{k: s[k] for k in ("start", "end", "text")} for s in subs],
+                "box": render.safe_box(style), "zone": style.get("safe_zone") or "general",
+                "zones": {k: z["label"] for k, z in render.SAFE_ZONES.items()},
+                "line_h": float(style.get("line_h", render.LINE_H)), "px_per_size": render.CAPCUT_PX}
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/draft/tidy")
+def draft_tidy(req: TidyRequest) -> dict[str, Any]:
+    try:
+        return capcut_edit.tidy_subtitles(req.path, req.mode)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/draft/subs/fill")
 def draft_subs_fill(req: FillGapsRequest) -> dict[str, Any]:
     """Subtitle only the stretches that have none, for footage added later."""
@@ -634,7 +665,7 @@ def draft_layout(req: TextLayoutRequest) -> dict[str, Any]:
 def draft_style(req: DraftStyleRequest) -> dict[str, Any]:
     try:
         return capcut_edit.restyle_subtitles(req.path, size=req.size, y=req.y,
-                                             color=req.color, stroke=req.stroke)
+                                             color=req.color, stroke=req.stroke, line_h=req.line_h)
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -782,7 +813,33 @@ def config() -> dict[str, Any]:
         "whisper_cpu_fallback": video_edit.WHISPER_CPU_FALLBACK,
         "gpu": video_edit._has_cuda(),
         "local_llm": video_edit.LOCAL_LLM_URL,
+        "simple": video_edit.kitconfig.simple(),
+        "team": video_edit.kitconfig.is_team(),
     }
+
+
+@router.post("/update")
+def update() -> dict[str, Any]:
+    """The Update button: take the newest ClipKit from GitHub (team clones), then restart the app."""
+    root = Path(__file__).resolve().parents[1]
+    git = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, timeout=120)  # noqa: E731
+    if git("fetch", "-q").returncode != 0:
+        raise HTTPException(400, "ต่อ GitHub ไม่ได้ ลองเช็กเน็ตแล้วกดใหม่")
+    if git("rev-parse", "HEAD").stdout == git("rev-parse", "@{u}").stdout:
+        return {"updated": False, "note": "เป็นตัวล่าสุดแล้ว"}
+    r = git("pull", "-q", "--ff-only")
+    if r.returncode != 0:
+        raise HTTPException(400, "อัปเดตไม่ได้ เพราะมีไฟล์ในโฟลเดอร์ ClipKit ถูกแก้ด้วยมือ ให้สั่ง clipkit repair")
+    import sys
+    import threading
+    def restart():
+        import os
+        import time
+        time.sleep(1)
+        subprocess.Popen([sys.executable, *sys.argv], cwd=str(Path(__file__).parent))
+        os._exit(0)
+    threading.Thread(target=restart, daemon=True).start()
+    return {"updated": True, "note": "อัปเดตแล้ว กำลังเปิดใหม่"}
 
 
 # --- motion on top of the clip: pick a subtitle line, pick a template, it renders and sits at that time ---
@@ -797,8 +854,9 @@ def _overlays(path: str) -> list[dict[str, Any]]:
 
 def _split2(text: str) -> tuple[str, str]:
     """Two halves at the Thai word break that balances them (lead / punch, key / sub)."""
+    import render
     from pythainlp.tokenize import word_tokenize
-    w = word_tokenize(text.replace("\n", " "), keep_whitespace=True)
+    w = word_tokenize(render.unbreak(text), keep_whitespace=True)
     if len(w) < 2:
         return text, ""
     i = min(range(1, len(w)), key=lambda k: abs(len("".join(w[:k])) - len("".join(w[k:]))))
@@ -890,6 +948,16 @@ def draft_zoomcut(req: ZoomCut) -> dict[str, Any]:
     style["zoomcut"] = req.on
     f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return {"zoomcut": req.on}
+
+
+@router.post("/draft/spelling-request")
+def draft_spelling_request(req: DraftPath) -> dict[str, Any]:
+    """Lines for the agent to check for misheard words; the editor pastes the returned command into chat."""
+    lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
+    if not lines:
+        raise HTTPException(400, "ยังไม่มีซับ — ถอดเสียงก่อน")
+    (Path(req.path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"command": video_edit.agent_command("spelling", req.path), "lines": len(lines)}
 
 
 @router.post("/draft/punch-request")
@@ -1023,8 +1091,9 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         style.setdefault("zoomcut", True)
         style.setdefault("skin", render.SKIN_DEFAULT)
         f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
-        b = broll_fill(req.path)
-        steps.append(f"ภาพประกอบ {len(b['broll'])} จุด" if b["queries"] else "ภาพประกอบ: ยังไม่ได้ให้ Claude เลือกคำค้น")
+        if not video_edit.kitconfig.simple():
+            b = broll_fill(req.path)
+            steps.append(f"ภาพประกอบ {len(b['broll'])} จุด" if b["queries"] else "ภาพประกอบ: ยังไม่ได้ให้ Claude เลือกคำค้น")
         cfg = kit_settings._read_config()
         out = cfg.get("output_dir") or cfg.get("work_root")
         if not out:
@@ -1408,4 +1477,6 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     shutil.rmtree(tmp, ignore_errors=True)
     if r.returncode != 0 or not target.is_file():
         raise HTTPException(500, "render failed: " + (r.stderr or r.stdout).strip()[-800:])
+    import render
+    render.normalize_loudness(target)
     return {"file": str(target), "seconds": round(_t.time() - t0, 1)}

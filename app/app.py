@@ -63,7 +63,31 @@ app.mount("/motion", StaticFiles(directory=str(HERE.parent / "motion"), html=Tru
 app.mount("/ckfonts", StaticFiles(directory=str(HERE.parent / "fonts")), name="ckfonts")  # Kanit for the live player
 app.mount("/", StaticFiles(directory=str(HERE / "static"), html=True), name="static")
 
+
+def _watch_drafts() -> None:
+    """ClipKit - Autosave: record every project CapCut saves (capcut_edit.watch), in a thread, on every machine.
+    Stays on this machine; config.json "autosave": false turns it off."""
+    import threading
+    import capcut_edit
+    cfg = kit_settings._read_config()
+    if cfg.get("autosave", True) and cfg.get("capcut_drafts"):
+        threading.Thread(target=capcut_edit.watch, args=(cfg["capcut_drafts"],), daemon=True).start()
+        threading.Thread(target=_profile_daily, daemon=True).start()
+
+
+def _profile_daily() -> None:
+    """Remake the Autosave style profile (and presets/my-style.json) once a day; checked every hour."""
+    import time
+    sys.path.insert(0, str(HERE.parent / "scripts"))
+    import autosave_profile
+    while True:
+        if kit_settings._read_config().get("output_dir"):
+            autosave_profile.refresh()
+        time.sleep(3600)
+
+
 if __name__ == "__main__":
+    _watch_drafts()
     if sys.stdout:  # pythonw (autostart) has no console
         print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info",
