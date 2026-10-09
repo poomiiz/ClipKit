@@ -33,7 +33,10 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
    the link number, e.g. `2 coffee.mp4`), then you run with `--insert`. Never log in to Envato for them.
 5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
    tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
-6. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
+6. Before showing the person any project, do the `ClipKit: ตรวจคำผิด` steps below on it. This is not optional and
+   applies whichever speech model is set (large-v3 or turbo); ClipKit's own clean-up (spacing, English terms,
+   learned fixes) already runs inside every transcription.
+7. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
 
 ## Commands pasted from the ClipKit app
 The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
