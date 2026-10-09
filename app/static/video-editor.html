@@ -515,7 +515,7 @@
   body.simple .media { display: none !important; }
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
-<link rel="stylesheet" href="/shell.css?v=3">
+<link rel="stylesheet" href="/shell.css?v=4">
 </head>
 <body>
 <div class="app">
@@ -689,7 +689,9 @@
             ตัดสลับด้วยการซูม · ประโยคเว้นประโยคซูมเข้า 12% ให้ภาพเปลี่ยนจังหวะ (ไม่ต้องใช้ภาพเพิ่ม)</label>
           <div id="saPunch" style="display:none;margin-top:8px">
             <button class="small" onclick="punchAsk()">✨ ให้ Claude เลือกคำเน้น</button>
-            <div id="saPunchBox"></div></div>
+            <div id="saPunchBox"></div>
+            <button class="small" onclick="spellAsk()">🔤 ให้ Claude ตรวจคำผิด</button>
+            <div id="saSpellBox"></div></div>
         </div>
 
         <!-- Motion on top: click a line, pick a look; it renders and sits at that moment -->
@@ -2413,6 +2415,14 @@ document.addEventListener('keydown', e => {
   if (ctrl && k === 'v' && lySel >= 0 && lyClip) { e.preventDefault(); Object.assign(LY[lySel], lyClip); layoutList(); return; }
   if (ctrl && k === 's') { e.preventDefault(); layoutSave(); }
 });
+// misheard words: the agent fixes them line by line, and ClipKit remembers each fix for the next transcripts
+async function spellAsk() {
+  const box = document.getElementById('saSpellBox');
+  try {
+    const r = await api('draft/spelling-request', {path: state.draft.path});
+    box.innerHTML = agentBox(r.command, `ปิด CapCut ก่อน แล้วส่งคำสั่งนี้ให้ Claude ในแชต (${r.lines} บรรทัด) · คำที่แก้จะถูกจำไว้ ถอดเสียงครั้งหน้าแก้ให้เอง`);
+  } catch (e) { box.textContent = '❌ ' + e.message; }
+}
 // the punch words that carry each phrase: the agent picks them (plugin model), the export uses them
 async function punchAsk() {
   const box = document.getElementById('saPunchBox');
@@ -2777,7 +2787,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 </script>
-<script src="/shell.js?v=6"></script>
+<script src="/shell.js?v=7"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

@@ -10,3 +10,4 @@ project_templates/
 *.log
 motion/collection/
 presets/my-style.json
+corrections.json
