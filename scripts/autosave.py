@@ -156,7 +156,7 @@ def run() -> int:
             f.write(json.dumps({"at": now, "project": folder.name, "by": who, "new": not before, "changed": changed},
                                ensure_ascii=False) + "\n")
         saved.append(folder.name)
-    if saved:
+    if saved and git(hist, "status", "--porcelain"):  # rewritten with the same text = nothing new for git
         git(hist, "add", "-A")
         git(hist, "commit", "-q", "-m", f"{len(saved)} project(s): " + ", ".join(saved)[:200])
     print(f"saved {len(saved)} project(s)" + (f", {len(broken)} broken:" if broken else ""))
