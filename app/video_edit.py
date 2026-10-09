@@ -41,7 +41,15 @@ CAPCUT_TEMPLATE_DRAFT = os.environ.get("CAPCUT_TEMPLATE_DRAFT", "")
 #   medium   cpu/int8      233s, drops whole spans
 # So: best model on the GPU, and only fall back to CPU if CUDA is missing.
 WHISPER_MODEL = os.environ.get("VIDEO_WHISPER_MODEL", "large-v3")
+# Settings picks the model (config.json whisper_model). 9 Oct 2026, 180 s of Thai, RTX 3070 Ti, 15 s windows:
+#   large-v3 121 s, large-v3-turbo 26 s with slightly more misspellings
 WHISPER_CPU_FALLBACK = os.environ.get("VIDEO_WHISPER_CPU_MODEL", "medium")
+
+
+def whisper_model() -> str:
+    """The model chosen in Settings, re-read on each call so a change applies to the next transcription."""
+    return kitconfig._load().get("whisper_model") or WHISPER_MODEL
+
 
 _model = None
 
@@ -276,7 +284,7 @@ def _get_model(model_size: str | None = None):
         _enable_cuda_libs()
         # int8_float16: large-v3 in about half the VRAM of float16 with near-identical accuracy, so it fits on an
         # 8 GB card next to the local LLM that keeps its own share loaded
-        wanted = (model_size or WHISPER_MODEL, "cuda", "int8_float16")
+        wanted = (model_size or whisper_model(), "cuda", "int8_float16")
     else:
         wanted = (model_size or WHISPER_CPU_FALLBACK, "cpu", "int8")
 
