@@ -233,6 +233,58 @@ def name_check_works():
     assert not sync_team.names_in('icon "ClipKit Nina.lnk"'.encode()), "the allowed icon name was flagged"
 
 
+
+def style_lab_previews_and_keeps():
+    # a style is only kept after its preview exists, never over another one, and a broken colour is refused
+    import style_lab
+    with tempfile.TemporaryDirectory() as t:
+        t = Path(t)
+        keep = style_lab.lab, style_lab.PRESETS, style_lab.PREVIEWS
+        keep += (style_lab.PARTS,)
+        style_lab.lab = lambda: t / "lab"
+        style_lab.PRESETS, style_lab.PREVIEWS, style_lab.PARTS = t / "presets", t / "presets" / "previews", t / "parts"
+        (t / "lab").mkdir(); (t / "presets").mkdir()
+        try:
+            proj = t / "proj"
+            proj.mkdir()
+            seg = lambda i, y: {"material_id": i, "clip": {"transform": {"x": 0, "y": y}, "scale": {"x": 1}}}  # noqa: E731
+            mat = lambda i, size, rgb: {"id": i, "content": json.dumps({"text": "x", "styles": [{"size": size,  # noqa: E731
+                  "fill": {"content": {"solid": {"color": rgb}}}, "strokes": [{"width": 0.05}]}]})}
+            (proj / "draft_content.json").write_text(json.dumps({
+                "materials": {"texts": [mat("a", 24, [1, 1, 1]), mat("b", 30, [1, 0.5, 0])]},
+                "tracks": [{"type": "text", "segments": [seg("a", -0.3), seg("b", -0.45)]}]}), encoding="utf-8")
+            x = style_lab.start(str(proj))
+            assert x["status"] == "ready" and Path(x["gif"]).is_file() and Path(x["png"]).is_file(), x
+            assert style_lab.save(x["folder"], "Mine") == {"parts": ["main"], "preset": "my-mine"}
+            got = style_lab.collection()
+            assert got["presets"][0]["gif"] and got["parts"]["main"][0]["gif"], "kept style lost its preview"
+            assert style_lab.compose("mix", "mine")["preset"] == "my-mix"
+            link = style_lab.share("my-mix")["url"]
+            assert link.startswith("https://github.com/") and "%5Bstyle%5D" in link, link
+            shared = t / "shared.json"
+            shared.write_text((t / "presets" / "my-mix.json").read_text(encoding="utf-8"), encoding="utf-8")
+            assert style_lab.approve(shared, "mix")["preset"] == "team-mix"
+            assert "source" not in json.loads((t / "presets" / "team-mix.json").read_text(encoding="utf-8"))
+            assert style_lab.collection()["team"][0]["gif"], "approved style has no preview"
+            try:
+                style_lab.save(x["folder"], "other", ["caption"])
+                raise AssertionError("a part the style does not have was kept")
+            except ValueError:
+                pass
+            try:
+                style_lab.save(x["folder"], "mine")
+                raise AssertionError("a kept style was overwritten")
+            except FileExistsError:
+                pass
+            try:
+                style_lab.check({"normal": {"size": 22, "y": 0, "color": "white", "outline": "#000000", "outline_width": 0},
+                                 "emphasis": x["style"]["emphasis"]})
+                raise AssertionError("a colour that is not #rrggbb was accepted")
+            except ValueError:
+                pass
+        finally:
+            style_lab.lab, style_lab.PRESETS, style_lab.PREVIEWS, style_lab.PARTS = keep
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)
