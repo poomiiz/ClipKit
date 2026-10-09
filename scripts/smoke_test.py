@@ -74,6 +74,15 @@ def capcut_ids_unique_and_synced():
                 "Timelines copy differs from draft_content.json"
 
 
+def autosave_spots_a_broken_project():
+    # a timeline whose clip points at a missing material would not open in CapCut: never saved as "good"
+    import autosave
+    ok = {"duration": 1, "materials": {"videos": [{"id": "m1"}]}, "tracks": [{"type": "video", "segments": [{"material_id": "m1"}]}]}
+    assert autosave.problems(ok) == [], autosave.problems(ok)
+    bad = {**ok, "tracks": [{"type": "video", "segments": [{"material_id": "gone"}]}]}
+    assert autosave.problems(bad), "missing material not caught"
+
+
 def outside_edit_is_caught():
     import capcut_edit
     from video_edit import VideoEditError
