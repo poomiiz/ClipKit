@@ -48,7 +48,8 @@ FRAMES = 6              # frames pulled from a video for the agent to look at
 
 
 def lab() -> Path:
-    d = Path(kitconfig.need("output_dir")) / "style_lab"
+    # same fallback as the app's covers and motion: no output folder set yet = the workspace folder
+    d = Path(kitconfig.CFG.get("output_dir") or kitconfig.need("work_root")) / "style_lab"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -364,6 +365,18 @@ def collection() -> dict:
             out["parts"][cat].append({"name": p.stem, "about": json.loads(p.read_text(encoding="utf-8")).get("about", ""),
                                       **_pics(p)})
     return out
+
+
+def remove(preset: str) -> dict:
+    """Delete one of the person's own presets (presets/my-<name>.json) and its previews. Team and built-in
+    presets come from the repo and are only hidden on the library page, never deleted here."""
+    f = PRESETS / f"{preset}.json"
+    if not preset.startswith("my-") or preset != _slug(preset) or not f.is_file():
+        raise ValueError(f"not one of your own presets: {preset}")
+    f.unlink()
+    for ext in ("png", "gif"):
+        (PREVIEWS / f"{preset}.{ext}").unlink(missing_ok=True)
+    return {"removed": preset}
 
 
 def main() -> int:
