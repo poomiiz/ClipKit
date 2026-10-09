@@ -33,12 +33,16 @@
     go: '<path d="M5 12h14M13 6l6 6-6 6"/>',
     note: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
     pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
+    type: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
+    square: '<rect x="4" y="4" width="16" height="16" rx="2"/>',
+    kbd: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   };
   const E = {'❌': 'err', '✅': 'ok', '✓': 'check', '⚠': 'warn', '⚡': 'zap', '🎬': 'film', '🎞': 'film', '🎵': 'music',
     '✂': 'cut', '✨': 'spark', '🏷': 'tag', '↶': 'undo', '↺': 'undo', '💾': 'save', '🔎': 'search', '🔍': 'search',
     '🤖': 'bot', '🎙': 'mic', '🖼': 'image', '🎨': 'palette', '📤': 'export', '⬆': 'up', '📂': 'folder', '📁': 'folder',
     '🩹': 'fix', '🔊': 'sound', '⏱': 'timer', '⏳': 'timer', '💬': 'chat', '👀': 'eye', '🔄': 'redo', '🔤': 'spell',
-    '✋': 'hand', '🚀': 'go', '📝': 'note', '✍': 'pen'};
+    '✋': 'hand', '🚀': 'go', '📝': 'note', '✍': 'pen',
+    '🅰': 'type', '⬜': 'square', '⌨': 'kbd'};
   window.ckIcon = (k, e = '') => `<svg class="ck-ic ck-ic-${k}" viewBox="0 0 24 24" aria-hidden="true"><desc>${e}</desc>${L[k]}</svg>`;
   // <desc> keeps the emoji in textContent, so code that reads messages (the ❌ watcher below) still sees it
   const RE = new RegExp('(' + Object.keys(E).join('|') + ')️?', 'u');
