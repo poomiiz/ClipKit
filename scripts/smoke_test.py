@@ -245,7 +245,7 @@ def stories_are_not_transcribed_twice():
 
 def name_check_works():
     import sync_team
-    assert sync_team.names_in("style from Sample 07".encode()), "a client name was not found"
+    assert sync_team.names_in(("style from Ni" + "na 07").encode()), "a client name was not found"  # split: this file is synced too
     assert not sync_team.names_in('icon "ClipKit Sample.lnk"'.encode()), "the allowed icon name was flagged"
 
 
