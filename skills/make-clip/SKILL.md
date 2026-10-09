@@ -113,6 +113,8 @@ makes a small zip with no video - tell them it contains the clip's spoken words.
 Every change ClipKit writes to a project (subtitles, style, cuts, hook...) is also recorded with its before and after
 in the project's own `clipkit_changes.jsonl` (stays on this machine); `editdata.py extract` loads it into `edits.sqlite`
 (table `changes`) for the clips in approved.json, so the owner's own style can be learned from it.
+Each edit also keeps a copy of the project in `clipkit_history/` (an autosave history):
+`python scripts/draft_history.py "<project folder>"` lists them, adding a version name puts that one back.
 
 **ClipKit itself goes wrong** (an error, CapCut will not open a project, a crash): report it through the log,
 never as a loose file on the Desktop - `python scripts/cutlog.py feedback "<project folder>" "BUG: <what happened,

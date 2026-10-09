@@ -108,6 +108,10 @@ def edits_are_logged():
         rows = [json.loads(x) for x in (f / capcut_edit.CHANGES).read_text(encoding="utf-8").splitlines()]
         assert [r["added"]["cards"][0]["size"] for r in rows] == [8.0, 12.0], rows
         assert rows[1]["removed"]["cards"][0]["size"] == 8.0, rows[1]
+        versions = capcut_edit.history(str(f))
+        assert len(versions) == 3 and versions[0].endswith(" start.json.gz"), versions
+        capcut_edit.restore(str(f), rows[0]["version"])  # back to size 8
+        assert capcut_edit._rows(capcut_edit._load(f))["cards"][0].count('"size": 8.0') == 1
 
 
 def pictures_are_stills():
