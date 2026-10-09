@@ -515,7 +515,7 @@
   body.simple .media { display: none !important; }
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
-<link rel="stylesheet" href="/shell.css?v=5">
+<link rel="stylesheet" href="/shell.css?v=6">
 </head>
 <body>
 <div class="app">
@@ -1870,14 +1870,15 @@ async function makeDraft(open = true) {
   if (!state.file) { out.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
   if (!name) { out.textContent = '❌ ตั้งชื่อโปรเจกต์ก่อน'; return; }
   main.disabled = true;
-  out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
+  out.innerHTML = (state.batchBar || '') + '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
     const template = document.getElementById('tpl').value || null;
     const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, template, ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
     if ((state.via || 'capcut') === 'capcut') {  // CapCut route: settle everything the template asks for, then lay it out in CapCut
-      out.innerHTML = '<span class="spin"></span> ถอดเสียง · ตัดช่วงหายใจ · ปรับสี · ทำโปรเจกต์ CapCut… (ราว 1–3 นาที)';
-      const p = await api('draft/prepare', {path: r.draft_path, template});
+      const show = p => out.innerHTML = (state.batchBar || '') + ckBar(['สร้างโปรเจกต์', ...p.stages], p.i + 1, ckTime(p.elapsed));
+      show({stages: ['ถอดเสียงใส่ซับ', 'ตัดช่วงหายใจ', 'ปรับสี', 'ทำโปรเจกต์ CapCut'], i: 0, elapsed: 0});
+      const p = await ckTrack(r.draft_path, api('draft/prepare', {path: r.draft_path, template}), show);
       out.textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"';
     }
     drafts = (await api('drafts')).drafts;
@@ -1901,11 +1902,12 @@ async function planStories() {
   if (!state.file) { box.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
   const file = state.file.path;
   document.getElementById('planStoriesBtn').disabled = true;
+  const t0 = Date.now(), PLAN = ['ถอดเสียงทั้งไฟล์', 'Claude แบ่งเรื่อง', 'เลือกเรื่องแล้วสร้างโปรเจกต์'];
   try {
     let job = await api('story-plan', {file});
     while (job.status === 'running' || job.status === 'waiting') {
-      if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
-      else if (!box.querySelector('.agent-cmd')) box.innerHTML = agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
+      if (job.status === 'running') box.innerHTML = ckBar(PLAN, 0, ckTime((Date.now() - t0) / 1000) + ' · ไฟล์ยาวอาจใช้หลายนาที');
+      else if (!box.querySelector('.agent-cmd')) box.innerHTML = ckBar(PLAN, 1) + agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
       await new Promise(r => setTimeout(r, 3000));
       job = await api('story-plan?file=' + encodeURIComponent(file));
     }
@@ -1985,12 +1987,15 @@ async function makeChosen(kind) {
   if (!list.length) return kind === 'hyperframes' ? makeHyperframes() : makeDraft();
   const nameBox = document.getElementById('pname');
   const base = nameBox.value.trim().replace(/ - \d+ .*$/, '') || state.file.name.replace(/\.[^.]+$/, '');
-  const done = [], made = [];
+  const done = [], made = [], t0 = Date.now();
   const out = document.getElementById('result');
   out.scrollIntoView({block: 'center'});
   try {
     for (const i of list) {
       const st = storyList[i];
+      // several stories: a bar over the stories, time left = average time per finished story so far
+      const left = done.length ? ' · เหลือราว ' + ckTime((Date.now() - t0) / 1000 / done.length * (list.length - done.length)) : '';
+      state.batchBar = list.length > 1 ? ckBar(list.map(k => 'เรื่อง ' + (k + 1)), done.length, ckTime((Date.now() - t0) / 1000) + left) : '';
       nameBox.value = base + ' - ' + (i + 1) + ' ' + st.title;
       state.range = {start: st.start, end: st.end};
       const single = list.length === 1;
@@ -1998,14 +2003,14 @@ async function makeChosen(kind) {
         const f = await api('focus', {file: state.file.path, start: st.start, end: st.end}).catch(() => null);
         if (f && f.found) { state.focus = {x: f.x, y: f.y}; drawCrop(); }
       }
-      const say = step => { if (!single) out.innerHTML = `<span class="spin"></span> เรื่อง ${i + 1} (${done.length + 1}/${list.length}) · ${step}…`; };
+      const say = step => { if (!single) out.innerHTML = state.batchBar + `<span class="spin"></span> เรื่อง ${i + 1} · ${step}…`; };
       say('สร้างโปรเจกต์');
       if (kind === 'hyperframes') await makeHyperframes(single);
       else if (single) await makeDraft(true);
       else if (kind === 'clipkit') {   // several stories: subtitles + MP4 without stopping at the workbench
         const d = await makeDraft(false);
         say('ทำทุกขั้น (ซับ ตัด ภาพประกอบ เพลง) แล้วทำตัวอย่าง');
-        await api('draft/auto', {path: d.path});
+        await ckTrack(d.path, api('draft/auto', {path: d.path}), p => out.innerHTML = state.batchBar + ckBar(p.stages, p.i, ckTime(p.elapsed)));
         made.push(d.path);
       } else await makeDraft(false);
       done.push(i + 1);
@@ -2018,7 +2023,7 @@ async function makeChosen(kind) {
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
-  } finally { state.range = null; nameBox.value = base; markMade(); if (window.ckLoadProjects) window.ckLoadProjects(); }
+  } finally { state.range = null; state.batchBar = ''; nameBox.value = base; markMade(); if (window.ckLoadProjects) window.ckLoadProjects(); }
 }
 
 // Alternative to CapCut: open the raw file as a HyperFrames project (motion graphics, renders to MP4)
@@ -2584,7 +2589,8 @@ async function autoRun() {
   busy.innerHTML = '<span class="spin"></span> กำลังทำทุกขั้น… (ถอดเสียง ตัด ซับ ภาพประกอบ เพลง เอฟเฟกต์ · ราว 1–3 นาที)';
   v.style.display = 'none';
   try {
-    const r = await api('draft/auto', {path: state.draft.path});
+    const r = await ckTrack(state.draft.path, api('draft/auto', {path: state.draft.path}),
+                            p => busy.innerHTML = ckBar(p.stages, p.i, ckTime(p.elapsed)));
     busy.textContent = '✅ ตัวอย่างพร้อมแล้ว · ดูให้จบก่อนกด "ส่งออกตัวจริง"';
     v.src = '/api/kit/media?path=' + encodeURIComponent(r.preview.file) + '&t=' + Date.now();
     v.style.display = 'block';
@@ -2787,7 +2793,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 </script>
-<script src="/shell.js?v=8"></script>
+<script src="/shell.js?v=9"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

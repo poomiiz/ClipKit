@@ -31,7 +31,7 @@ code{display:block;padding:8px 10px;background:#080a10;border-radius:8px;font-si
 h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 .parts{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--sub)}.parts label{display:flex;gap:4px;align-items:center}
 </style>
-<link rel="stylesheet" href="/shell.css?v=4">
+<link rel="stylesheet" href="/shell.css?v=6">
 </head>
 <body>
 <main>
@@ -187,6 +187,6 @@ api('/api/style/capcut-projects').then(j => j.projects.forEach(p => {
 })).catch(e => { $('startMsg').textContent = '❌ ' + e.message; $('startMsg').className = 'msg bad'; });
 load();
 </script>
-<script src="/shell.js?v=8"></script>
+<script src="/shell.js?v=9"></script>
 </body>
 </html>
