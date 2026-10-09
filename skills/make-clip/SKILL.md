@@ -110,6 +110,9 @@ result ("ซับยาวไป", "ซับสั้นเกิน", "เร
 `python scripts/cutlog.py feedback "<project folder>" "<what they said, their words>"`, then fix, then run it again
 with `--fix "<what you changed>"`. Asked to send results back: `clipkit report` (or `python scripts/cutlog.py report`)
 makes a small zip with no video - tell them it contains the clip's spoken words.
+Every change ClipKit writes to a project (subtitles, style, cuts, hook...) is also recorded with its before and after
+in the project's own `clipkit_changes.jsonl` (stays on this machine); `editdata.py extract` loads it into `edits.sqlite`
+(table `changes`) for the clips in approved.json, so the owner's own style can be learned from it.
 
 **ClipKit itself goes wrong** (an error, CapCut will not open a project, a crash): report it through the log,
 never as a loose file on the Desktop - `python scripts/cutlog.py feedback "<project folder>" "BUG: <what happened,
