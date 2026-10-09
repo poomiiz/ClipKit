@@ -89,6 +89,31 @@ def outside_edit_is_caught():
         raise AssertionError("an edit made outside ClipKit was not caught")
 
 
+
+def edits_are_logged():
+    # the owner's edits are the data a personal style is learned from: each write records before and after
+    import capcut_edit
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        d = capcut_edit._load(f)
+        content = {"text": "สวัสดี", "styles": [{"size": 8.0}]}
+        d["materials"]["texts"] = [{"id": "m", "content": json.dumps(content)}]
+        d["tracks"] = [{"type": "text", "segments": [{"material_id": "m", "clip": {},
+                                                       "target_timerange": {"start": 0, "duration": 1000000}}]}]
+        capcut_edit._save(f, d, "smoke")
+        content["styles"][0]["size"] = 12.0
+        d["materials"]["texts"][0]["content"] = json.dumps(content)
+        capcut_edit._save(f, d, "smoke")
+        rows = [json.loads(x) for x in (f / capcut_edit.CHANGES).read_text(encoding="utf-8").splitlines()]
+        assert [r["added"]["cards"][0]["size"] for r in rows] == [8.0, 12.0], rows
+        assert rows[1]["removed"]["cards"][0]["size"] == 8.0, rows[1]
+        versions = capcut_edit.history(str(f))
+        assert len(versions) == 3 and versions[0].endswith(" start.json.gz"), versions
+        capcut_edit.restore(str(f), rows[0]["version"])  # back to size 8
+        assert capcut_edit._rows(capcut_edit._load(f))["cards"][0].count('"size": 8.0') == 1
+
+
 def pictures_are_stills():
     # a picture probed as a 0.04 s video showed for one frame
     import video_edit

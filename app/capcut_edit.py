@@ -97,12 +97,82 @@ def fresh_ids(folder: Path) -> str:
     return new
 
 
+CHANGES = "clipkit_changes.jsonl"
+
+
+def _rows(draft: dict[str, Any]) -> dict[str, list[str]]:
+    """The draft as editdata.py reads an approved clip (cuts, cards, inserts, audio, effects), one JSON row each."""
+    import sqlite3
+    import editdata
+    con = sqlite3.connect(":memory:")
+    con.executescript(editdata.SCHEMA)
+    editdata.read(con.cursor(), 0, "", draft)
+    out = {}
+    for t in ("cuts", "cards", "inserts", "audio", "effects"):
+        cur = con.execute(f"SELECT * FROM {t}")
+        cols = [c[0] for c in cur.description][2:]  # without clip_id, version
+        out[t] = [json.dumps(dict(zip(cols, [round(v, 2) if isinstance(v, float) else v for v in r[2:]])),
+                             ensure_ascii=False, sort_keys=True) for r in cur]
+    return out
+
+
+HISTORY = "clipkit_history"
+
+
+def _keep_version(folder: Path, text: str, op: str) -> str:
+    """One gzipped copy of the draft per edit, like an autosave history; restore() puts any of them back."""
+    import gzip
+    d = folder / HISTORY
+    d.mkdir(exist_ok=True)
+    name = f"{time.strftime('%Y%m%d-%H%M%S')}-{int(time.time() * 1000) % 1000:03d} {op}.json.gz"
+    (d / name).write_bytes(gzip.compress(text.encode("utf-8")))
+    return name
+
+
+def history(folder: str) -> list[str]:
+    """The project's saved versions, oldest first."""
+    d = Path(folder) / HISTORY
+    return sorted(p.name for p in d.glob("*.json.gz")) if d.is_dir() else []
+
+
+def restore(folder: str, version: str) -> None:
+    """Put a saved version back (itself recorded as a new edit, so nothing is lost)."""
+    import gzip
+    f = Path(folder)
+    src = f / HISTORY / version
+    if not src.is_file():
+        raise VideoEditError(f"no saved version {version!r} in {f / HISTORY}")
+    _load(f)  # refuses a project edited outside ClipKit
+    _save(f, json.loads(gzip.decompress(src.read_bytes()).decode("utf-8")), "restore")
+
+
+def _log_change(folder: Path, before_text: str, text: str, op: str) -> None:
+    """Every edit ClipKit writes, as rows removed and added plus a saved version, in the project folder
+    (stays on this machine). editdata.py extract loads the log into edits.sqlite, so the owner's own way of
+    editing can be learned from it."""
+    from collections import Counter
+    before, after = json.loads(before_text), json.loads(text)
+    b, a = _rows(before), _rows(after)
+    removed = {t: [json.loads(r) for r in (Counter(b[t]) - Counter(a[t])).elements()] for t in b}
+    added = {t: [json.loads(r) for r in (Counter(a[t]) - Counter(b[t])).elements()] for t in a}
+    removed, added = {t: v for t, v in removed.items() if v}, {t: v for t, v in added.items() if v}
+    if not removed and not added:
+        return
+    if not history(str(folder)):
+        _keep_version(folder, before_text, "start")
+    row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": op, "version": _keep_version(folder, text, op),
+           "removed": removed, "added": added}
+    with open(folder / CHANGES, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
     content = folder / "draft_content.json"
     backup = content.with_suffix(f".json.bak_{op}")
     if not backup.exists():
         shutil.copy2(content, backup)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
+    _log_change(folder, content.read_text(encoding="utf-8"), text, op)
     content.write_text(text, encoding="utf-8")
     sync_timeline(folder, text)
     _seal(folder, text)
