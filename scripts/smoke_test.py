@@ -114,6 +114,26 @@ def edits_are_logged():
         assert capcut_edit._rows(capcut_edit._load(f))["cards"][0].count('"size": 8.0') == 1
 
 
+
+def broken_draft_is_not_written():
+    # a segment whose material is gone makes CapCut fail to open the project: refuse it, keep the file as it was
+    import capcut_edit
+    from video_edit import VideoEditError
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        before = (f / "draft_content.json").read_text(encoding="utf-8")
+        d = capcut_edit._load(f)
+        d["tracks"] = [{"type": "video", "segments": [{"material_id": "gone",
+                                                        "target_timerange": {"start": 0, "duration": 1}}]}]
+        try:
+            capcut_edit._save(f, d, "smoke")
+        except VideoEditError:
+            assert (f / "draft_content.json").read_text(encoding="utf-8") == before, "file changed"
+            return
+        raise AssertionError("a draft pointing at a missing material was written")
+
+
 def pictures_are_stills():
     # a picture probed as a 0.04 s video showed for one frame
     import video_edit

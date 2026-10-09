@@ -124,7 +124,8 @@ def _keep_version(folder: Path, text: str, op: str) -> str:
     import gzip
     d = folder / HISTORY
     d.mkdir(exist_ok=True)
-    name = f"{time.strftime('%Y%m%d-%H%M%S')}-{int(time.time() * 1000) % 1000:03d} {op}.json.gz"
+    n = len(list(d.glob("*.json.gz"))) + 1  # numbered: two edits in one millisecond still sort in order
+    name = f"{n:04d} {time.strftime('%Y%m%d-%H%M%S')} {op}.json.gz"
     (d / name).write_bytes(gzip.compress(text.encode("utf-8")))
     return name
 
@@ -166,7 +167,23 @@ def _log_change(folder: Path, before_text: str, text: str, op: str) -> None:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def _check(draft: dict[str, Any]) -> None:
+    """Refuse a draft CapCut cannot open: a segment whose material is not there, or a negative time.
+    Nothing is written, so the project stays at its last good version."""
+    ids = {m.get("id") for v in draft.get("materials", {}).values() if isinstance(v, list)
+           for m in v if isinstance(m, dict)}
+    for n, tr in enumerate(draft.get("tracks", [])):
+        for s in tr.get("segments", []):
+            t = s["target_timerange"]
+            where = f"track {n} ({tr.get('type')}) at {t['start'] / US:.2f}s"
+            if s.get("material_id") not in ids:
+                raise VideoEditError(f"draft would break: {where} points at a missing material {s.get('material_id')!r}")
+            if t["start"] < 0 or t["duration"] < 0:
+                raise VideoEditError(f"draft would break: {where} has a negative time")
+
+
 def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
+    _check(draft)
     content = folder / "draft_content.json"
     backup = content.with_suffix(f".json.bak_{op}")
     if not backup.exists():
