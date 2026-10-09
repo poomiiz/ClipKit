@@ -56,7 +56,23 @@ body.shell { padding-left: var(--sb-w); font-family: "Segoe UI", "Leelawadee UI"
 .tile.hero span { color: #c4c8e8; }
 .tile.hero .go { margin-left: auto; padding: 10px 18px; border-radius: 10px; background: #7c5cff; color: #fff; font-weight: 600; white-space: nowrap; }
 
+/* folded sidebar: icons only */
+.sb { transition: width .15s; }
+.sb-fold { position: absolute; top: 22px; right: -12px; width: 24px; height: 24px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--sb-line); background: var(--sb-bg); color: #8a93aa; cursor: pointer; display: grid; place-items: center; }
+.sb-fold:hover { color: #fff; border-color: var(--brand); }
+.sb-fold svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; transition: transform .15s; }
+html.sb-mini { --sb-w: 64px; }
+html.sb-mini .sb { padding: 18px 8px; }
+html.sb-mini .sb-fold svg { transform: rotate(180deg); }
+html.sb-mini .sb-name, html.sb-mini .sb-group, html.sb-mini .sb-projects, html.sb-mini .sb-foot,
+html.sb-mini .sb a.sb-item span { display: none; }
+html.sb-mini .sb-brand { padding: 4px 0 22px; justify-content: center; }
+html.sb-mini .sb a.sb-item { justify-content: center; }
+html.sb-mini .sb-projects + .sb-item { margin-top: auto; }
+
 @media (max-width: 760px) {
+  .sb-fold { display: none; }
   body.shell { padding-left: 0; padding-bottom: 64px; }
   .sb { inset: auto 0 0 0; width: auto; height: 60px; flex-direction: row; padding: 6px; border-right: 0; border-top: 1px solid var(--sb-line); }
   .sb-brand, .sb-group, .sb-foot { display: none; }
