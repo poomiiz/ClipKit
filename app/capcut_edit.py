@@ -830,6 +830,29 @@ def copy_grade(source_path: str, target_path: str) -> dict[str, Any]:
             "copied": len(template), "flags": flags}
 
 
+def _from_transcript(source: str, start: float, end: float) -> list[dict[str, Any]] | None:
+    """The phrases of start..end from the whole-file transcript (<video>.transcript.json) when it has word times
+    and no phrase crosses either edge, so a story is not run through Whisper a second time; None = transcribe."""
+    from video_edit import transcript_file
+
+    tf = transcript_file(source)
+    try:
+        if tf.stat().st_mtime < Path(source).stat().st_mtime:
+            return None
+        phrases = json.loads(tf.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not phrases or any("words" not in p for p in phrases):
+        return None
+    if any(p["start"] < edge < p["end"] for p in phrases for edge in (start, end)):
+        return None
+    import spelling
+    known = spelling.load()  # fixes learned since the transcript was made
+    return [{"start": round(p["start"] - start, 2), "end": round(p["end"] - start, 2), "text": spelling.fix(p["text"], known),
+             "words": [[round(a - start, 2), round(b - start, 2), w] for a, b, w in p["words"]]}
+            for p in phrases if start <= p["start"] and p["end"] <= end]
+
+
 def transcribe_draft(path: str) -> dict[str, Any]:
     """Transcribe what the draft actually plays — segment by segment, with the
     times already converted to the draft's timeline."""
@@ -847,7 +870,7 @@ def transcribe_draft(path: str) -> dict[str, Any]:
     for segment in _video_track(draft)["segments"]:
         start = segment["source_timerange"]["start"] / US
         length = segment["source_timerange"]["duration"] / US
-        for phrase in transcribe(source, start, start + length):
+        for phrase in _from_transcript(source, start, start + length) or transcribe(source, start, start + length):
             lines.append({"start": round(cursor + phrase["start"], 2),
                           "end": round(cursor + phrase["end"], 2),
                           "text": phrase["text"]})
