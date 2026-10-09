@@ -36,6 +36,7 @@ if os.name == "nt":
     subprocess.Popen.__init__ = _no_window
 
 import kit_settings  # noqa: E402
+import style_lab_api  # noqa: E402
 import video_editor  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
@@ -43,6 +44,7 @@ PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
 app = FastAPI(title="Video to CapCut", version="1.0.0")
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
+app.include_router(style_lab_api.router)
 
 
 @app.middleware("http")

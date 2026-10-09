@@ -15,11 +15,7 @@ body.shell { padding-left: var(--sb-w); font-family: "Segoe UI", "Leelawadee UI"
   display: flex; flex-direction: column; padding: 18px 12px;
 }
 .sb-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; color: #fff; text-decoration: none; }
-.sb-logo {
-  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
-  background: linear-gradient(135deg, #7c5cff, #38bdf8);
-}
-.sb-logo svg { width: 18px; height: 18px; }
+.sb-logo { width: 32px; height: 32px; display: block; }
 .sb-name { font-weight: 700; font-size: 17px; letter-spacing: .2px; }
 .sb-name small { display: block; font-weight: 400; font-size: 11px; color: #6f7891; letter-spacing: 0; }
 .sb-group { font-size: 11px; color: #5d667d; text-transform: uppercase; letter-spacing: .8px; padding: 14px 10px 6px; }
