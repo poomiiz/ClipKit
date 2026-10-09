@@ -49,6 +49,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <button data-go="machine">เครื่อง</button>
     <button data-go="folders">โฟลเดอร์</button>
     <button data-go="packs">แพ็ก preset</button>
+    <button data-go="team">ทีม</button>
   </div>
 
   <div class="card" data-tab="machine">
@@ -87,6 +88,23 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="row"><label>Envato ผ่าน</label><select id="o_envato_backend"><option value="local">เครื่องนี้</option><option value="bot">บอทกลางของบริษัท</option></select></div>
     <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
   </div>
+  <div class="card" data-tab="team">
+    <h2 id="tmHead">บัญชีทีม</h2>
+    <p class="sub" id="tmState" style="margin:2px 0 12px">กำลังเช็ก…</p>
+    <div id="tmForm">
+      <div class="row"><label>อีเมล</label><input id="tmEmail" type="email" style="flex:1"></div>
+      <div class="row"><label>รหัสผ่าน</label><input id="tmPass" type="password" placeholder="อย่างน้อย 8 ตัว" style="flex:1"></div>
+      <div class="row"><button id="bTmLogin">เข้าสู่ระบบ</button><button class="ghost" id="bTmSignup">สมัครใหม่</button></div>
+    </div>
+    <div class="row" id="tmOut" style="display:none"><button class="ghost" id="bTmLogout">ออกจากระบบ</button></div>
+    <span class="msg" id="mTeam"></span>
+    <details style="margin-top:12px"><summary style="cursor:pointer;color:var(--mut);font-size:13px">ที่อยู่ทีม (ตั้งครั้งเดียว)</summary>
+      <div class="row" style="margin-top:8px"><label>ที่อยู่ทีม</label><input id="o_team_url" style="flex:1"></div>
+      <div class="row"><label>รหัสแอป</label><input id="o_team_key" placeholder="anon public key จาก Supabase" style="flex:1"></div>
+      <div class="hint">รหัสแอปเป็นรหัสสาธารณะ ใส่ในแอปได้ ห้ามใส่รหัสผ่านฐานข้อมูลหรือ service key ตรงนี้</div>
+      <div class="row"><button class="ghost" id="bTmSave">บันทึก</button></div></details>
+  </div>
+
   <div class="card" data-tab="packs">
     <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">ลงแพ็ก preset</h2>
       <p class="sub" style="margin:2px 0 0">ไฟล์ .clipkit ที่เพื่อนในทีมส่งมา: ซับ+คำเน้น ปก โมชั่น · ชื่อซ้ำกับที่มีอยู่จะไม่ลงทับ</p></div>
@@ -177,7 +195,7 @@ async function startJob(path, btn, msgId, logId, busyText) {
 
 async function loadConfig() {
   const c = await api('config');
-  for (const k of ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key']) if (c.options[k]) $('o_' + k).value = c.options[k];
+  for (const k of ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key', 'team_url', 'team_key']) if (c.options[k]) $('o_' + k).value = c.options[k];
   $('ws').value = c.options.workspace || '';
   renderTree(c.folders);
   if (!c.exists) say('mSave', 'ยังไม่มีไฟล์ตั้งค่า — ตรวจค่าแล้วกดบันทึก', false);
@@ -195,7 +213,7 @@ $('bStockTest').onclick = async () => {
 };
 async function saveConfig() {
   const values = {};
-  ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key'].forEach(k => values[k] = $('o_' + k).value.trim());
+  ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key', 'team_url', 'team_key'].forEach(k => values[k] = $('o_' + k).value.trim());
   try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
   catch (e) { say('mSave', '❌ ' + e.message, false); }
 }
@@ -210,6 +228,32 @@ $('bWsPick').onclick = async () => {
     await loadConfig();
   } catch (e) { say('mWs', '❌ ' + e.message, false); }
 };
+// team sign-in: the server keeps the session; this only shows who is signed in and whether they are on the team
+function showTeam(s) {
+  $('tmForm').style.display = s.signed_in ? 'none' : '';
+  $('tmOut').style.display = s.signed_in ? '' : 'none';
+  $('tmState').textContent = !s.signed_in ? 'ยังไม่ได้เข้าสู่ระบบ'
+    : s.member ? `เข้าสู่ระบบแล้ว: ${s.email} · ${s.role === 'admin' ? 'แอดมิน' : 'สมาชิก'}`
+    : `เข้าสู่ระบบแล้ว: ${s.email} · ยังไม่ได้อยู่ในทีม รอแอดมินเพิ่ม`;
+}
+async function loadTeam() {
+  try { showTeam(await api('team/status')); } catch (e) { $('tmState').textContent = '❌ ' + e.message; }
+}
+async function teamAuth(path) {
+  say('mTeam', 'กำลังส่ง…');
+  try {
+    const s = await api('team/' + path, {method:'POST', body:{email: $('tmEmail').value, password: $('tmPass').value}});
+    $('tmPass').value = '';
+    if (s.confirm_email) return say('mTeam', '📧 สมัครแล้ว เปิดอีเมลแล้วกดลิงก์ยืนยัน จากนั้นกลับมากดเข้าสู่ระบบ', true);
+    showTeam(s); say('mTeam', '✅ เรียบร้อย', true);
+  } catch (e) { say('mTeam', '❌ ' + e.message, false); }
+}
+$('bTmLogin').onclick = () => teamAuth('login');
+$('bTmSignup').onclick = () => teamAuth('signup');
+$('bTmLogout').onclick = async () => { try { showTeam(await api('team/logout', {method:'POST'})); say('mTeam', ''); } catch (e) { say('mTeam', '❌ ' + e.message, false); } };
+$('bTmSave').onclick = async () => { await saveConfig(); say('mTeam', $('mSave').textContent, !$('mSave').textContent.startsWith('❌')); loadTeam(); };
+loadTeam();
+
 $('bDoctor').onclick = () => runDoctor(false);
 $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
