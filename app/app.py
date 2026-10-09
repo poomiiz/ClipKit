@@ -11,7 +11,7 @@ sys.path.insert(0, str(HERE))
 
 import uvicorn  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
-from fastapi.responses import RedirectResponse  # noqa: E402
+from fastapi.responses import JSONResponse, RedirectResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 # first run on a new machine: create config.json from the example (same as setup.ps1) so the app can open
@@ -45,6 +45,21 @@ app = FastAPI(title="Video to CapCut", version="1.0.0")
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
 app.include_router(style_lab_api.router)
+
+
+@app.exception_handler(Exception)
+async def report_crash(request, exc: Exception) -> JSONResponse:
+    """A server error the code did not expect: tell the page, and send it to the team as an auto bug report."""
+    import traceback
+    from fastapi import HTTPException
+    from starlette.concurrency import run_in_threadpool
+    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    try:
+        await run_in_threadpool(kit_settings.report_bug, f"[auto] {type(exc).__name__}: {exc}",
+                                request.url.path, [line.strip()[:300] for line in tb[-10:]], True)
+    except HTTPException as sent:
+        print(f"auto bug report not sent: {sent.detail}", file=sys.stderr)
+    return JSONResponse({"detail": f"{type(exc).__name__}: {exc}"}, status_code=500)
 
 
 @app.middleware("http")

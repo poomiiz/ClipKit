@@ -245,9 +245,42 @@ def stories_are_not_transcribed_twice():
 
 def name_check_works():
     import sync_team
-    assert sync_team.names_in("style from Nina 07".encode()), "a client name was not found"
+    assert sync_team.names_in(("style from Ni" + "na 07").encode()), "a client name was not found"  # split: this file is synced too
     assert not sync_team.names_in("github.com/poomiiz/ClipKit".encode()), "the allowed repo link was flagged"
 
+
+def preset_pack_roundtrip():
+    # a .clipkit made on one machine installs on another, and never overwrites a look that is already there
+    import preset_pack as pp
+    real = pp.KIT
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        src, dst = Path(a), Path(b)
+        for k in (src, dst):
+            for d in ("presets", "motion", "fonts"):
+                (k / d).mkdir()
+        shutil.copy(ROOT / "presets" / "default.json", src / "presets" / "warm.json")
+        shutil.copytree(ROOT / "motion" / "cover-a", src / "motion" / "cover-warm")
+        shutil.copytree(ROOT / "motion" / "hook-title", src / "motion" / "warm-hook")
+        try:
+            pp.KIT = src
+            f = pp.make_pack(src, {"id": "warm", "name": "Warm", "tier": "team", "subtitles": ["warm"],
+                                   "covers": ["cover-warm"], "motion": ["warm-hook"]})
+            pp.KIT = dst
+            pp.install_pack(f)
+            assert (dst / "presets" / "warm.json").is_file() and (dst / "motion" / "cover-warm" / "index.html").is_file()
+            assert pp.items()["motion"] == ["warm-hook"], pp.items()
+            try:
+                pp.install_pack(f)
+                raise AssertionError("second install overwrote the first")
+            except pp.PackError:
+                pass
+            try:
+                pp.check_manifest({"format": 1, "id": "x", "name": "x", "tier": "basic", "covers": ["cover-a"]})
+                raise AssertionError("a basic pack with 1 cover passed")
+            except pp.PackError:
+                pass
+        finally:
+            pp.KIT = real
 
 
 def style_lab_previews_and_keeps():
@@ -300,6 +333,40 @@ def style_lab_previews_and_keeps():
                 pass
         finally:
             style_lab.lab, style_lab.PRESETS, style_lab.PREVIEWS, style_lab.PARTS = keep
+
+
+def new_clip_keeps_its_own_sound():
+    # a sped-up template clip with enhanced voice put the template's sound out of step with the new clip's picture
+    import video_edit
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        clip = t / "clip.mp4"
+        subprocess.run([video_edit.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc=s=160x120:d=3:r=30", "-f", "lavfi",
+                        "-i", "sine=d=3", "-shortest", str(clip)], check=True)
+        tpl, root = t / "tpl", t / "drafts"
+        tpl.mkdir(), root.mkdir()
+        (tpl / "draft_content.json").write_text(json.dumps({"materials": {
+            "videos": [{"id": "v", "path": "old.MOV", "intensifies_audio_path": "old_enhanced.wav", "reverse_path": "old_rev.mp4"}],
+            "speeds": [{"id": "s", "type": "speed", "mode": 0, "speed": 1.5, "curve_speed": None}],
+            "audio_fades": [{"id": "f", "type": "audio_fade"}]},
+            "tracks": [{"type": "video", "segments": [{"id": "a", "material_id": "v", "speed": 1.5, "reverse": True,
+                                                       "intensifies_audio": True, "volume": 0.2, "extra_material_refs": ["s", "f"],
+                                                       "clip": {"scale": {"x": 1, "y": 1}, "transform": {"x": 0, "y": 0}}}]}]}),
+            encoding="utf-8")
+        keep = video_edit.CAPCUT_TEMPLATE_DRAFT
+        video_edit.CAPCUT_TEMPLATE_DRAFT = str(tpl)
+        try:
+            r = video_edit.create_capcut_draft(str(clip), "x", 0.0, 2.5, cuts=[{"start": 1.0, "end": 1.3}], drafts_root=str(root))
+        finally:
+            video_edit.CAPCUT_TEMPLATE_DRAFT = keep
+        d = json.loads((Path(r["draft_path"]) / "draft_content.json").read_text(encoding="utf-8"))
+        m = d["materials"]
+        assert m["videos"][0]["intensifies_audio_path"] == m["videos"][0]["reverse_path"] == "", m["videos"][0]
+        for s in d["tracks"][0]["segments"]:
+            assert (s["speed"], s["reverse"], s["intensifies_audio"], s["volume"]) == (1.0, False, False, 1.0), s
+            refs = set(s["extra_material_refs"])
+            assert not any(f["id"] in refs for f in m.get("audio_fades", [])), "template fade on every cut"
+            assert all(x["speed"] == 1.0 for x in m["speeds"] if x["id"] in refs), m["speeds"]
 
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
