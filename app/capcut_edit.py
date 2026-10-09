@@ -1399,6 +1399,8 @@ def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
     if not hit:
         raise VideoEditError(f"subtitle line not found: {old}")
     _save(folder, draft, "linetext")
+    import spelling
+    spelling.learn(old, new)  # the words fixed by hand are fixed in the next transcripts too
     for name in ("clipkit_words.json", "clipkit_punch.json"):
         f = folder / name
         if f.is_file():

@@ -50,6 +50,17 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
 3. Write `<folder>/clipkit_subs_en.json` as a JSON list of strings, exactly one per Thai line, same order.
 4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
+### `ClipKit: ตรวจคำผิด "<CapCut project folder>"`
+1. Read `<folder>/clipkit_lines.json` (subtitle lines in order) and `corrections.json` beside ClipKit if it is there
+   (`{wrong: {"right": ..., "n": times}}`, this person's earlier fixes).
+2. Find words the speech model misheard: wrong spellings, sound-alikes that make no sense in the sentence
+   ("คัป" -> "ครับ", "กอ" -> "ก็"), names and brands spelled two ways in one clip. Keep the speaker's own words
+   and slang; this is not a rewrite.
+3. Close-CapCut check: ask the person to close CapCut if it is open. Then for each line to change run
+   `python scripts/fix_text.py "<folder>" "<line as it is>" "<fixed line>"` (the old version is kept and the
+   fix is learned for the next transcripts).
+4. Reply with a short table: line, wrong -> right. Say "ไม่พบคำผิด" when there is nothing to fix.
+
 ### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
 For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, in the project's preset).
 1. Read `<folder>/clipkit_lines.json` (list of subtitle line texts, in order) and the whole clip's meaning.
