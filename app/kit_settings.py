@@ -92,15 +92,23 @@ def _start(name: str, cmd: list[str]) -> dict[str, Any]:
 def doctor(asr: bool = False) -> dict[str, Any]:
     """Run scripts/doctor.py and return one row per check."""
     cmd = [sys.executable, str(KIT / "scripts" / "doctor.py")] + (["--asr"] if asr else [])
-    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=420 if asr else 120)
+        out, code = p.stdout, p.returncode
+    except subprocess.TimeoutExpired as exc:   # report the checks that finished and name the one that hung
+        out = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        done = [line[5:23].strip() for line in out.splitlines() if line[:4].strip() in ("OK", "FAIL", "WARN")]
+        out += f"FAIL {'timeout':18} hung after '{done[-1] if done else 'start'}' for {exc.timeout:.0f} s\n"
+        code = 1
     rows = []
-    for line in p.stdout.splitlines():
+    for line in out.splitlines():
         state, rest = line[:4].strip(), line[5:]
         if state in ("OK", "FAIL", "WARN"):
             rows.append({"state": state, "name": rest[:18].strip(), "detail": rest[18:].strip()})
     if not rows:
         raise HTTPException(500, f"doctor produced no result: {p.stderr.strip()[-400:]}")
-    return {"ok": p.returncode == 0, "checks": rows}
+    return {"ok": code == 0, "checks": rows}
 
 
 @router.get("/config")
@@ -891,3 +899,54 @@ def version() -> dict[str, Any]:
     commit = subprocess.run(["git", "-C", str(KIT), "log", "-1", "--format=%h %cs"], capture_output=True,
                             text=True).stdout.strip()
     return {"version": meta.get("version"), "commit": commit}
+
+
+# ── preset packs (.clipkit): hand subtitle presets, covers and motion to the team as one file ──
+class PackPath(BaseModel):
+    path: str
+
+
+class PackMake(BaseModel):
+    id: str
+    name: str
+    author: str = ""
+    tier: str = "team"
+    subtitles: list[str] = []
+    covers: list[str] = []
+    motion: list[str] = []
+
+
+def _pack(fn, *a):
+    import preset_pack
+    try:
+        return fn(preset_pack, *a)
+    except preset_pack.PackError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/pack/items")
+def pack_items() -> dict[str, Any]:
+    return _pack(lambda pp: {**pp.items(), "tiers": pp.TIERS})
+
+
+@router.post("/pack/check")
+def pack_check(body: PackPath) -> dict[str, Any]:
+    return _pack(lambda pp: pp.read_pack(body.path))
+
+
+@router.post("/pack/install")
+def pack_install(body: PackPath) -> dict[str, Any]:
+    return _pack(lambda pp: pp.install_pack(body.path))
+
+
+@router.post("/pack/make")
+def pack_make(body: PackMake) -> dict[str, Any]:
+    """Write <output_dir>/packs/<id>.clipkit."""
+    cfg = _read_config()
+    base = Path(cfg.get("output_dir") or "")
+    if not cfg.get("output_dir") or not base.is_dir():
+        raise HTTPException(400, "set the finished-files folder (output_dir) in Settings first")
+    (base / "packs").mkdir(exist_ok=True)
+    m = {"id": body.id, "name": body.name, "author": {"name": body.author}, "version": "1.0.0", "tier": body.tier,
+         "subtitles": body.subtitles, "covers": body.covers, "motion": body.motion, "fonts": []}
+    return {"path": str(_pack(lambda pp: pp.make_pack(base / "packs", m)))}
