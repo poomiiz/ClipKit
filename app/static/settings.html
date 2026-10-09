@@ -48,6 +48,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   <div class="tabs" id="tabs">
     <button data-go="machine">เครื่อง</button>
     <button data-go="folders">โฟลเดอร์</button>
+    <button data-go="packs">แพ็ก preset</button>
   </div>
 
   <div class="card" data-tab="machine">
@@ -85,6 +86,21 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="hint" style="margin:-4px 0 10px">สมัครฟรีครั้งเดียว ได้รหัสมาวางแล้วกดบันทึก · Pixabay: ล็อกอินที่ pixabay.com ก่อน แล้วรหัสอยู่ในหน้า API หัวข้อ Parameters บรรทัด key (ตัวเขียว) ไม่ต้องล็อกอินอีก · ใช้คลิปในงานลูกค้าได้ ไม่ต้องใส่เครดิต</div>
     <div class="row"><label>Envato ผ่าน</label><select id="o_envato_backend"><option value="local">เครื่องนี้</option><option value="bot">บอทกลางของบริษัท</option></select></div>
     <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
+  </div>
+  <div class="card" data-tab="packs">
+    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">ลงแพ็ก preset</h2>
+      <p class="sub" style="margin:2px 0 0">ไฟล์ .clipkit ที่เพื่อนในทีมส่งมา: ซับ+คำเน้น ปก โมชั่น · ชื่อซ้ำกับที่มีอยู่จะไม่ลงทับ</p></div>
+      <button id="bPackPick">เลือกไฟล์ .clipkit</button></div>
+    <span class="msg" id="mPack"></span>
+  </div>
+
+  <div class="card" data-tab="packs">
+    <h2>ทำแพ็กส่งให้ทีม</h2>
+    <div class="row"><label>ชื่อแพ็ก</label><input id="pkName" placeholder="เช่น Vlog โทนอุ่น" style="flex:1"></div>
+    <div class="row"><label>รหัสแพ็ก</label><input id="pkId" placeholder="a-z 0-9 - เช่น vlog-warm" style="flex:1"></div>
+    <div class="row"><label>คนทำ</label><input id="pkAuthor" style="flex:1"></div>
+    <div class="checks" id="pkItems" style="grid-template-columns:1fr"></div>
+    <div class="row"><button id="bPackMake">สร้างไฟล์ .clipkit</button><span class="msg" id="mPackMake"></span></div>
   </div>
 </main>
 <script>
@@ -199,6 +215,32 @@ $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
 $('bSave').onclick = saveConfig;
 loadConfig(); runDoctor(false);
+// preset packs: install a .clipkit from the team, or bundle this machine's looks into one
+const PACK_LABELS = {subtitles: 'ซับ+คำเน้น', covers: 'ปก', motion: 'โมชั่น'};
+async function loadPackItems() {
+  const it = await api('pack/items');
+  $('pkItems').innerHTML = Object.keys(PACK_LABELS).map(k => `<div><b>${PACK_LABELS[k]}</b> ` +
+    (it[k].map(i => `<label style="margin-right:10px"><input type="checkbox" data-k="${k}" value="${i}"> ${i}</label>`).join('') || '-') + '</div>').join('');
+}
+$('bPackPick').onclick = async () => {
+  try {
+    const f = (await api('browse-file', {method:'POST'})).path;
+    const c = await api('pack/check', {method:'POST', body:{path:f}});
+    if (c.clash.length) return say('mPack', 'ชื่อซ้ำกับที่มีอยู่: ' + c.clash.join(', '), false);
+    const m = c.manifest;
+    if (!confirm(`ลงแพ็ก "${m.name}"?\nซับ ${m.subtitles.length} · ปก ${m.covers.length} · โมชั่น ${m.motion.length}`)) return;
+    const r = await api('pack/install', {method:'POST', body:{path:f}});
+    say('mPack', `ลงแล้ว: ${r.added.join(', ')}`, true); loadPackItems();
+  } catch (e) { say('mPack', e.message, false); }
+};
+$('bPackMake').onclick = async () => {
+  const body = {id: $('pkId').value.trim(), name: $('pkName').value.trim(), author: $('pkAuthor').value.trim(),
+                subtitles: [], covers: [], motion: []};
+  document.querySelectorAll('#pkItems input:checked').forEach(c => body[c.dataset.k].push(c.value));
+  try { say('mPackMake', 'ไฟล์อยู่ที่ ' + (await api('pack/make', {method:'POST', body})).path, true); }
+  catch (e) { say('mPackMake', e.message, false); }
+};
+loadPackItems().catch(e => say('mPack', e.message, false));
 </script>
 <script src="/shell.js?v=8"></script>
 </body>
