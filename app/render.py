@@ -615,8 +615,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     oy = round((H - vh) / 2 - clip["transform"]["y"] * H / 2)
 
     parts, labels = [], []
+    seek = min(s["source_timerange"]["start"] for s in segs) / US  # jump to the story, not decode from 0:00
     for i, s in enumerate(segs):
-        a = s["source_timerange"]["start"] / US
+        a = s["source_timerange"]["start"] / US - seek
         b = a + s["source_timerange"]["duration"] / US
         parts.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}];"
                      f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS,{edge_fades(b - a)}[a{i}]")
@@ -639,9 +640,13 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     if c:
         w = float(c.get("warmth", 0))
         r, g, b = (float(c.get(k, 1)) for k in ("r", "g", "b"))  # white balance gains from the auto pick
-        graph = graph.replace(f"{lab}scale=", f"{lab}colorchannelmixer=rr={r:.3f}:gg={g:.3f}:bb={b:.3f},"
-                              f"eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
-                              f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f},scale=", 1)
+        grade = (f"colorchannelmixer=rr={r:.3f}:gg={g:.3f}:bb={b:.3f},"
+                 f"eq=brightness={float(c.get('brightness', 0)):.3f}:contrast={float(c.get('contrast', 1)):.3f}"
+                 f":saturation={float(c.get('saturation', 1)):.3f},colorbalance=rm={w:.3f}:bm={-w:.3f}")
+        if vw * vh < info["width"] * info["height"]:  # grade after the size-down: 4K to 1080 is 4x fewer pixels
+            graph = graph.replace(f"{lab}scale={vw}:{vh}", f"{lab}scale={vw}:{vh},{grade}", 1)
+        else:
+            graph = graph.replace(f"{lab}scale=", f"{lab}{grade},scale=", 1)
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     if anim.startswith("pair-"):  # projects made before presets: that look is now the with-caption preset
         anim, style["preset"] = "pair", style.get("preset") or "with-caption"
@@ -827,7 +832,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                 graph += f";[{n}:a]adelay={ms}|{ms},volume={(0.5 if kind == 'pop' else 0.35) * fx['volume']:.3f}[s{k}]"
                 mix.append(f"[s{k}]")
         graph += f";{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first,{LOUDNESS}[aout]"
-        cmd = [FFMPEG, "-y", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
+        cmd = [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
                "-c:v", "libx264", "-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
         r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace")
