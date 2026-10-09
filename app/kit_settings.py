@@ -884,7 +884,7 @@ def envato_login() -> dict[str, Any]:
 def update() -> dict[str, Any]:
     if not (KIT / ".git").is_dir():
         raise HTTPException(400, "this copy is not a git clone - download a fresh copy from GitHub")
-    return _start("update", ["git", "pull", "--ff-only"])
+    return _start("update", [sys.executable, str(KIT / "scripts" / "update.py")])
 
 
 @router.get("/job/{name}")
