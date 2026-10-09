@@ -30,10 +30,32 @@ WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stoc
 
 
 def capcut_default_drafts() -> str:
-    """CapCut's own default drafts folder on this Windows user, or '' if CapCut never created it."""
+    """Where CapCut keeps this Windows user's projects, or '' if CapCut was never opened.
+    1. the folder chosen in CapCut's settings (Config/globalSetting currentCustomDraftPath)
+    2. the folder most of CapCut's listed projects sit in (root_meta_info.json)
+    3. CapCut's default folder"""
     import os
-    d = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft"
-    return str(d) if d.is_dir() else ""
+    import re
+    from collections import Counter
+    data = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data"
+    setting = data / "Config" / "globalSetting"
+    if setting.is_file():
+        m = re.search(r"^currentCustomDraftPath=(.+)$", setting.read_text(encoding="utf-8", errors="replace"), re.M)
+        custom = Path(m.group(1).strip().replace("\\\\", "\\")) if m else None
+        if custom and custom.is_dir():
+            return str(custom)
+    default = data / "Projects" / "com.lveditor.draft"
+    meta = default / "root_meta_info.json"
+    if meta.is_file():
+        try:
+            store = json.loads(meta.read_text(encoding="utf-8")).get("all_draft_store") or []
+        except (OSError, ValueError):
+            store = []
+        parents = Counter(str(Path(d["draft_fold_path"]).parent) for d in store if d.get("draft_fold_path"))
+        for folder, _ in parents.most_common():
+            if Path(folder).is_dir():
+                return folder
+    return str(default) if default.is_dir() else ""
 
 router = APIRouter(prefix="/api/kit", tags=["kit-settings"])
 _jobs: dict[str, dict[str, Any]] = {}
@@ -717,10 +739,12 @@ def draft_rename(body: DraftPath) -> dict[str, str]:
     import re
     import shutil
     kind, p = _project(body.path)
-    new = re.sub(r'[\/:*?"<>|]+', " ", body.name).strip()
-    if not new:
+    new = re.sub(r'[\\/:*?"<>|]+', " ", body.name).strip()
+    if not new or new in (".", ".."):
         raise HTTPException(400, "ชื่อว่าง")
     target = p.parent / new
+    if target.resolve().parent != p.parent.resolve():
+        raise HTTPException(400, "ชื่อโปรเจกต์ใช้ไม่ได้")
     if target.exists():
         raise HTTPException(409, f"มีโปรเจกต์ชื่อ {new} อยู่แล้ว")
     if kind == "capcut":
