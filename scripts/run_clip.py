@@ -29,7 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
     ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
     ap.add_argument("--look", default="pair", choices=["pair", "karaoke", "pop", "none"])
-    ap.add_argument("--preset", default="default", help="subtitle preset in presets/ (normal + emphasis text)")
+    mine = (Path(__file__).resolve().parents[1] / "presets" / "my-style.json").is_file()  # ClipKit - Autosave's
+    ap.add_argument("--preset", default="my-style" if mine else "default",
+                    help="subtitle preset in presets/ (normal + emphasis text); default: my-style when Autosave made one")
     ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
     ap.add_argument("--export", action="store_true", help="render the MP4s")
     ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
@@ -183,6 +185,7 @@ a{{color:#8fb8ff}}section{{border:1px solid #333;border-radius:10px;padding:12px
 def main() -> int:
     a = _parser().parse_args()
     render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
+    say(preset=a.preset)
     raw = str(Path(a.video).resolve())
     if not Path(raw).is_file():
         say(error="file not found", file=raw)
