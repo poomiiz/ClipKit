@@ -118,13 +118,25 @@ function card(x) {
   }
   return el;
 }
-function mineCard(x) {
+function mineCard(x, shareable) {
   const el = document.createElement('div');
   el.className = 'item';
   el.innerHTML = (x.gif ? '<img class="pv">' : '<div class="ph"></div>') + '<div class="b"><div class="t"></div><div class="msg"></div></div>';
   if (x.gif) { const img = el.querySelector('img.pv'); let still = false; img.src = pic(x.gif); img.onclick = () => { still = !still; img.src = pic(still ? x.png : x.gif); }; }
   el.querySelector('.t').textContent = x.name;
   el.querySelector('.msg').textContent = x.about;
+  if (shareable) {
+    const b = document.createElement('button'); b.textContent = 'ส่งขออนุมัติให้ทีม'; b.style.alignSelf = 'flex-start';
+    const tip = document.createElement('span'); tip.className = 'msg';
+    b.onclick = async () => {
+      try {
+        const j = await api('/api/style/share', {preset: x.name});
+        window.open(j.url, '_blank');
+        tip.textContent = 'เปิดหน้า GitHub แล้ว ลากไฟล์นี้ใส่ก่อนกดส่ง: ' + j.gif; tip.className = 'msg ok';
+      } catch (e) { tip.textContent = '❌ ' + e.message; tip.className = 'msg bad'; }
+    };
+    el.querySelector('.b').append(b, tip);
+  }
   return el;
 }
 async function load() {
@@ -134,11 +146,11 @@ async function load() {
     j.items.forEach(x => $('lab').appendChild(card(x)));
     const c = j.collection;
     $('mine').innerHTML = '';
-    [['พร้อมใช้ตัดคลิป (preset)', c.presets], ...Object.keys(CATS).map(k => [CATS[k], c.parts[k]])].forEach(([title, rows]) => {
+    [['พร้อมใช้ตัดคลิป (preset)', c.presets, true], ['สไตล์ทีม (อนุมัติแล้ว)', c.team], ...Object.keys(CATS).map(k => [CATS[k], c.parts[k]])].forEach(([title, rows, shareable]) => {
       const h = document.createElement('h3'); h.textContent = `${title} · ${rows.length}`; $('mine').appendChild(h);
       const g = document.createElement('div'); g.className = 'grid';
       if (!rows.length) g.innerHTML = '<div class="empty">ยังไม่มี</div>';
-      rows.forEach(x => g.appendChild(mineCard(x)));
+      rows.forEach(x => g.appendChild(mineCard(x, shareable)));
       $('mine').appendChild(g);
     });
     const opts = (k, none) => (none ? `<option value="">${none}</option>` : '') + c.parts[k].map(p => `<option>${p.name}</option>`).join('');

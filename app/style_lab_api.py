@@ -82,6 +82,15 @@ def compose(body: Mix) -> dict[str, Any]:
     return _run(style_lab.compose, body.name, body.main, body.caption, body.second)
 
 
+class Share(BaseModel):
+    preset: str
+
+
+@router.post("/share")
+def share(body: Share) -> dict[str, Any]:
+    return _run(style_lab.share, body.preset)
+
+
 @router.get("/file")
 def file(path: str) -> FileResponse:
     """A frame or preview picture from the lab or the collection; nothing else on the disk."""
