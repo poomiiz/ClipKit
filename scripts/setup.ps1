@@ -43,7 +43,7 @@ $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 $s.TargetPath = "powershell.exe"
 $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$root\app\start.ps1`""
 $s.WorkingDirectory = $root
-$s.IconLocation = "C:\Windows\System32\imageres.dll,184"
+$s.IconLocation = "$root\app\static\clipkit.ico"
 $s.Save()
 Write-Host "Desktop icon created: $lnk"
 
