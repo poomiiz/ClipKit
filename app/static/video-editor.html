@@ -690,7 +690,7 @@
           <div id="saPunch" style="display:none;margin-top:8px">
             <button class="small" onclick="punchAsk()">✨ ให้ Claude เลือกคำเน้น</button>
             <div id="saPunchBox"></div>
-            <button class="small" onclick="spellAsk()">🔤 ให้ Claude ตรวจคำผิด</button>
+            <button class="small" onclick="spellAsk()">🔤 ให้ Claude ตรวจคำผิด / คำขาด</button>
             <div id="saSpellBox"></div></div>
         </div>
 
@@ -2420,7 +2420,7 @@ async function spellAsk() {
   const box = document.getElementById('saSpellBox');
   try {
     const r = await api('draft/spelling-request', {path: state.draft.path});
-    box.innerHTML = agentBox(r.command, `ปิด CapCut ก่อน แล้วส่งคำสั่งนี้ให้ Claude ในแชต (${r.lines} บรรทัด) · คำที่แก้จะถูกจำไว้ ถอดเสียงครั้งหน้าแก้ให้เอง`);
+    box.innerHTML = agentBox(r.command, `ปิด CapCut ก่อน แล้วส่งคำสั่งนี้ให้ Claude ในแชต (${r.lines} บรรทัด) · ประโยคที่ขาด Claude จะฟังช่วงนั้นซ้ำแล้วเติม · คำที่แก้จะถูกจำไว้ ถอดเสียงครั้งหน้าแก้ให้เอง`);
   } catch (e) { box.textContent = '❌ ' + e.message; }
 }
 // the punch words that carry each phrase: the agent picks them (plugin model), the export uses them

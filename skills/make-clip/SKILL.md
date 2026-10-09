@@ -67,12 +67,17 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
    - Names, titles, numbers, dates and money the same everywhere they appear; Thai or Arabic digits, not both.
    A line that is correct but could be written another accepted way is a suggestion, not a fix: list it,
    do not change it. Never guess a word you cannot tell from the line and its neighbours; mark it "ไม่แน่ใจ".
+   Also find lines that read incomplete: a sentence cut off, a word plainly missing ("เราต้อง ให้ลูกค้า"). For
+   each, run `python scripts/relisten.py "<folder>" "<line as it is>"` to hear that stretch again, and complete
+   the line from what it prints. Never invent words the speaker did not say; if the re-listen does not have
+   them either, leave the line and list it for the person.
 3. Close-CapCut check: ask the person to close CapCut if it is open. Then for each line to change run
    `python scripts/fix_text.py "<folder>" "<line as it is>" "<fixed line>"` (the old version is kept and the
    fix is learned for the next transcripts).
 4. Reply with a short table: line number, line, wrong -> right, level (ร้ายแรง = meaning, name or number changes;
    ปานกลาง = spelling or grammar; เล็กน้อย = spacing, punctuation, consistency), then the suggestions and
-   "ไม่แน่ใจ" lines. Say "ไม่พบคำผิด" when there is nothing to fix.
+   "ไม่แน่ใจ" lines, and incomplete lines the re-listen could not fill. Say "ไม่พบคำผิด" when there is nothing to
+   fix. Whole stretches with no subtitle at all are the editor's "เติมซับ" button, not this.
 
 ### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
 For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, in the project's preset).
