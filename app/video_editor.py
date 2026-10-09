@@ -299,7 +299,7 @@ def _run_story_plan(file: str) -> None:
         else:
             duration = video_edit.probe(file)["duration"]
             job["step"] = "ถอดเสียง"
-            phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model: video_edit.WHISPER_MODEL
+            phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model: video_edit.whisper_model()
             tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
         job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
                    command=video_edit.agent_command("stories", file),
@@ -809,7 +809,7 @@ def config() -> dict[str, Any]:
     return {
         "drafts_root": video_edit.kitconfig.CFG.get("capcut_drafts", ""),
         "template_draft": video_edit.CAPCUT_TEMPLATE_DRAFT or "(newest draft in folder)",
-        "whisper_model": video_edit.WHISPER_MODEL,
+        "whisper_model": video_edit.whisper_model(),
         "whisper_cpu_fallback": video_edit.WHISPER_CPU_FALLBACK,
         "gpu": video_edit._has_cuda(),
         "local_llm": video_edit.LOCAL_LLM_URL,
