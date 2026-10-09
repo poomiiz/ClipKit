@@ -375,7 +375,7 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
 
 def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.0) -> list[dict[str, Any]]:
     """Windows run `overlap` s past their end so a word on the seam is heard whole once (without it words at
-    15/30/75 s were lost on BPS2 09); each word is kept only by the window whose share it starts in."""
+    15/30/75 s were lost on BPS2 09); a seam is cut between whole words, never between word pieces."""
     from faster_whisper import BatchedInferencePipeline
     from faster_whisper.audio import decode_audio
     audio = decode_audio(str(wav), sampling_rate=16000)
@@ -393,11 +393,16 @@ def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.
                 beam_size=5, condition_on_previous_text=False, word_timestamps=True)[0]
     words: list[list] = []
     for seg in sorted(segments, key=lambda seg: seg.start):  # one segment per window
-        t = int(seg.start // window) * window
-        lo = t + overlap / 2 if t > 0 else 0.0
-        hi = t + window + overlap / 2
-        words += [[round(w.start, 2), round(w.end, 2), w.word] for w in (seg.words or [])
-                  if w.word.strip() and lo <= w.start < hi]
+        piece = [[round(w.start, 2), round(w.end, 2), w.word] for w in (seg.words or []) if w.word.strip()]
+        if not piece:
+            continue
+        whole = _word_starts(piece)
+        hi = int(seg.start // window) * window + window + overlap / 2
+        # start after the last whole word the window before kept; stop after the whole word on this seam
+        begin = next((i for i in range(len(piece)) if whole[i] and (not words or piece[i][0] >= words[-1][1] - 0.1)),
+                     len(piece))
+        stop = next((i for i in range(begin + 1, len(piece)) if whole[i] and piece[i][0] >= hi), len(piece))
+        words += piece[begin:stop]
     return _lines(words) if words else []
 
 
@@ -405,27 +410,40 @@ THAI_MARKS = "\u0e31\u0e34-\u0e3a\u0e47-\u0e4e"  # vowels above/below and tone m
 THAI_LEADING = "เแโใไ"  # vowels written before their consonant: never end a line
 
 
-def _lines(words: list[list], gap: float = 0.3, longest: float = 3.0) -> list[dict[str, Any]]:
-    """Group timed words into subtitle lines: break at a pause of `gap` s, then split any line over `longest` s
-    at its widest pause. A break goes only where pythainlp also puts a word boundary: the recogniser's word
-    pieces can end mid-syllable ("นั่|งสมาธิ")."""
+def _word_starts(words: list[list]) -> list[bool]:
+    """Which recogniser word pieces begin a whole Thai word. The pieces can end mid-syllable ("นั่|งสมาธิ"),
+    so a piece counts only where pythainlp also puts a word boundary."""
     from pythainlp.tokenize import word_tokenize
-    text = "".join(w[2] for w in words)
     bounds, at = set(), 0
-    for token in word_tokenize(text, engine="newmm", keep_whitespace=True):
+    for token in word_tokenize("".join(w[2] for w in words), engine="newmm", keep_whitespace=True):
         bounds.add(at)
         at += len(token)
-    ok, at = [], 0  # ok[i]: a line may start at words[i]
+    starts, at = [], 0
     for i, w in enumerate(words):
-        ok.append(i > 0 and at in bounds and not re.match(f"[{THAI_MARKS}]", w[2].lstrip())
-                  and words[i - 1][2].rstrip()[-1:] not in THAI_LEADING)
+        starts.append(i == 0 or (at in bounds and not re.match(f"[{THAI_MARKS}]", w[2].lstrip())
+                                 and words[i - 1][2].rstrip()[-1:] not in THAI_LEADING))
         at += len(w[2])
-    cuts = [i for i in range(1, len(words)) if ok[i] and words[i][0] - words[i - 1][1] >= gap]
+    return starts
+
+
+def _lines(words: list[list], gap: float = 0.3, shortest: float = 1.0, longest: float = 3.5) -> list[dict[str, Any]]:
+    """Group timed words into subtitle lines: break at a pause of `gap` s, then split any line over `longest` s
+    at its widest pause; never inside a Thai word, never leaving a line under `shortest` s."""
+    ok = _word_starts(words)
+    ok[0] = False
+    cuts, last = [], 0
+    for i in range(1, len(words)):
+        if (ok[i] and words[i][0] - words[i - 1][1] >= gap and words[i - 1][1] - words[last][0] >= shortest
+                and words[-1][1] - words[i][0] >= shortest):
+            cuts.append(i)
+            last = i
 
     def split(lo: int, hi: int) -> list[int]:
-        if words[hi - 1][1] - words[lo][0] <= longest:
+        length = words[hi - 1][1] - words[lo][0]
+        if length <= longest:
             return []
-        inner = [i for i in range(lo + 1, hi) if ok[i]]
+        inner = [i for i in range(lo + 1, hi) if ok[i] and words[i - 1][1] - words[lo][0] >= shortest
+                 and words[hi - 1][1] - words[i][0] >= shortest]
         if not inner:
             return []
         mid = (words[lo][0] + words[hi - 1][1]) / 2
