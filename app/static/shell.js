@@ -21,13 +21,23 @@
   aside.className = 'sb';
   aside.innerHTML = `<a class="sb-brand" href="/video-editor.html"><span class="sb-logo">${svg('clip').replace('<svg', '<svg stroke="#fff" fill="none" stroke-width="2"')}</span>
       <span class="sb-name">ClipKit<small>Video → CapCut</small></span></a>` +
+    '<button class="sb-fold" id="sbFold" title="ย่อ / ขยายแถบซ้าย"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>' +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
-      `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
+      `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}" title="${label}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
     '<div class="sb-group">ไฟล์ดิบ</div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
-    `<a class="sb-item" href="#" id="sbBug"><svg viewBox="0 0 24 24"><path d="M8 8a4 4 0 018 0v6a4 4 0 01-8 0z"/><path d="M4 12h4M16 12h4M5 6l3 2M19 6l-3 2M5 19l3-2M19 19l-3-2"/></svg><span>แจ้งปัญหา</span></a>` +
-    `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html">${svg('settings')}<span>ตั้งค่า</span></a>` +
+    `<a class="sb-item" href="#" id="sbBug" title="แจ้งปัญหา"><svg viewBox="0 0 24 24"><path d="M8 8a4 4 0 018 0v6a4 4 0 01-8 0z"/><path d="M4 12h4M16 12h4M5 6l3 2M19 6l-3 2M5 19l3-2M19 19l-3-2"/></svg><span>แจ้งปัญหา</span></a>` +
+    `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html" title="ตั้งค่า">${svg('settings')}<span>ตั้งค่า</span></a>` +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
   document.body.prepend(aside);
+  // fold the sidebar to icons only (remembered on this machine)
+  let mini = false;
+  try { mini = localStorage.getItem('ck_sb_mini') === '1'; } catch {}
+  document.documentElement.classList.toggle('sb-mini', mini);
+  document.getElementById('sbFold').onclick = () => {
+    mini = !mini;
+    document.documentElement.classList.toggle('sb-mini', mini);
+    try { localStorage.setItem('ck_sb_mini', mini ? '1' : '0'); } catch {}
+  };
   // raw files on the left, the projects cut from each one underneath (click a raw file = pick its stories again)
   window.ckLoadProjects = async () => {
     const box = document.getElementById('sbProjects');

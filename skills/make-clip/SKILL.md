@@ -50,6 +50,17 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
 3. Write `<folder>/clipkit_subs_en.json` as a JSON list of strings, exactly one per Thai line, same order.
 4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
+### `ClipKit: ตรวจคำผิด "<CapCut project folder>"`
+1. Read `<folder>/clipkit_lines.json` (subtitle lines in order) and `corrections.json` beside ClipKit if it is there
+   (`{wrong: {"right": ..., "n": times}}`, this person's earlier fixes).
+2. Find words the speech model misheard: wrong spellings, sound-alikes that make no sense in the sentence
+   ("คัป" -> "ครับ", "กอ" -> "ก็"), names and brands spelled two ways in one clip. Keep the speaker's own words
+   and slang; this is not a rewrite.
+3. Close-CapCut check: ask the person to close CapCut if it is open. Then for each line to change run
+   `python scripts/fix_text.py "<folder>" "<line as it is>" "<fixed line>"` (the old version is kept and the
+   fix is learned for the next transcripts).
+4. Reply with a short table: line, wrong -> right. Say "ไม่พบคำผิด" when there is nothing to fix.
+
 ### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
 For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, in the project's preset).
 1. Read `<folder>/clipkit_lines.json` (list of subtitle line texts, in order) and the whole clip's meaning.
@@ -62,7 +73,8 @@ For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, 
    Not every phrase deserves a coloured punch. Filler and connective talk ("อืมๆ", "เออจริงๆ", "แบบว่า",
    "อะไรอย่างนี้", repeated words) and phrases with no point get white only: `[text, ""]`. Colour only the
    phrases that carry the message (a feeling, a number, a result, a key idea) - roughly half or fewer.
-   The screen shows at most 2 lines: white 1 + colour 1, or one of them on 2 lines.
+   Every subtitle is one line and never leaves the frame (the reading caption is the only one that may be
+   longer): a long white or colour line goes on as the next piece in time with the voice, by itself.
    Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase ("white" = the preset's
    normal text, "colour" = its emphasis text), measured from real hand-edited clips:
    - `pair` (default): white lead + coloured punch.
@@ -72,6 +84,11 @@ For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, 
    - `hold`: the previous white line stays while the coloured line changes - lists ("บางคนบอก" ->
      "ทำแบรนด์ดิ้ง" / "ลงระบบ CRM" / "จ้างเซลส์มาขาย").
    - `skip`: no subtitle - filler, repeats, false starts, the other person's "อืมๆ".
+   - Two `color` phrases in a row stack in two beats, one row each: the first stays on the upper row until the
+     second is done. Use `hold` instead when a white line has to stay; then the colour lines replace each other.
+   - `color`: `"#rrggbb"` - this line's own emphasis colour (default the preset's).
+   - `second`: a short line from the second person (2-8 letters, may mean nothing: "ห๊ะ!", "จริงดิ", "โห"),
+     shown off centre and tilted for movement. Only when the preset has a `second` role (e.g. `4-levels`).
    - `show`: the words on screen, rewritten short and clean ("ไปจ้างพนักงานขายซิ" ->
      "จ้างเซลส์มาขาย", "มันคือแบบกูต้องทำอะไร" -> "ต้องทำอะไรก่อน?"). Keep the meaning, drop slang and
      filler, max ~15 letters per line. Lead + punch still hold the exact spoken text (they give the timing).
@@ -92,7 +109,7 @@ For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, 
    Examples of good titles: "ธุรกิจสมัยนี้ / ไม่ต้องแย่งทำเลอีกแล้ว", "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้",
    "เงิน 5 แสนก็ไม่เอา!", "Burn out".
 6. Only when the project's preset has a `caption` (e.g. `with-caption`): write `<folder>/clipkit_caption.json`
-   as `{"<line text>": "<translation>"}` for every line, in the preset's caption `language` (default English) -
+   as `{"<line text>": "<translation>"}` for every line, in the preset's caption `language` (default English; skip this step for `"th"`, which shows the spoken line itself) -
    short and natural ("If I want to start my own business from scratch, let's say..."). Brand names stay.
 7. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 
@@ -137,7 +154,9 @@ translated caption. Never name one after a client unless the person asks; ask th
 - **By chat** ("ตัวปกติขาวขอบดำ ตัวเน้นเหลืองใหญ่กว่า"): copy `presets/default.json` and change it.
   Per role: `size` (CapCut text size, 15-40 normal), `y` (-1 bottom .. 1 top; normal above emphasis, about 0.12
   apart), `color` / `outline` as `#rrggbb`, `outline_width` (0-0.15). `caption`: `null`, or the same fields plus
-  `language`.
+  `language` (`"en"` translation from clipkit_caption.json, default; `"th"` the whole spoken Thai line) and
+  `shadow` (true = dark shadow). `second` (optional): the same fields plus `x` (-1 left .. 1 right) and
+  `rotation` (degrees, minus = tilted left). `presets/4-levels.json` is all four levels.
 - **From the person's own CapCut project**: `python scripts/preset_from_capcut.py "<CapCut project folder>" --name <name>`
   reads the text styles they used most and writes the preset; show them what it wrote.
 - Use it: `run_clip.py ... --preset <name>`, or the preset list in the ClipKit editor.
