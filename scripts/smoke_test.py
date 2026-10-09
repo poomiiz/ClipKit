@@ -334,6 +334,40 @@ def style_lab_previews_and_keeps():
         finally:
             style_lab.lab, style_lab.PRESETS, style_lab.PREVIEWS, style_lab.PARTS = keep
 
+
+def new_clip_keeps_its_own_sound():
+    # a sped-up template clip with enhanced voice put the template's sound out of step with the new clip's picture
+    import video_edit
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        clip = t / "clip.mp4"
+        subprocess.run([video_edit.FFMPEG, "-v", "error", "-f", "lavfi", "-i", "testsrc=s=160x120:d=3:r=30", "-f", "lavfi",
+                        "-i", "sine=d=3", "-shortest", str(clip)], check=True)
+        tpl, root = t / "tpl", t / "drafts"
+        tpl.mkdir(), root.mkdir()
+        (tpl / "draft_content.json").write_text(json.dumps({"materials": {
+            "videos": [{"id": "v", "path": "old.MOV", "intensifies_audio_path": "old_enhanced.wav", "reverse_path": "old_rev.mp4"}],
+            "speeds": [{"id": "s", "type": "speed", "mode": 0, "speed": 1.5, "curve_speed": None}],
+            "audio_fades": [{"id": "f", "type": "audio_fade"}]},
+            "tracks": [{"type": "video", "segments": [{"id": "a", "material_id": "v", "speed": 1.5, "reverse": True,
+                                                       "intensifies_audio": True, "volume": 0.2, "extra_material_refs": ["s", "f"],
+                                                       "clip": {"scale": {"x": 1, "y": 1}, "transform": {"x": 0, "y": 0}}}]}]}),
+            encoding="utf-8")
+        keep = video_edit.CAPCUT_TEMPLATE_DRAFT
+        video_edit.CAPCUT_TEMPLATE_DRAFT = str(tpl)
+        try:
+            r = video_edit.create_capcut_draft(str(clip), "x", 0.0, 2.5, cuts=[{"start": 1.0, "end": 1.3}], drafts_root=str(root))
+        finally:
+            video_edit.CAPCUT_TEMPLATE_DRAFT = keep
+        d = json.loads((Path(r["draft_path"]) / "draft_content.json").read_text(encoding="utf-8"))
+        m = d["materials"]
+        assert m["videos"][0]["intensifies_audio_path"] == m["videos"][0]["reverse_path"] == "", m["videos"][0]
+        for s in d["tracks"][0]["segments"]:
+            assert (s["speed"], s["reverse"], s["intensifies_audio"], s["volume"]) == (1.0, False, False, 1.0), s
+            refs = set(s["extra_material_refs"])
+            assert not any(f["id"] in refs for f in m.get("audio_fades", [])), "template fade on every cut"
+            assert all(x["speed"] == 1.0 for x in m["speeds"] if x["id"] in refs), m["speeds"]
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)
