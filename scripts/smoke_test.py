@@ -156,6 +156,27 @@ def capcut_saves_are_recorded():
         assert len(capcut_edit.history(str(f))) == 2, "a broken save was kept as a version"
 
 
+
+def autosave_profile_reads_the_log():
+    # ClipKit - Autosave: the style profile comes from the change log, the AI's own build is not counted
+    import capcut_edit
+    import autosave_profile
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        d = capcut_edit._load(f)
+        d["materials"]["texts"] = [{"id": "m", "content": json.dumps({"text": "AI", "styles": [{"size": 8.0}]})}]
+        d["tracks"] = [{"type": "text", "segments": [{"material_id": "m", "clip": {},
+                                                       "target_timerange": {"start": 0, "duration": 1000000}}]}]
+        capcut_edit._save(f, d, "capcut_build")
+        d["materials"]["texts"][0]["content"] = json.dumps({"text": "คน", "styles": [{"size": 12.0}]})
+        capcut_edit._save(f, d, "subs")
+        prof = autosave_profile.build(Path(t))
+        assert prof["edits"] == 1 and prof["by_op"] == [("subs", 1)], prof
+        size = next(c for c in prof["changed"] if c["measure"] == "size")
+        assert (size["before"], size["after"]) == (8.0, 12.0), size
+
+
 def pictures_are_stills():
     # a picture probed as a 0.04 s video showed for one frame
     import video_edit

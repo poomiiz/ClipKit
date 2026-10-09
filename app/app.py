@@ -65,11 +65,12 @@ app.mount("/", StaticFiles(directory=str(HERE / "static"), html=True), name="sta
 
 
 def _watch_drafts() -> None:
-    """The owner's machine ("creator": true) records every project CapCut saves (capcut_edit.watch), in a thread."""
+    """ClipKit - Autosave: record every project CapCut saves (capcut_edit.watch), in a thread, on every machine.
+    Stays on this machine; config.json "autosave": false turns it off."""
     import threading
     import capcut_edit
     cfg = kit_settings._read_config()
-    if cfg.get("creator") and cfg.get("capcut_drafts"):
+    if cfg.get("autosave", True) and cfg.get("capcut_drafts"):
         threading.Thread(target=capcut_edit.watch, args=(cfg["capcut_drafts"],), daemon=True).start()
 
 

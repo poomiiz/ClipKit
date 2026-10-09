@@ -1,6 +1,6 @@
-"""The draft bot: watch the CapCut drafts folder (config.json "capcut_drafts") and record every project CapCut saves
+"""ClipKit - Autosave, the draft bot: watch the CapCut drafts folder (config.json "capcut_drafts") and record every project CapCut saves
 into that project's history and change log (clipkit_history/, clipkit_changes.jsonl), and say when a save would
-stop CapCut opening it. Stays on this machine. The app runs this by itself on the owner's machine ("creator": true).
+stop CapCut opening it. Stays on this machine. The app runs this by itself (config.json "autosave": false turns it off).
 
     python scripts/draft_watch.py
 """

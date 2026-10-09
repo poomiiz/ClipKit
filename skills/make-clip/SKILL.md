@@ -115,8 +115,10 @@ in the project's own `clipkit_changes.jsonl` (stays on this machine); `editdata.
 (table `changes`) for the clips in approved.json, so the owner's own style can be learned from it.
 Each edit also keeps a copy of the project in `clipkit_history/` (an autosave history):
 `python scripts/draft_history.py "<project folder>"` lists them, adding a version name puts that one back.
-On the owner's machine (`"creator": true`) the app also runs the draft bot (`scripts/draft_watch.py`): every project
-CapCut itself saves goes into the same history and log, and a save CapCut could not open is reported there.
+This is ClipKit - Autosave. The app also runs its draft bot (`scripts/draft_watch.py`, on every machine unless
+config.json `"autosave": false`): every project CapCut itself saves goes into the same history and log, and a
+save CapCut could not open is reported there. `python scripts/autosave_profile.py` turns the log into the
+person's own editing style (`<output_dir>/autosave/profile.md`, profile.json); it never leaves their machine.
 
 **ClipKit itself goes wrong** (an error, CapCut will not open a project, a crash): report it through the log,
 never as a loose file on the Desktop - `python scripts/cutlog.py feedback "<project folder>" "BUG: <what happened,
