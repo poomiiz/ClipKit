@@ -867,3 +867,54 @@ def version() -> dict[str, Any]:
     commit = subprocess.run(["git", "-C", str(KIT), "log", "-1", "--format=%h %cs"], capture_output=True,
                             text=True).stdout.strip()
     return {"version": meta.get("version"), "commit": commit}
+
+
+# ── preset packs (.clipkit): hand subtitle presets, covers and motion to the team as one file ──
+class PackPath(BaseModel):
+    path: str
+
+
+class PackMake(BaseModel):
+    id: str
+    name: str
+    author: str = ""
+    tier: str = "team"
+    subtitles: list[str] = []
+    covers: list[str] = []
+    motion: list[str] = []
+
+
+def _pack(fn, *a):
+    import preset_pack
+    try:
+        return fn(preset_pack, *a)
+    except preset_pack.PackError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/pack/items")
+def pack_items() -> dict[str, Any]:
+    return _pack(lambda pp: {**pp.items(), "tiers": pp.TIERS})
+
+
+@router.post("/pack/check")
+def pack_check(body: PackPath) -> dict[str, Any]:
+    return _pack(lambda pp: pp.read_pack(body.path))
+
+
+@router.post("/pack/install")
+def pack_install(body: PackPath) -> dict[str, Any]:
+    return _pack(lambda pp: pp.install_pack(body.path))
+
+
+@router.post("/pack/make")
+def pack_make(body: PackMake) -> dict[str, Any]:
+    """Write <output_dir>/packs/<id>.clipkit."""
+    cfg = _read_config()
+    base = Path(cfg.get("output_dir") or "")
+    if not cfg.get("output_dir") or not base.is_dir():
+        raise HTTPException(400, "set the finished-files folder (output_dir) in Settings first")
+    (base / "packs").mkdir(exist_ok=True)
+    m = {"id": body.id, "name": body.name, "author": {"name": body.author}, "version": "1.0.0", "tier": body.tier,
+         "subtitles": body.subtitles, "covers": body.covers, "motion": body.motion, "fonts": []}
+    return {"path": str(_pack(lambda pp: pp.make_pack(base / "packs", m)))}
