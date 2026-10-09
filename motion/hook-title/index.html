@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=1080, height=1920">
 <!--
   ClipKit motion stock - level 0 "hook title" (first 3-5 s of a clip).
-  Set HOOK below. STYLE "tilt" (from a real CapCut edit): red keyword DB Heavent size 58 x0.84 tilt -4 deg,
+  Set HOOK below. STYLE "tilt" (from a hand-made edit): red keyword DB Heavent size 58 x0.84 tilt -4 deg,
   white stroke, neon-flicker entrance ("มิดไนท์คลับ" 0.5 s), white sub-line types in 0.83 s later.
   STYLE "straight": white context line on top, red answer below, no tilt.
   Transparent background for a CapCut overlay; preview over footage with ?bg=<image>.
@@ -45,7 +45,7 @@
   const HOOK = { key: ARGS.key || "Burn out", sub: ARGS.sub ?? "เพราะพลาดเรื่องนี้", duration: parseFloat(ARGS.duration) || 5.5 };
   const STYLE = (ARGS.style || "tilt");
   if (!(STYLE in { tilt: 1, straight: 1 })) throw new Error("unknown style: " + STYLE);
-  // SPEED 2 = every entrance twice as fast as the original CapCut edit (the editor: original felt slow); ?speed= overrides
+  // SPEED 2 = every entrance twice as fast as the original CapCut edit (the original felt slow); ?speed= overrides
   const SPEED = parseFloat(ARGS.speed) || 2;
 
   const STYLES = {

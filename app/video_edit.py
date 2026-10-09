@@ -52,6 +52,14 @@ class VideoEditError(RuntimeError):
 
 # ── probing ──────────────────────────────────────────────────────────
 
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic"}
+
+
+def is_image(path: str) -> bool:
+    """A still picture used as b-roll: shown for the whole span, not as a 1-frame video."""
+    return Path(path).suffix.lower() in IMAGE_EXT
+
+
 def probe(path: str) -> dict[str, Any]:
     out = subprocess.run(
         [FFPROBE, "-v", "error", "-print_format", "json",
@@ -386,8 +394,10 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
                 if phrase["end"] - phrase["start"] < 0.3:
                     continue
         merged.append(phrase)
+    import spelling
+    known = spelling.load()  # this person's own fixes (spelling.learn)
     for phrase in merged:
-        phrase["text"] = english_terms(thai_spacing(phrase["text"]))
+        phrase["text"] = spelling.fix(english_terms(thai_spacing(phrase["text"])), known)
     return merged
 
 
@@ -729,7 +739,8 @@ def agent_command(kind: str, target: str) -> str:
     """The line the editor pastes into Claude / Codex chat; the ClipKit skill knows what to do with it."""
     return {"stories": f'ClipKit: แบ่งเรื่อง "{target}"',
             "translate": f'ClipKit: แปลซับเป็นอังกฤษ "{target}"',
-            "punch": f'ClipKit: เลือกคำเน้น "{target}"'}[kind]
+            "punch": f'ClipKit: เลือกคำเน้น "{target}"',
+            "spelling": f'ClipKit: ตรวจคำผิด "{target}"'}[kind]
 
 
 def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[str, Any]] | None:

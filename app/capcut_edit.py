@@ -31,11 +31,37 @@ def _drafts_root(root: str | None = None) -> Path:
     return path
 
 
+SEAL = "clipkit_seal.json"
+
+
+def _digest(text: str) -> str:
+    import hashlib
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+def _seal(folder: Path, text: str) -> None:
+    """Remember what ClipKit last wrote, so an edit made outside ClipKit is caught before ClipKit builds on it."""
+    (folder / SEAL).write_text(json.dumps({"draft_content": _digest(text)}), encoding="utf-8")
+
+
+def accept(folder: str) -> None:
+    """The person changed the project on purpose (in CapCut): ClipKit carries on from that version."""
+    f = Path(folder)
+    _seal(f, (f / "draft_content.json").read_text(encoding="utf-8"))
+
+
 def _load(folder: Path) -> dict[str, Any]:
     content = folder / "draft_content.json"
     if not content.is_file():
         raise VideoEditError(f"not a CapCut draft: {folder}")
-    return json.loads(content.read_text(encoding="utf-8"))
+    text = content.read_text(encoding="utf-8")
+    seal = folder / SEAL
+    if seal.is_file() and json.loads(seal.read_text(encoding="utf-8")).get("draft_content") != _digest(text):
+        raise VideoEditError(
+            f"โปรเจกต์ {folder.name} ถูกแก้นอก ClipKit (CapCut หรือ AI ตัวอื่นแก้ไฟล์ draft_content.json เอง) "
+            "ClipKit จะไม่ทำต่อบนไฟล์นี้ เพราะอาจได้งานเพี้ยน: สร้างโปรเจกต์ใหม่จากไฟล์ดิบ หรือถ้าตั้งใจแก้ใน CapCut เอง "
+            f'สั่ง  python scripts/accept_edit.py "{folder}"  แล้วทำต่อได้')
+    return json.loads(text)
 
 
 def sync_timeline(folder: Path, text: str) -> None:
@@ -67,17 +93,163 @@ def fresh_ids(folder: Path) -> str:
         text = json.dumps(draft, ensure_ascii=False, indent=2)
         content.write_text(text, encoding="utf-8")
         sync_timeline(folder, text)
+        _seal(folder, text)
     return new
 
 
+CHANGES = "clipkit_changes.jsonl"
+
+
+def _rows(draft: dict[str, Any]) -> dict[str, list[str]]:
+    """The draft as editdata.py reads an approved clip (cuts, cards, inserts, audio, effects), one JSON row each."""
+    import sqlite3
+    import editdata
+    con = sqlite3.connect(":memory:")
+    con.executescript(editdata.SCHEMA)
+    editdata.read(con.cursor(), 0, "", draft)
+    out = {}
+    for t in ("cuts", "cards", "inserts", "audio", "effects"):
+        cur = con.execute(f"SELECT * FROM {t}")
+        cols = [c[0] for c in cur.description][2:]  # without clip_id, version
+        out[t] = [json.dumps(dict(zip(cols, [round(v, 2) if isinstance(v, float) else v for v in r[2:]])),
+                             ensure_ascii=False, sort_keys=True) for r in cur]
+    return out
+
+
+HISTORY = "clipkit_history"
+
+
+def _keep_version(folder: Path, text: str, op: str) -> str:
+    """One gzipped copy of the draft per edit, like an autosave history; restore() puts any of them back."""
+    import gzip
+    d = folder / HISTORY
+    d.mkdir(exist_ok=True)
+    n = len(list(d.glob("*.json.gz"))) + 1  # numbered: two edits in one millisecond still sort in order
+    name = f"{n:04d} {time.strftime('%Y%m%d-%H%M%S')} {op}.json.gz"
+    (d / name).write_bytes(gzip.compress(text.encode("utf-8")))
+    return name
+
+
+def history(folder: str) -> list[str]:
+    """The project's saved versions, oldest first."""
+    d = Path(folder) / HISTORY
+    return sorted(p.name for p in d.glob("*.json.gz")) if d.is_dir() else []
+
+
+def restore(folder: str, version: str) -> None:
+    """Put a saved version back (itself recorded as a new edit, so nothing is lost)."""
+    import gzip
+    f = Path(folder)
+    src = f / HISTORY / version
+    if not src.is_file():
+        raise VideoEditError(f"no saved version {version!r} in {f / HISTORY}")
+    _load(f)  # refuses a project edited outside ClipKit
+    _save(f, json.loads(gzip.decompress(src.read_bytes()).decode("utf-8")), "restore")
+
+
+def _log_change(folder: Path, before_text: str, text: str, op: str) -> None:
+    """Every edit ClipKit writes, as rows removed and added plus a saved version, in the project folder
+    (stays on this machine). editdata.py extract loads the log into edits.sqlite, so the owner's own way of
+    editing can be learned from it."""
+    from collections import Counter
+    before, after = json.loads(before_text), json.loads(text)
+    b, a = _rows(before), _rows(after)
+    removed = {t: [json.loads(r) for r in (Counter(b[t]) - Counter(a[t])).elements()] for t in b}
+    added = {t: [json.loads(r) for r in (Counter(a[t]) - Counter(b[t])).elements()] for t in a}
+    removed, added = {t: v for t, v in removed.items() if v}, {t: v for t, v in added.items() if v}
+    if not removed and not added:
+        return
+    if not history(str(folder)):
+        _keep_version(folder, before_text, "start")
+    row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": op, "version": _keep_version(folder, text, op),
+           "removed": removed, "added": added}
+    with open(folder / CHANGES, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+
+def _newest_draft_file(folder: Path) -> Path:
+    """draft_content.json, or CapCut 9.x's Timelines/<id> copy when CapCut saved that one later."""
+    content = folder / "draft_content.json"
+    proj = folder / "Timelines" / "project.json"
+    if proj.is_file():
+        inner = folder / "Timelines" / str(json.loads(proj.read_text(encoding="utf-8")).get("main_timeline_id")) / "draft_content.json"
+        if inner.is_file() and inner.stat().st_mtime > content.stat().st_mtime:
+            return inner
+    return content
+
+
+def record_outside(folder: str) -> str | None:
+    """An edit saved by CapCut itself goes into the history and change log like ClipKit's own edits.
+    Returns what would stop CapCut opening it (the last good version stays in the history), else None.
+    The seal is left alone: ClipKit still will not build on it until accept_edit.py is run."""
+    import gzip
+    f = Path(folder)
+    text = _newest_draft_file(f).read_text(encoding="utf-8")
+    versions = history(folder)
+    last = gzip.decompress((f / HISTORY / versions[-1]).read_bytes()).decode("utf-8") if versions else None
+    if text == last:
+        return None
+    try:
+        _check(json.loads(text))
+    except (ValueError, KeyError, VideoEditError) as exc:  # ValueError: not JSON; KeyError: a segment lacks its times
+        problem = f"{type(exc).__name__}: {exc}"
+        with open(f / CHANGES, "a", encoding="utf-8") as out:
+            out.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": "capcut", "problem": problem},
+                                 ensure_ascii=False) + "\n")
+        return problem
+    if last is None:
+        _keep_version(f, text, "start")
+    else:
+        _log_change(f, last, text, "capcut")
+    return None
+
+
+def watch(root: str, every: float = 5.0, settle: float = 3.0, report=print) -> None:
+    """The bot: every few seconds, record each project CapCut has saved since the last look.
+    A file is read only after it has not changed for `settle` seconds, so a save in progress is not caught half-way."""
+    seen: dict[Path, float] = {}
+    while True:
+        for c in Path(root).glob("*/draft_content.json"):
+            f = c.parent
+            m = _newest_draft_file(f).stat().st_mtime
+            if seen.get(f) == m or time.time() - m < settle:
+                continue
+            seen[f] = m
+            problem = record_outside(str(f))
+            if problem:
+                report(f"{time.strftime('%H:%M:%S')} {f.name}: CapCut would not open this - {problem}. "
+                       f'Put back a good version: python scripts/draft_history.py "{f}"')
+        time.sleep(every)
+
+
+def _check(draft: dict[str, Any]) -> None:
+    """Refuse a draft CapCut cannot open: a segment whose material is not there, or a negative time.
+    Nothing is written, so the project stays at its last good version."""
+    ids = {m.get("id") for v in draft.get("materials", {}).values() if isinstance(v, list)
+           for m in v if isinstance(m, dict)}
+    for n, tr in enumerate(draft.get("tracks", [])):
+        for s in tr.get("segments", []):
+            t = s["target_timerange"]
+            where = f"track {n} ({tr.get('type')}) at {t['start'] / US:.2f}s"
+            if s.get("material_id") not in ids:
+                raise VideoEditError(f"draft would break: {where} points at a missing material {s.get('material_id')!r}")
+            if t["start"] < 0 or t["duration"] < 0:
+                raise VideoEditError(f"draft would break: {where} has a negative time")
+
+
 def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
+    _check(draft)
     content = folder / "draft_content.json"
     backup = content.with_suffix(f".json.bak_{op}")
     if not backup.exists():
         shutil.copy2(content, backup)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
+    before = content.read_text(encoding="utf-8")
     content.write_text(text, encoding="utf-8")
     sync_timeline(folder, text)
+    _seal(folder, text)
+    _log_change(folder, before, text, op)  # after the write: the draft bot (watch) never sees history ahead of the file
     meta_path = folder / "draft_meta_info.json"
     if meta_path.is_file():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -162,6 +334,8 @@ def read_draft(path: str) -> dict[str, Any]:
                               + seg["target_timerange"]["duration"]) / US, 2),
                 "text": body.get("text", ""),
                 "size": material.get("font_size"),
+                "color": material.get("text_color"),
+                "stroke": material.get("border_width"),
                 "y": round(seg["clip"]["transform"]["y"], 3),
                 "x": round(seg["clip"]["transform"].get("x", 0.0), 3),
                 "rotation": round(seg["clip"].get("rotation", 0.0), 1),
@@ -302,8 +476,10 @@ def _borrow_text_style(root: str | None = None) -> tuple[dict, dict]:
 
 
 def restyle_subtitles(path: str, size: float | None = None, y: float | None = None,
-                      color: str | None = None, stroke: float | None = None) -> dict[str, Any]:
-    """Change how the existing subtitles look without touching their text or timing."""
+                      color: str | None = None, stroke: float | None = None,
+                      line_h: float | None = None) -> dict[str, Any]:
+    """Change how the existing subtitles look without touching their text or timing. line_h (line height in font
+    sizes) goes to CapCut as line_spacing and to clipkit_style.json for the MP4 export."""
     folder = Path(path)
     draft = _load(folder)
     index = _index(draft)
@@ -334,19 +510,90 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
             material["text_color"] = color
         if stroke is not None:
             material["border_width"] = stroke
+        if line_h is not None:
+            material["line_spacing"] = round(line_h - 1.18, 3)
         if y is not None:
             segment["clip"]["transform"] = {"x": 0.0, "y": y}
         changed += 1
 
     _save(folder, draft, "style")
+    if line_h is not None:
+        style_file = folder / "clipkit_style.json"
+        style = json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {}
+        style_file.write_text(json.dumps({**style, "line_h": line_h}, ensure_ascii=False), encoding="utf-8")
     return {"name": folder.name, "restyled": changed}
+
+
+TIDY_MODES = ("lines", "split", "shrink")
+
+
+def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
+    """Make long subtitles readable before export (render.split_sub): two lines broken where the Thai reads right
+    ("lines"), a new subtitle from that point ("split", also when two lines still overflow), or one smaller line
+    ("shrink"). First, lines that run straight on hand a dangling joining word to the next line (render.carry_joiners).
+    Each line keeps its own look and position; its word times (clipkit_words.json) follow the new text."""
+    import render
+    if mode not in TIDY_MODES:
+        raise VideoEditError(f"unknown mode: {mode} (use {', '.join(TIDY_MODES)})")
+    folder = Path(path)
+    draft = _load(folder)
+    index = _index(draft)
+    track = _text_track(draft)
+    if track is None or not track["segments"]:
+        raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
+    W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
+    said_file, style_file = folder / "clipkit_words.json", folder / "clipkit_style.json"
+    said = json.loads(said_file.read_text(encoding="utf-8")) if said_file.is_file() else {}
+    box_w = render.safe_box(json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {})["w"]
+    rows = []
+    for seg in sorted(track["segments"], key=lambda s: s["target_timerange"]["start"]):
+        material = index.get(seg["material_id"], (None, None))[1]
+        if not material:
+            continue
+        text = json.loads(material["content"]).get("text", "")
+        start = seg["target_timerange"]["start"] / US
+        rows.append({"seg": seg, "material": material, "start": start, "spoken": said.get(text),
+                     "end": start + seg["target_timerange"]["duration"] / US, "text": text})
+    moved = render.carry_joiners(rows)
+    segments, words, two, split, shrunk = [], dict(said), 0, 0, 0
+    for row in rows:
+        fdir, px = render.text_px(row["material"], row["seg"], W, H)
+        pieces = render.split_sub(row["text"], row["spoken"], row["start"], row["end"], fdir, px, W * box_w, mode)
+        split += len(pieces) - 1
+        for k, (a, b, text, spoken, factor) in enumerate(pieces):
+            seg, material = row["seg"], row["material"]
+            if k:
+                seg, material = copy.deepcopy(seg), copy.deepcopy(material)
+                seg["id"], material["id"] = str(uuid.uuid4()).upper(), str(uuid.uuid4()).upper()
+                seg["material_id"] = material["id"]
+                draft["materials"]["texts"].append(material)
+            body = json.loads(material["content"])
+            body["text"] = text
+            for style in body["styles"]:
+                style["range"] = [0, len(text)]
+                if factor < 1:
+                    style["size"] = round(style.get("size", material.get("font_size") or 15) * factor, 2)
+            if factor < 1:
+                material["font_size"] = material["text_size"] = round((material.get("font_size") or 15) * factor, 2)
+                shrunk += 1
+            material["content"] = json.dumps(body, ensure_ascii=False)
+            seg["target_timerange"] = {"start": int(round(a * US)), "duration": int(round((b - a) * US))}
+            two += "\n" in text
+            if spoken:
+                words[text] = spoken
+            segments.append(seg)
+    track["segments"] = segments
+    _save(folder, draft, "tidy")
+    said_file.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
+    return {"name": folder.name, "mode": mode, "subtitles": len(segments), "two_lines": two, "split": split,
+            "shrunk": shrunk, "moved_words": moved}
 
 
 class NeedsAgent(VideoEditError):
     """This step is done by the agent in chat; the message is the command to paste there."""
 
 
-SUBS_PRESET = {"size": 14.0, "y": -0.62, "color": "#ffffff", "stroke": 0.08}   # plain white, sits above TikTok's buttons
+SUBS_PRESET = {"size": 14.0, "y": -0.44, "color": "#ffffff", "stroke": 0.08}   # plain white; two lines stay inside render.SAFE_BOTTOM
 
 
 def subtitles_language(path: str, lang: str) -> dict[str, Any]:
@@ -1152,6 +1399,8 @@ def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
     if not hit:
         raise VideoEditError(f"subtitle line not found: {old}")
     _save(folder, draft, "linetext")
+    import spelling
+    spelling.learn(old, new)  # the words fixed by hand are fixed in the next transcripts too
     for name in ("clipkit_words.json", "clipkit_punch.json"):
         f = folder / name
         if f.is_file():
