@@ -1,6 +1,6 @@
 ---
 name: style-extract
-description: Read the subtitle look out of a video's frames for the ClipKit style lab - the command the app copies, "ClipKit: ถอดสไตล์ "<folder>"", or "ถอดสไตล์จากคลิปนี้". Writes style.json in the preset format and renders its still and GIF preview so the person can confirm it on the คลังสไตล์ page.
+description: Read the subtitle look out of a video's frames for the ClipKit style lab - the command the app copies, "ClipKit: ถอดสไตล์ "<folder>"", or "ถอดสไตล์จากคลิปนี้" - and approve a style shared for the team ("อนุมัติสไตล์ #<issue>"). Writes style.json in the preset format and renders its still and GIF preview so the person can confirm it on the คลังสไตล์ page.
 ---
 
 # Extract a subtitle style from a video
@@ -23,3 +23,14 @@ Run from the ClipKit folder. A CapCut project never comes here: the app reads it
 5. Look at `<folder>/preview.png` next to a frame. Wrong size or place: fix and rerun step 4.
 6. Tell the person it is ready on the คลังสไตล์ page, where they look at it and press เก็บเข้าคอลเลกชัน.
    Do not save it for them (`style_lab.py save`) unless they ask.
+
+# Approve a shared style for the team ("อนุมัติสไตล์ #<issue>")
+
+Only the repo owner approves. Shared styles arrive as `[style] <name>` issues in the repo this ClipKit updates from.
+
+1. Read the issue: the preset is in its ```json block, the preview GIF is attached. Show the person the GIF and
+   wait for their OK on this issue; never approve on your own.
+2. Save the JSON block to a file and run `python scripts/style_lab.py approve "<file>" <name>`. An error names
+   what is wrong: tell the person and stop (ask the sender to fix it), never edit their numbers.
+3. Commit `presets/team-<name>.json` with `Closes #<issue>` and push to the default branch the team updates from.
+   Every machine gets it with its next update and the คลังสไตล์ page lists it under สไตล์ทีม.

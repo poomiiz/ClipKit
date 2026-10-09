@@ -259,6 +259,13 @@ def style_lab_previews_and_keeps():
             got = style_lab.collection()
             assert got["presets"][0]["gif"] and got["parts"]["main"][0]["gif"], "kept style lost its preview"
             assert style_lab.compose("mix", "mine")["preset"] == "my-mix"
+            link = style_lab.share("my-mix")["url"]
+            assert link.startswith("https://github.com/") and "%5Bstyle%5D" in link, link
+            shared = t / "shared.json"
+            shared.write_text((t / "presets" / "my-mix.json").read_text(encoding="utf-8"), encoding="utf-8")
+            assert style_lab.approve(shared, "mix")["preset"] == "team-mix"
+            assert "source" not in json.loads((t / "presets" / "team-mix.json").read_text(encoding="utf-8"))
+            assert style_lab.collection()["team"][0]["gif"], "approved style has no preview"
             try:
                 style_lab.save(x["folder"], "other", ["caption"])
                 raise AssertionError("a part the style does not have was kept")

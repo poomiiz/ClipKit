@@ -7,10 +7,12 @@ pulled out and an agent looks at them and writes style.json (skills/style-extrac
     python scripts/style_lab.py start "<CapCut project folder | video file>"
     python scripts/style_lab.py preview "<lab folder>"        # after style.json was written or changed
     python scripts/style_lab.py save "<lab folder>" <name> [main] [caption] [second]
+    python scripts/style_lab.py approve "<style json from the [style] issue>" <name>   # -> presets/team-<name>.json
 
 Each source gets <output_dir>/style_lab/<name>/: source.json, frames/*.jpg (video), style.json, preview.png,
 preview.gif. Kept styles: presets/parts/<main|caption|second>/<name>.* (pieces to mix) and presets/my-<name>.json
-(ready to cut with). Prints JSON.
+(ready to cut with). Sharing: share() makes a GitHub issue link asking for approval; approve() turns the approved
+JSON into presets/team-<name>.json, committed, so every machine gets it on its next update. Prints JSON.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import unicodedata
 from pathlib import Path
 
@@ -303,10 +306,56 @@ def save(folder: str | Path, name: str, parts: list[str] | None = None, overwrit
     return {"parts": parts, "preset": preset}
 
 
+def _repo() -> str:
+    """owner/name of the GitHub repo this install updates from (ClipKit, or ClipKit-Team on team machines)."""
+    r = subprocess.run(["git", "-C", str(ROOT), "remote", "get-url", "origin"], capture_output=True, text=True)
+    m = re.search(r"github\.com[/:]([^/]+/[^/]+?)(?:\.git)?/?$", r.stdout.strip())
+    if r.returncode or not m:
+        raise ValueError(f"this ClipKit is not a GitHub clone, so it cannot share: {r.stdout.strip() or r.stderr.strip()}")
+    return m.group(1)
+
+
+def share(preset: str) -> dict:
+    """A GitHub 'new issue' link asking the team to approve presets/my-<name>.json, with the preset in the text.
+    Nothing is uploaded from here: the person opens the link, drops the preview GIF in and submits."""
+    import urllib.parse
+    f = PRESETS / f"{preset}.json"
+    if not preset.startswith("my-") or preset != _slug(preset) or not f.is_file():
+        raise ValueError(f"no kept style named {preset}")
+    style = check(json.loads(f.read_text(encoding="utf-8")), full=True)
+    name = preset.removeprefix("my-")
+    body = "\n".join([f"ขออนุมัติสไตล์ `{name}` ให้ทีมใช้ (preset team-{name})", "",
+                      "ลากไฟล์พรีวิว GIF มาวางตรงนี้:", "", "", "```json",
+                      json.dumps(style, ensure_ascii=False, indent=1), "```"])
+    url = f"https://github.com/{_repo()}/issues/new?" + urllib.parse.urlencode({"title": f"[style] {name}", "body": body})
+    return {"url": url, "gif": str(PREVIEWS / f"{preset}.gif")}
+
+
+def approve(src: str | Path, name: str) -> dict:
+    """Approve a shared style (the JSON from its issue, saved to a file): presets/team-<name>.json, which is
+    committed, so every machine gets it with its next update. The approver commits it."""
+    style = check(json.loads(Path(src).read_text(encoding="utf-8")), full=True)
+    key = "team-" + _slug(name).removeprefix("team-").removeprefix("my-")
+    out = PRESETS / f"{key}.json"
+    if out.exists():
+        raise FileExistsError(f"{out.name} already exists: pick another name")
+    style = {k: v for k, v in style.items() if k != "source"}       # a path on the sender's machine
+    style["approved"] = time.strftime("%Y-%m-%d")
+    style.setdefault("caption", None)
+    out.write_text(json.dumps(style, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"preset": key, "file": str(out)}
+
+
 def collection() -> dict:
     """The person's own styles, newest first: ready presets (presets/my-*.json) and kept parts per category."""
     new = lambda fs: sorted(fs, key=lambda p: p.stat().st_mtime, reverse=True)  # noqa: E731
-    out = {"presets": [], "parts": {c: [] for c in CATS}}
+    out = {"presets": [], "team": [], "parts": {c: [] for c in CATS}}
+    for p in new(PRESETS.glob("team-*.json")):    # approved for the team: draw a preview the first time it is seen
+        d = json.loads(p.read_text(encoding="utf-8"))
+        if not (PREVIEWS / f"{p.stem}.gif").is_file():
+            PREVIEWS.mkdir(parents=True, exist_ok=True)
+            _render(check(d, full=True), None, PREVIEWS / p.stem)
+        out["team"].append({"name": p.stem, "about": d.get("about", ""), **_pics(PREVIEWS / p.stem)})
     for p in new(PRESETS.glob("my-*.json")):
         out["presets"].append({"name": p.stem, "about": json.loads(p.read_text(encoding="utf-8")).get("about", ""),
                                **_pics(PREVIEWS / p.stem)})
@@ -324,6 +373,8 @@ def main() -> int:
             out = start(args[1])
         elif args[:1] == ["preview"] and len(args) == 2:
             out = preview(args[1])
+        elif args[:1] == ["approve"] and len(args) == 3:
+            out = approve(args[1], args[2])
         elif args[:1] == ["save"] and len(args) >= 3:
             out = save(args[1], args[2], args[3:] or None)
         else:
