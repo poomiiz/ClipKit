@@ -19,6 +19,7 @@ import argparse
 import html
 import json
 import sys
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -103,6 +104,15 @@ sys.stdout.reconfigure(encoding="utf-8")  # Thai titles when the output goes to 
 
 def say(**kw) -> None:
     print(json.dumps(kw, ensure_ascii=False), flush=True)
+
+
+def timed(name: str, fn, *args, **kw):
+    """Run one step and print how long it took, so a slow run shows where the time went."""
+    t = time.perf_counter()
+    try:
+        return fn(*args, **kw)
+    finally:
+        say(took=name, s=round(time.perf_counter() - t, 1))
 
 
 def detail(exc: Exception) -> str:
@@ -194,7 +204,7 @@ def main() -> int:
     state_f = Path(raw).with_name(Path(raw).name + ".clipkit_run.json")
     state = json.loads(state_f.read_text(encoding="utf-8")) if state_f.is_file() else {}
 
-    sts = stories(raw, a.max)
+    sts = timed("ถอดเสียง + เรื่อง", stories, raw, a.max)
     if sts is None:
         say(WAIT=video_edit.agent_command("stories", raw), then=" ".join(sys.argv))
         return 2
@@ -206,7 +216,7 @@ def main() -> int:
         try:
             if key not in state or not Path(state[key]).is_dir():
                 say(step="ทำโปรเจกต์", story=n, title=st["title"])
-                state[key] = make_project(raw, n, st, a.shape, a.look, a.preset)
+                state[key] = timed("ทำโปรเจกต์", make_project, raw, n, st, a.shape, a.look, a.preset)
                 state_f.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
             path = state[key]
             need = ["clipkit_punch.json", "clipkit_hook.json"]
@@ -220,19 +230,20 @@ def main() -> int:
                 say(step="ใส่คลิปที่โหลดมา", story=n, files=insert(path))
             note = ""
             try:
-                ve.broll_fill(path)
+                timed("b-roll Pixabay", ve.broll_fill, path)
             except video_edit.VideoEditError as exc:  # no Pixabay key / offline: the Envato links still cover it
                 note = str(exc)
             if not json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8")).get("cover"):
-                ve.auto_cover(path)
-            row = {"n": n, "title": st["title"], "path": path, "hf": str(hf_build.build(path)), "queries": queries(path),
-                   "length": round(ve.draft_timeline(path)["duration"], 1), "pixabay": note}
+                timed("ปก", ve.auto_cover, path)
+            row = {"n": n, "title": st["title"], "path": path, "hf": str(timed("หน้า HyperFrames", hf_build.build, path)),
+                   "queries": timed("คำค้น Envato", queries, path),
+                   "length": round(timed("ความยาวคลิป", ve.draft_timeline, path)["duration"], 1), "pixabay": note}
             bf = Path(path) / "clipkit_broll.json"
             row["have"] = list(json.loads(bf.read_text(encoding="utf-8"))) if bf.is_file() else []
             if a.capcut:
                 import capcut_build
                 say(step="ทำโปรเจกต์ CapCut", story=n)
-                cc, row["capcut_warnings"] = capcut_build.build(path)
+                cc, row["capcut_warnings"] = timed("โปรเจกต์ CapCut", capcut_build.build, path)
                 row["capcut"] = str(cc)
                 if a.client:
                     sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
@@ -246,7 +257,7 @@ def main() -> int:
                 say(step="ส่งออก MP4", story=n)
                 row["mp4"] = ve.draft_hf_export(ve.ExportRequest(path=path))["file"]
             rows.append(row)
-            row["check"] = cutlog.log_run(raw, st, n, path, {k: v for k, v in vars(a).items() if k != "video"}, row["length"])
+            row["check"] = timed("ตรวจคลิป + log", cutlog.log_run, raw, st, n, path, {k: v for k, v in vars(a).items() if k != "video"}, row["length"])
         except (video_edit.VideoEditError, HTTPException) as exc:
             say(error=detail(exc), story=n, title=st["title"])
             return 1
