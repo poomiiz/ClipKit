@@ -5,6 +5,7 @@ Only drafts listed in <edit_data>/approved.json are read. Paths come from config
 obsidian_notes. Generated notes are overwritten on every run - never hand-edit them.
 
     python scripts/capcut/editdata.py extract     # approved drafts -> <edit_data>/edits.sqlite
+                                                  # (with each draft's clipkit_changes.jsonl: every edit ClipKit wrote)
     python scripts/capcut/editdata.py notes       # sqlite -> Obsidian notes
 """
 import json
@@ -16,7 +17,8 @@ from pathlib import Path
 
 import kitconfig
 
-sys.stdout.reconfigure(encoding="utf-8")
+if sys.stdout:  # pythonw (the app on autostart) has none; capcut_edit imports this module
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 def __getattr__(name):
@@ -36,6 +38,7 @@ CREATE TABLE cards(clip_id, version, role, start_s, dur_s, text, size, color, x,
 CREATE TABLE inserts(clip_id, version, start_s, dur_s, file, scale, x, y);
 CREATE TABLE audio(clip_id, version, start_s, dur_s, name, volume);
 CREATE TABLE effects(clip_id, version, start_s, dur_s, name);
+CREATE TABLE changes(clip_id, time, op, kind, tbl, row);
 """
 
 
@@ -70,9 +73,9 @@ def role(size, col, x, rot, anim, start, dur, ntrack):
 
 def read(cur, clip_id, version, d):
     M = d["materials"]
-    tex = {t["id"]: t for t in M["texts"]}
-    vids = {v["id"]: v for v in M["videos"]}
-    auds = {a["id"]: a for a in M["audios"]}
+    tex = {t["id"]: t for t in M.get("texts", [])}
+    vids = {v["id"]: v for v in M.get("videos", [])}
+    auds = {a["id"]: a for a in M.get("audios", [])}
     anims = {a["id"]: a for a in M.get("material_animations", [])}
     effs = {e["id"]: e.get("name") for k in ("video_effects", "effects") for e in M.get(k, [])}
     t_ = lambda s, k: s["target_timerange"][k] / 1e6
@@ -132,11 +135,19 @@ def extract():
             if not av.is_file():  # a whole backup draft folder next to the approved one
                 av = drafts / c["ai_version"] / "draft_content.json"
             read(cur, n, "ai", json.loads(av.read_text(encoding="utf-8")))
+        log = folder / "clipkit_changes.jsonl"  # every edit ClipKit wrote to this draft (capcut_edit._log_change)
+        if log.is_file():
+            for line in log.read_text(encoding="utf-8").splitlines():
+                ch = json.loads(line)
+                for kind in ("removed", "added"):
+                    for tbl, rows in ch[kind].items():
+                        cur.executemany("INSERT INTO changes VALUES(?,?,?,?,?,?)", [(n, ch["time"], ch["op"], kind, tbl, json.dumps(r, ensure_ascii=False)) for r in rows])
         hook = [r[0].replace("\n", " ") for r in cur.execute("SELECT text FROM cards WHERE clip_id=? AND version='final' AND role='hook' ORDER BY start_s", (n,))]
         cur.execute("UPDATE clips SET hook=? WHERE id=?", (" / ".join(dict.fromkeys(hook)) or None, n))
     con.commit()
     for t in ("clips", "cuts", "cards", "inserts", "audio", "effects"):
         print(t, con.execute(f"SELECT COUNT(*) FROM {t} WHERE {'1' if t == 'clips' else 'version=' + chr(39) + 'final' + chr(39)}").fetchone()[0])
+    print("changes", con.execute("SELECT COUNT(*) FROM changes").fetchone()[0])
 
 
 ROLE_TH = {"hook": "หัวคลิป", "context": "ตัวขาว (บริบท)", "punch": "ตัวสีเน้น (คำเด็ด)", "quote": "ตัวแดง (คำพูดยกมา หรือช็อก)",

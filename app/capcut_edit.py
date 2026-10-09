@@ -97,15 +97,159 @@ def fresh_ids(folder: Path) -> str:
     return new
 
 
+CHANGES = "clipkit_changes.jsonl"
+
+
+def _rows(draft: dict[str, Any]) -> dict[str, list[str]]:
+    """The draft as editdata.py reads an approved clip (cuts, cards, inserts, audio, effects), one JSON row each."""
+    import sqlite3
+    import editdata
+    con = sqlite3.connect(":memory:")
+    con.executescript(editdata.SCHEMA)
+    editdata.read(con.cursor(), 0, "", draft)
+    out = {}
+    for t in ("cuts", "cards", "inserts", "audio", "effects"):
+        cur = con.execute(f"SELECT * FROM {t}")
+        cols = [c[0] for c in cur.description][2:]  # without clip_id, version
+        out[t] = [json.dumps(dict(zip(cols, [round(v, 2) if isinstance(v, float) else v for v in r[2:]])),
+                             ensure_ascii=False, sort_keys=True) for r in cur]
+    return out
+
+
+HISTORY = "clipkit_history"
+
+
+def _keep_version(folder: Path, text: str, op: str) -> str:
+    """One gzipped copy of the draft per edit, like an autosave history; restore() puts any of them back."""
+    import gzip
+    d = folder / HISTORY
+    d.mkdir(exist_ok=True)
+    n = len(list(d.glob("*.json.gz"))) + 1  # numbered: two edits in one millisecond still sort in order
+    name = f"{n:04d} {time.strftime('%Y%m%d-%H%M%S')} {op}.json.gz"
+    (d / name).write_bytes(gzip.compress(text.encode("utf-8")))
+    return name
+
+
+def history(folder: str) -> list[str]:
+    """The project's saved versions, oldest first."""
+    d = Path(folder) / HISTORY
+    return sorted(p.name for p in d.glob("*.json.gz")) if d.is_dir() else []
+
+
+def restore(folder: str, version: str) -> None:
+    """Put a saved version back (itself recorded as a new edit, so nothing is lost)."""
+    import gzip
+    f = Path(folder)
+    src = f / HISTORY / version
+    if not src.is_file():
+        raise VideoEditError(f"no saved version {version!r} in {f / HISTORY}")
+    _load(f)  # refuses a project edited outside ClipKit
+    _save(f, json.loads(gzip.decompress(src.read_bytes()).decode("utf-8")), "restore")
+
+
+def _log_change(folder: Path, before_text: str, text: str, op: str) -> None:
+    """Every edit ClipKit writes, as rows removed and added plus a saved version, in the project folder
+    (stays on this machine). editdata.py extract loads the log into edits.sqlite, so the owner's own way of
+    editing can be learned from it."""
+    from collections import Counter
+    before, after = json.loads(before_text), json.loads(text)
+    b, a = _rows(before), _rows(after)
+    removed = {t: [json.loads(r) for r in (Counter(b[t]) - Counter(a[t])).elements()] for t in b}
+    added = {t: [json.loads(r) for r in (Counter(a[t]) - Counter(b[t])).elements()] for t in a}
+    removed, added = {t: v for t, v in removed.items() if v}, {t: v for t, v in added.items() if v}
+    if not removed and not added:
+        return
+    if not history(str(folder)):
+        _keep_version(folder, before_text, "start")
+    row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": op, "version": _keep_version(folder, text, op),
+           "removed": removed, "added": added}
+    with open(folder / CHANGES, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+
+def _newest_draft_file(folder: Path) -> Path:
+    """draft_content.json, or CapCut 9.x's Timelines/<id> copy when CapCut saved that one later."""
+    content = folder / "draft_content.json"
+    proj = folder / "Timelines" / "project.json"
+    if proj.is_file():
+        inner = folder / "Timelines" / str(json.loads(proj.read_text(encoding="utf-8")).get("main_timeline_id")) / "draft_content.json"
+        if inner.is_file() and inner.stat().st_mtime > content.stat().st_mtime:
+            return inner
+    return content
+
+
+def record_outside(folder: str) -> str | None:
+    """An edit saved by CapCut itself goes into the history and change log like ClipKit's own edits.
+    Returns what would stop CapCut opening it (the last good version stays in the history), else None.
+    The seal is left alone: ClipKit still will not build on it until accept_edit.py is run."""
+    import gzip
+    f = Path(folder)
+    text = _newest_draft_file(f).read_text(encoding="utf-8")
+    versions = history(folder)
+    last = gzip.decompress((f / HISTORY / versions[-1]).read_bytes()).decode("utf-8") if versions else None
+    if text == last:
+        return None
+    try:
+        _check(json.loads(text))
+    except (ValueError, KeyError, VideoEditError) as exc:  # ValueError: not JSON; KeyError: a segment lacks its times
+        problem = f"{type(exc).__name__}: {exc}"
+        with open(f / CHANGES, "a", encoding="utf-8") as out:
+            out.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": "capcut", "problem": problem},
+                                 ensure_ascii=False) + "\n")
+        return problem
+    if last is None:
+        _keep_version(f, text, "start")
+    else:
+        _log_change(f, last, text, "capcut")
+    return None
+
+
+def watch(root: str, every: float = 5.0, settle: float = 3.0, report=print) -> None:
+    """The bot: every few seconds, record each project CapCut has saved since the last look.
+    A file is read only after it has not changed for `settle` seconds, so a save in progress is not caught half-way."""
+    seen: dict[Path, float] = {}
+    while True:
+        for c in Path(root).glob("*/draft_content.json"):
+            f = c.parent
+            m = _newest_draft_file(f).stat().st_mtime
+            if seen.get(f) == m or time.time() - m < settle:
+                continue
+            seen[f] = m
+            problem = record_outside(str(f))
+            if problem:
+                report(f"{time.strftime('%H:%M:%S')} {f.name}: CapCut would not open this - {problem}. "
+                       f'Put back a good version: python scripts/draft_history.py "{f}"')
+        time.sleep(every)
+
+
+def _check(draft: dict[str, Any]) -> None:
+    """Refuse a draft CapCut cannot open: a segment whose material is not there, or a negative time.
+    Nothing is written, so the project stays at its last good version."""
+    ids = {m.get("id") for v in draft.get("materials", {}).values() if isinstance(v, list)
+           for m in v if isinstance(m, dict)}
+    for n, tr in enumerate(draft.get("tracks", [])):
+        for s in tr.get("segments", []):
+            t = s["target_timerange"]
+            where = f"track {n} ({tr.get('type')}) at {t['start'] / US:.2f}s"
+            if s.get("material_id") not in ids:
+                raise VideoEditError(f"draft would break: {where} points at a missing material {s.get('material_id')!r}")
+            if t["start"] < 0 or t["duration"] < 0:
+                raise VideoEditError(f"draft would break: {where} has a negative time")
+
+
 def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
+    _check(draft)
     content = folder / "draft_content.json"
     backup = content.with_suffix(f".json.bak_{op}")
     if not backup.exists():
         shutil.copy2(content, backup)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
+    before = content.read_text(encoding="utf-8")
     content.write_text(text, encoding="utf-8")
     sync_timeline(folder, text)
     _seal(folder, text)
+    _log_change(folder, before, text, op)  # after the write: the draft bot (watch) never sees history ahead of the file
     meta_path = folder / "draft_meta_info.json"
     if meta_path.is_file():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
