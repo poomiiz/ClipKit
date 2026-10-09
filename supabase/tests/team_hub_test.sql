@@ -17,6 +17,10 @@ begin perform set_config('request.jwt.claim.sub', sub, false); end $$;
 set role anon;
 select pg_temp.expect_fail('select * from public.preset_packs');
 select pg_temp.expect_fail('select * from public.team_members');
+insert into public.bug_reports (text, page, errors) values ('anon bug', '/x', '{e1}');
+select pg_temp.expect_fail('select * from public.bug_reports');
+select pg_temp.expect_fail($q$insert into public.bug_reports (text) values ('  ')$q$);  -- empty report
+select pg_temp.expect_fail($q$insert into public.bug_reports (text, created_at) values ('t', '2000-01-01')$q$);  -- only report columns
 reset role;
 
 -- editor adds a pack; bad manifests are refused
@@ -51,6 +55,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
 do $$ begin
   if (select count(*) from public.preset_packs) <> 0 then raise exception 'outsider sees packs'; end if;
   if (select count(*) from public.team_members) <> 0 then raise exception 'outsider sees team'; end if;
+  if (select count(*) from public.bug_reports) <> 0 then raise exception 'outsider sees bug reports'; end if;
 end $$;
 select pg_temp.expect_fail($q$insert into public.preset_packs (id, name, tier) values ('o', 'o', 'team')$q$);
 reset role;
@@ -63,6 +68,7 @@ delete from public.preset_packs where id = 'ed-pack';
 insert into public.team_members values ('00000000-0000-0000-0000-00000000000c', 'new', 'editor');
 do $$ begin
   if exists (select 1 from public.preset_packs where id = 'ed-pack') then raise exception 'admin delete failed'; end if;
+  if (select count(*) from public.bug_reports) <> 1 then raise exception 'team should see the anon bug report'; end if;
 end $$;
 reset role;
 

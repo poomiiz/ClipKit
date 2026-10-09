@@ -74,3 +74,27 @@ create policy "author or admin edits packs" on public.preset_packs
 create policy "author or admin deletes packs" on public.preset_packs
   for delete to authenticated
   using (author_id = (select auth.uid()) or (select public.team_role()) = 'admin');
+
+-- Bug reports from the app's "แจ้งปัญหา" button: anyone running ClipKit can send one without signing in
+-- (insert only, no reading back); only the team reads them, only an admin deletes.
+create table public.bug_reports (
+  id         bigint generated always as identity primary key,
+  text       text not null check (btrim(text) <> '' and length(text) <= 5000),
+  page       text not null default '' check (length(page) <= 300),
+  version    text not null default '' check (length(version) <= 50),
+  commit     text not null default '' check (length(commit) <= 50),
+  errors     text[] not null default '{}' check (cardinality(errors) <= 10 and length(array_to_string(errors, '')) <= 10000),
+  created_at timestamptz not null default now()
+);
+
+alter table public.bug_reports enable row level security;
+revoke all on public.bug_reports from anon, authenticated;
+grant insert (text, page, version, commit, errors) on public.bug_reports to anon, authenticated;
+grant select, delete on public.bug_reports to authenticated;
+
+create policy "anyone sends bug reports" on public.bug_reports
+  for insert to anon, authenticated with check (true);
+create policy "team reads bug reports" on public.bug_reports
+  for select to authenticated using ((select public.team_role()) is not null);
+create policy "admin deletes bug reports" on public.bug_reports
+  for delete to authenticated using ((select public.team_role()) = 'admin');

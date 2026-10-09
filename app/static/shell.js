@@ -102,8 +102,13 @@
   }).catch(() => {}), 30000);
   // bug report: keeps the last errors seen on the page so the report says what actually broke
   const errs = [];
-  window.addEventListener('error', e => errs.push(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
-  window.addEventListener('unhandledrejection', e => errs.push('promise: ' + ((e.reason && e.reason.message) || e.reason)));
+  // a page error is also sent to the team on its own (the server sends each one once and honours auto_bug_report)
+  const autoReport = msg => fetch('/api/kit/bug-report', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: '[auto] ' + msg, page: location.pathname + location.search, errors: errs.slice(-10), auto: true})})
+    .catch(() => {});  // the server is down: nothing can take the report, and the next error tries again
+  const pageError = msg => { errs.push(msg); autoReport(msg); };
+  window.addEventListener('error', e => pageError(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+  window.addEventListener('unhandledrejection', e => pageError('promise: ' + ((e.reason && e.reason.message) || e.reason)));
   const ce = console.error;
   console.error = (...a) => { errs.push(a.map(String).join(' ').slice(0, 300)); ce.apply(console, a); };
   new MutationObserver(() => {   // red ❌ messages the pages show to people
@@ -136,6 +141,7 @@
           body: JSON.stringify({text: ta.value, page: location.pathname + location.search, errors: errs})});
         const j = await r.json();
         if (!r.ok) throw new Error(j.detail || r.status);
+        if (j.sent) { res.textContent = '✅ ส่งถึงทีมแล้ว ไม่ต้องทำอะไรต่อ'; return; }
         res.innerHTML = '✅ บันทึกในเครื่องแล้ว · <a target="_blank" style="color:#9fb0ff">ส่งเข้า GitHub ของทีม</a> (กดแล้วกด Submit)';
         res.querySelector('a').href = j.issue_url;
         window.open(j.issue_url, '_blank');
