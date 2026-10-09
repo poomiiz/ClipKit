@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 
+if sys.stdout:  # a Thai project name in a log line would stop the Autosave thread on a cp874/cp1252 console
+    sys.stdout.reconfigure(encoding="utf-8")
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 

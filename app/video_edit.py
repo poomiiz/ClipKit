@@ -403,7 +403,30 @@ def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.
                      len(piece))
         stop = next((i for i in range(begin + 1, len(piece)) if whole[i] and piece[i][0] >= hi), len(piece))
         words += piece[begin:stop]
+    words = _drop_loops(words)
     return _lines(words) if words else []
+
+
+def _drop_loops(words: list[list], most: int = 2) -> list[list]:
+    """The batched decoder has no temperature fallback, so it can get stuck saying one phrase over and over
+    (IMG_6414: "แค่มีสต๊อค" 13 times in 13 s). A run of the same 1-8 word pieces said more than `most` times
+    in a row keeps its first `most`."""
+    out: list[list] = []
+    i = 0
+    while i < len(words):
+        for k in range(1, 9):
+            unit = [w[2].strip() for w in words[i:i + k]]
+            n = 1
+            while [w[2].strip() for w in words[i + n * k:i + (n + 1) * k]] == unit:
+                n += 1
+            if n > most and len("".join(unit)) * n >= 12:
+                out += words[i:i + most * k]
+                i += n * k
+                break
+        else:
+            out.append(words[i])
+            i += 1
+    return out
 
 
 THAI_MARKS = "\u0e31\u0e34-\u0e3a\u0e47-\u0e4e"  # vowels above/below and tone marks: never start a line
