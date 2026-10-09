@@ -655,8 +655,23 @@ def create_capcut_draft(video_path: str, project_name: str,
     source_material["is_unified_beauty_mode"] = False
     source_material["width"] = info["width"] if not info["vertical"] else info["width"]
     source_material["height"] = info["height"]
+    # files CapCut made from the template's footage (enhanced voice, reversed copy, proxy): left in, CapCut
+    # plays the template clip's processed sound under this clip's picture
+    for key in ("media_path", "intensifies_audio_path", "intensifies_path", "reverse_path",
+                "reverse_intensifies_path", "cartoon_path"):
+        if key in source_material:
+            source_material[key] = ""
+    source_material["has_audio"] = info["audio_channels"] > 0
     materials["videos"] = [source_material]
     base_segment["material_id"] = source_material["id"]
+    # the template clip's playback edits (speed, reverse, voice, volume, fades, keyframes) are not this clip's:
+    # a sped-up template made the sound run ahead of the picture
+    base_segment.update(speed=1.0, reverse=False, intensifies_audio=False, is_tone_modify=False,
+                        volume=1.0, last_nonzero_volume=1.0, keyframe_refs=[], common_keyframes=[])
+    grade_template = [(k, m) for k, m in grade_template if k not in ("audio_fades", "audio_effects", "loudnesses")]
+    for k, m in grade_template:
+        if k == "speeds":
+            m.update(speed=1.0, mode=0, curve_speed=None)
 
     keeps: list[tuple[float, float]] = []
     at = clip_in
