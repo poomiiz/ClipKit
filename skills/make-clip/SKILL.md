@@ -33,7 +33,10 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
    the link number, e.g. `2 coffee.mp4`), then you run with `--insert`. Never log in to Envato for them.
 5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
    tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
-6. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
+6. Before showing the person any project, do the `ClipKit: ตรวจคำผิด` steps below on it. This is not optional and
+   applies whichever speech model is set (large-v3 or turbo); ClipKit's own clean-up (spacing, English terms,
+   learned fixes) already runs inside every transcription.
+7. `--export` renders the MP4s (about 4 min per minute of clip); look at frames before saying done.
 
 ## Commands pasted from the ClipKit app
 The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
@@ -55,11 +58,21 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
    (`{wrong: {"right": ..., "n": times}}`, this person's earlier fixes).
 2. Find words the speech model misheard: wrong spellings, sound-alikes that make no sense in the sentence
    ("คัป" -> "ครับ", "กอ" -> "ก็"), names and brands spelled two ways in one clip. Keep the speaker's own words
-   and slang; this is not a rewrite.
+   and slang; this is not a rewrite. Check each line at three levels (letter, word, whole line) for:
+   - Thai spelling by the Royal Institute dictionary (อนุญาติ -> อนุญาต, ไกล้ -> ใกล้), missing or extra
+     การันต์ / ไม้ยมก / ไม้ไต่คู้ / ไม้หันอากาศ, a word split in the middle ("ประ เทศ"), ฯ ๆ used wrongly.
+   - Loanwords spelled one way through the whole clip; English terms written as English with a capital first
+     letter and a space either side (`video_edit.ENGLISH_TERMS`); brand casing (YouTube, iPhone, LinkedIn).
+   - English lines: spelling, grammar, capitals, one of US or UK spelling throughout.
+   - Names, titles, numbers, dates and money the same everywhere they appear; Thai or Arabic digits, not both.
+   A line that is correct but could be written another accepted way is a suggestion, not a fix: list it,
+   do not change it. Never guess a word you cannot tell from the line and its neighbours; mark it "ไม่แน่ใจ".
 3. Close-CapCut check: ask the person to close CapCut if it is open. Then for each line to change run
    `python scripts/fix_text.py "<folder>" "<line as it is>" "<fixed line>"` (the old version is kept and the
    fix is learned for the next transcripts).
-4. Reply with a short table: line, wrong -> right. Say "ไม่พบคำผิด" when there is nothing to fix.
+4. Reply with a short table: line number, line, wrong -> right, level (ร้ายแรง = meaning, name or number changes;
+   ปานกลาง = spelling or grammar; เล็กน้อย = spacing, punctuation, consistency), then the suggestions and
+   "ไม่แน่ใจ" lines. Say "ไม่พบคำผิด" when there is nothing to fix.
 
 ### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
 For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, in the project's preset).
