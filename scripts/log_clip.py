@@ -5,7 +5,7 @@ On a machine that also has the MoonRacle KB (config "moonracle_root", or ClipKit
 knowledge_base/), the row also goes straight into the central platform.work_logs table via worklog.py.
 Team machines hand their clips_log.jsonl to the office, where `import` loads it into the central table.
 
-    python scripts/log_clip.py add --project Nina --item "EP07 burnout" --started-at 2026-10-02T09:10 \
+    python scripts/log_clip.py add --project ClientA --item "EP07 burnout" --started-at 2026-10-02T09:10 \
         --minutes 38 --metadata '{"human_fix_min": 5, "final_len_s": 72}'
     python scripts/log_clip.py import D:\\handover\\clips_log.jsonl      # office machine only
 """

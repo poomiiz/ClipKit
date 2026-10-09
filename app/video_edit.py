@@ -41,7 +41,15 @@ CAPCUT_TEMPLATE_DRAFT = os.environ.get("CAPCUT_TEMPLATE_DRAFT", "")
 #   medium   cpu/int8      233s, drops whole spans
 # So: best model on the GPU, and only fall back to CPU if CUDA is missing.
 WHISPER_MODEL = os.environ.get("VIDEO_WHISPER_MODEL", "large-v3")
+# Settings picks the model (config.json whisper_model). 9 Oct 2026, 180 s of Thai, RTX 3070 Ti, 15 s windows:
+#   large-v3 121 s, large-v3-turbo 26 s with slightly more misspellings
 WHISPER_CPU_FALLBACK = os.environ.get("VIDEO_WHISPER_CPU_MODEL", "medium")
+
+
+def whisper_model() -> str:
+    """The model chosen in Settings, re-read on each call so a change applies to the next transcription."""
+    return kitconfig._load().get("whisper_model") or WHISPER_MODEL
+
 
 _model = None
 
@@ -276,7 +284,7 @@ def _get_model(model_size: str | None = None):
         _enable_cuda_libs()
         # int8_float16: large-v3 in about half the VRAM of float16 with near-identical accuracy, so it fits on an
         # 8 GB card next to the local LLM that keeps its own share loaded
-        wanted = (model_size or WHISPER_MODEL, "cuda", "int8_float16")
+        wanted = (model_size or whisper_model(), "cuda", "int8_float16")
     else:
         wanted = (model_size or WHISPER_CPU_FALLBACK, "cpu", "int8")
 
@@ -341,45 +349,145 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
                model_size: str | None = None, window: float = 15.0) -> list[dict[str, Any]]:
     """Thai speech to timed phrases, in clip-relative seconds.
 
-    Runs in short windows on purpose: on a long file the recogniser sometimes
-    returns nothing for the first half-minute, which silently loses subtitles.
+    The audio is cut into fixed 15 s windows: on a long file the recogniser sometimes returns nothing for the
+    first half-minute, which silently loses subtitles, and 30 s windows lost about a quarter of the words.
+    The windows are decoded together (faster-whisper's batched pipeline). 9 Oct 2026, RTX 3070 Ti, 4 Thai
+    clips: 3-10x faster than one window after another, and fewer wrong letters (CER 0.18 vs 0.30, 0.23 vs
+    0.29 on the two clips with word-for-word subtitles). config.json "whisper_batched": false goes back to
+    one window after another.
     """
     model, _engine = _get_model(model_size)
-    temp_dir = Path(os.environ.get("TEMP", "/tmp"))
-    full = temp_dir / f"ve_{uuid.uuid4().hex}.wav"
-    phrases: list[dict[str, Any]] = []
+    full = Path(os.environ.get("TEMP", "/tmp")) / f"ve_{uuid.uuid4().hex}.wav"
     try:
         _extract_audio(path, start, end, full)
-        total = end - start
-        offset = 0.0
-        while offset < total - 0.5:
-            span = min(window, total - offset)
-            chunk = temp_dir / f"ve_{uuid.uuid4().hex}.wav"
-            run = subprocess.run(
-                [FFMPEG, "-y", "-v", "error", "-ss", f"{offset:.3f}", "-t", f"{span:.3f}",
-                 "-i", str(full), str(chunk)],
-                capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
-            if run.returncode != 0:
-                raise VideoEditError(f"window extract failed: {run.stderr[-200:]}")
-            try:
-                segments, _ = model.transcribe(
-                    str(chunk), language=language, vad_filter=False,
-                    beam_size=5, condition_on_previous_text=False, word_timestamps=True)
-                for seg in segments:
-                    text = seg.text.strip()
-                    if text:
-                        # word times drive the word-by-word subtitle highlight in the MP4 export
-                        words = [[round(offset + w.start, 2), round(offset + w.end, 2), w.word]
-                                 for w in (seg.words or []) if w.word.strip()]
-                        phrases.append({"start": round(offset + seg.start, 2),
-                                        "end": round(offset + seg.end, 2),
-                                        "text": text, "words": words})
-            finally:
-                chunk.unlink(missing_ok=True)
-            offset += window - 1.0
+        if kitconfig._load().get("whisper_batched", True):
+            phrases = _batched(model, full, language, window)
+        else:
+            phrases = _one_by_one(model, full, end - start, language, window)
     finally:
         full.unlink(missing_ok=True)
+    import spelling
+    known = spelling.load()  # this person's own fixes (spelling.learn)
+    for phrase in phrases:
+        phrase["text"] = spelling.fix(english_terms(thai_spacing(phrase["text"])), known)
+    return phrases
 
+
+def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.0) -> list[dict[str, Any]]:
+    """Windows run `overlap` s past their end so a word on the seam is heard whole once (without it words at
+    15/30/75 s were lost on BPS2 09); a seam is cut between whole words, never between word pieces."""
+    from faster_whisper import BatchedInferencePipeline
+    from faster_whisper.audio import decode_audio
+    audio = decode_audio(str(wav), sampling_rate=16000)
+    total = len(audio) / 16000
+    starts = [i * window for i in range(int(total // window) + 1) if total - i * window >= 0.5]
+    if not starts:
+        return []
+    pipeline = BatchedInferencePipeline(model)
+    segments = []
+    for half in (starts[0::2], starts[1::2]):  # faster-whisper 1.2.1 asserts if clips in one call overlap
+        if half:
+            clips = [{"start": t, "end": min(t + window + overlap, total)} for t in half]
+            segments += pipeline.transcribe(
+                audio, language=language, clip_timestamps=clips, batch_size=8, vad_filter=False,
+                beam_size=5, condition_on_previous_text=False, word_timestamps=True)[0]
+    words: list[list] = []
+    for seg in sorted(segments, key=lambda seg: seg.start):  # one segment per window
+        piece = [[round(w.start, 2), round(w.end, 2), w.word] for w in (seg.words or []) if w.word.strip()]
+        if not piece:
+            continue
+        whole = _word_starts(piece)
+        hi = int(seg.start // window) * window + window + overlap / 2
+        # start after the last whole word the window before kept; stop after the whole word on this seam
+        begin = next((i for i in range(len(piece)) if whole[i] and (not words or piece[i][0] >= words[-1][1] - 0.1)),
+                     len(piece))
+        stop = next((i for i in range(begin + 1, len(piece)) if whole[i] and piece[i][0] >= hi), len(piece))
+        words += piece[begin:stop]
+    return _lines(words) if words else []
+
+
+THAI_MARKS = "\u0e31\u0e34-\u0e3a\u0e47-\u0e4e"  # vowels above/below and tone marks: never start a line
+THAI_LEADING = "เแโใไ"  # vowels written before their consonant: never end a line
+
+
+def _word_starts(words: list[list]) -> list[bool]:
+    """Which recogniser word pieces begin a whole Thai word. The pieces can end mid-syllable ("นั่|งสมาธิ"),
+    so a piece counts only where pythainlp also puts a word boundary."""
+    from pythainlp.tokenize import word_tokenize
+    bounds, at = set(), 0
+    for token in word_tokenize("".join(w[2] for w in words), engine="newmm", keep_whitespace=True):
+        bounds.add(at)
+        at += len(token)
+    starts, at = [], 0
+    for i, w in enumerate(words):
+        starts.append(i == 0 or (at in bounds and not re.match(f"[{THAI_MARKS}]", w[2].lstrip())
+                                 and words[i - 1][2].rstrip()[-1:] not in THAI_LEADING))
+        at += len(w[2])
+    return starts
+
+
+def _lines(words: list[list], gap: float = 0.3, shortest: float = 1.0, longest: float = 3.5) -> list[dict[str, Any]]:
+    """Group timed words into subtitle lines: break at a pause of `gap` s, then split any line over `longest` s
+    at its widest pause; never inside a Thai word, never leaving a line under `shortest` s."""
+    ok = _word_starts(words)
+    ok[0] = False
+    cuts, last = [], 0
+    for i in range(1, len(words)):
+        if (ok[i] and words[i][0] - words[i - 1][1] >= gap and words[i - 1][1] - words[last][0] >= shortest
+                and words[-1][1] - words[i][0] >= shortest):
+            cuts.append(i)
+            last = i
+
+    def split(lo: int, hi: int) -> list[int]:
+        length = words[hi - 1][1] - words[lo][0]
+        if length <= longest:
+            return []
+        inner = [i for i in range(lo + 1, hi) if ok[i] and words[i - 1][1] - words[lo][0] >= shortest
+                 and words[hi - 1][1] - words[i][0] >= shortest]
+        if not inner:
+            return []
+        mid = (words[lo][0] + words[hi - 1][1]) / 2
+        i = max(inner, key=lambda i: (round(words[i][0] - words[i - 1][1], 2), -abs(words[i][0] - mid)))
+        return split(lo, i) + [i] + split(i, hi)
+
+    edges = [0] + cuts + [len(words)]
+    starts = [0]
+    for lo, hi in zip(edges, edges[1:]):
+        starts += split(lo, hi) + [hi]
+    groups = [words[a:b] for a, b in zip(starts, starts[1:]) if b > a]
+    return [{"start": g[0][0], "end": g[-1][1], "text": "".join(w[2] for w in g).strip(), "words": g}
+            for g in groups]
+
+
+def _one_by_one(model, full: Path, total: float, language: str, window: float) -> list[dict[str, Any]]:
+    temp_dir = full.parent
+    phrases: list[dict[str, Any]] = []
+    offset = 0.0
+    while offset < total - 0.5:
+        span = min(window, total - offset)
+        chunk = temp_dir / f"ve_{uuid.uuid4().hex}.wav"
+        run = subprocess.run(
+            [FFMPEG, "-y", "-v", "error", "-ss", f"{offset:.3f}", "-t", f"{span:.3f}",
+             "-i", str(full), str(chunk)],
+            capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
+        if run.returncode != 0:
+            raise VideoEditError(f"window extract failed: {run.stderr[-200:]}")
+        try:
+            segments, _ = model.transcribe(
+                str(chunk), language=language, vad_filter=False,
+                beam_size=5, condition_on_previous_text=False, word_timestamps=True)
+            for seg in segments:
+                text = seg.text.strip()
+                if text:
+                    # word times drive the word-by-word subtitle highlight in the MP4 export
+                    words = [[round(offset + w.start, 2), round(offset + w.end, 2), w.word]
+                             for w in (seg.words or []) if w.word.strip()]
+                    phrases.append({"start": round(offset + seg.start, 2),
+                                    "end": round(offset + seg.end, 2),
+                                    "text": text, "words": words})
+        finally:
+            chunk.unlink(missing_ok=True)
+        offset += window - 1.0
     phrases.sort(key=lambda p: p["start"])
     merged: list[dict[str, Any]] = []
     for phrase in phrases:
@@ -394,10 +502,6 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
                 if phrase["end"] - phrase["start"] < 0.3:
                     continue
         merged.append(phrase)
-    import spelling
-    known = spelling.load()  # this person's own fixes (spelling.learn)
-    for phrase in merged:
-        phrase["text"] = spelling.fix(english_terms(thai_spacing(phrase["text"])), known)
     return merged
 
 

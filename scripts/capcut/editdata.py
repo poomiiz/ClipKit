@@ -57,7 +57,7 @@ def color(st):
 def role(size, col, x, rot, anim, start, dur, ntrack):
     if size <= 12:
         return "english"
-    # hook: opening title, either one big card or a few stacked lines on short tracks (BPS)
+    # hook: opening title, either one big card or a few stacked lines on short tracks
     if start < 1.0 and dur > 2.5 and (size >= 34 or ntrack <= 4):
         return "hook"
     if abs(x) >= 0.2 or abs(rot) >= 3:
@@ -68,7 +68,7 @@ def role(size, col, x, rot, anim, start, dur, ntrack):
         return "wordplay"
     if col == "red":
         return "quote"
-    return "context" if col == "white" else "punch"  # any accent colour (Nina orange, BPS blue) is the punch layer
+    return "context" if col == "white" else "punch"  # any accent colour (orange, blue) is the punch layer
 
 
 def read(cur, clip_id, version, d):

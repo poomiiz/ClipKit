@@ -1,7 +1,7 @@
 from kitconfig import DRAFTS, ROOT_META, font_file  # machine paths live in config.json
 # -*- coding: utf-8 -*-
-"""Give a project white + orange card tracks (one template segment each at the end) cloned from a reference Nina draft.
-usage: python import_cardtracks.py "<project>" "<ref prefix e.g. Nina 08>" """
+"""Give a project white + orange card tracks (one template segment each at the end) cloned from a reference draft.
+usage: python import_cardtracks.py "<project>" "<ref draft name prefix>" """
 import json, os, sys, glob, shutil, copy, uuid
 base = DRAFTS
 P = os.path.join(base, sys.argv[1], 'draft_content.json'); d = json.load(open(P, encoding='utf-8')); M = d['materials']

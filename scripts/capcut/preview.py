@@ -1,6 +1,6 @@
 from kitconfig import DRAFTS, ROOT_META, font_file  # machine paths live in config.json
 # -*- coding: utf-8 -*-
-"""Render a low-res proxy of a Nina CapCut draft (main cuts + b-roll + full-frame PNG overlays + cards)
+"""Render a low-res proxy of a CapCut draft (main cuts + b-roll + full-frame PNG overlays + cards)
 so pacing, cards and inserts can be checked without opening CapCut.
 usage: python preview.py "<project folder name>" out.mp4
 """
