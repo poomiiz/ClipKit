@@ -373,27 +373,28 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
     return phrases
 
 
-def _batched(model, wav: Path, language: str, window: float) -> list[dict[str, Any]]:
+def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.0) -> list[dict[str, Any]]:
+    """Windows run `overlap` s past their end so a word on the seam is heard whole once (without it words at
+    15/30/75 s were lost on BPS2 09); each word is kept only by the window whose share it starts in."""
     from faster_whisper import BatchedInferencePipeline
     from faster_whisper.audio import decode_audio
     audio = decode_audio(str(wav), sampling_rate=16000)
     total = len(audio) / 16000
-    clips = [{"start": t, "end": min(t + window, total)}
-             for t in (i * window for i in range(int(total // window) + 1)) if total - t >= 0.5]
-    if not clips:
+    starts = [i * window for i in range(int(total // window) + 1) if total - i * window >= 0.5]
+    if not starts:
         return []
+    clips = [{"start": t, "end": min(t + window + overlap, total)} for t in starts]
     segments, _ = BatchedInferencePipeline(model).transcribe(
         audio, language=language, clip_timestamps=clips, batch_size=8, vad_filter=False,
         beam_size=5, condition_on_previous_text=False, word_timestamps=True)
-    phrases: list[dict[str, Any]] = []
-    for seg in segments:  # one segment per window: split it into subtitle lines by its word times
-        words = [[round(w.start, 2), round(w.end, 2), w.word] for w in (seg.words or []) if w.word.strip()]
-        if words:
-            phrases += _lines(words)
-        elif seg.text.strip():
-            phrases.append({"start": round(seg.start, 2), "end": round(seg.end, 2), "text": seg.text.strip(),
-                            "words": []})
-    return phrases
+    words: list[list] = []
+    for seg in segments:  # one segment per window, in window order
+        t = int(seg.start // window) * window
+        lo = t + overlap / 2 if t > 0 else 0.0
+        hi = t + window + overlap / 2
+        words += [[round(w.start, 2), round(w.end, 2), w.word] for w in (seg.words or [])
+                  if w.word.strip() and lo <= w.start < hi]
+    return _lines(words) if words else []
 
 
 THAI_MARKS = "\u0e31\u0e34-\u0e3a\u0e47-\u0e4e"  # vowels above/below and tone marks: never start a line
@@ -401,29 +402,37 @@ THAI_LEADING = "เแโใไ"  # vowels written before their consonant: never
 
 
 def _lines(words: list[list], gap: float = 0.3, longest: float = 3.0) -> list[dict[str, Any]]:
-    """Group timed words into subtitle lines: break at a pause of `gap` s or before a line passes `longest` s,
-    never inside a Thai word: the recogniser's word pieces can end mid-syllable ("นั่|งสมาธิ"), so a break is
-    allowed only where pythainlp also puts a word boundary."""
+    """Group timed words into subtitle lines: break at a pause of `gap` s, then split any line over `longest` s
+    at its widest pause. A break goes only where pythainlp also puts a word boundary: the recogniser's word
+    pieces can end mid-syllable ("นั่|งสมาธิ")."""
     from pythainlp.tokenize import word_tokenize
     text = "".join(w[2] for w in words)
     bounds, at = set(), 0
     for token in word_tokenize(text, engine="newmm", keep_whitespace=True):
         bounds.add(at)
         at += len(token)
-    groups: list[list[list]] = []
-    at = 0
-    for w in words:
-        start, at = at, at + len(w[2])
-        if groups:
-            line = groups[-1]
-            inside = (start not in bounds or re.match(f"[{THAI_MARKS}]", w[2].lstrip())
-                      or line[-1][2].rstrip()[-1:] in THAI_LEADING)
-            if not inside and (w[0] - line[-1][1] >= gap or w[1] - line[0][0] > longest):
-                groups.append([w])
-                continue
-            line.append(w)
-        else:
-            groups.append([w])
+    ok, at = [], 0  # ok[i]: a line may start at words[i]
+    for i, w in enumerate(words):
+        ok.append(i > 0 and at in bounds and not re.match(f"[{THAI_MARKS}]", w[2].lstrip())
+                  and words[i - 1][2].rstrip()[-1:] not in THAI_LEADING)
+        at += len(w[2])
+    cuts = [i for i in range(1, len(words)) if ok[i] and words[i][0] - words[i - 1][1] >= gap]
+
+    def split(lo: int, hi: int) -> list[int]:
+        if words[hi - 1][1] - words[lo][0] <= longest:
+            return []
+        inner = [i for i in range(lo + 1, hi) if ok[i]]
+        if not inner:
+            return []
+        mid = (words[lo][0] + words[hi - 1][1]) / 2
+        i = max(inner, key=lambda i: (round(words[i][0] - words[i - 1][1], 2), -abs(words[i][0] - mid)))
+        return split(lo, i) + [i] + split(i, hi)
+
+    edges = [0] + cuts + [len(words)]
+    starts = [0]
+    for lo, hi in zip(edges, edges[1:]):
+        starts += split(lo, hi) + [hi]
+    groups = [words[a:b] for a, b in zip(starts, starts[1:]) if b > a]
     return [{"start": g[0][0], "end": g[-1][1], "text": "".join(w[2] for w in g).strip(), "words": g}
             for g in groups]
 
