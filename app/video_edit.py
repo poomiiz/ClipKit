@@ -383,12 +383,16 @@ def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.
     starts = [i * window for i in range(int(total // window) + 1) if total - i * window >= 0.5]
     if not starts:
         return []
-    clips = [{"start": t, "end": min(t + window + overlap, total)} for t in starts]
-    segments, _ = BatchedInferencePipeline(model).transcribe(
-        audio, language=language, clip_timestamps=clips, batch_size=8, vad_filter=False,
-        beam_size=5, condition_on_previous_text=False, word_timestamps=True)
+    pipeline = BatchedInferencePipeline(model)
+    segments = []
+    for half in (starts[0::2], starts[1::2]):  # faster-whisper 1.2.1 asserts if clips in one call overlap
+        if half:
+            clips = [{"start": t, "end": min(t + window + overlap, total)} for t in half]
+            segments += pipeline.transcribe(
+                audio, language=language, clip_timestamps=clips, batch_size=8, vad_filter=False,
+                beam_size=5, condition_on_previous_text=False, word_timestamps=True)[0]
     words: list[list] = []
-    for seg in segments:  # one segment per window, in window order
+    for seg in sorted(segments, key=lambda seg: seg.start):  # one segment per window
         t = int(seg.start // window) * window
         lo = t + overlap / 2 if t > 0 else 0.0
         hi = t + window + overlap / 2
