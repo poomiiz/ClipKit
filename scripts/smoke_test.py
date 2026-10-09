@@ -233,6 +233,40 @@ def name_check_works():
     assert not sync_team.names_in('icon "ClipKit Nina.lnk"'.encode()), "the allowed icon name was flagged"
 
 
+def preset_pack_roundtrip():
+    # a .clipkit made on one machine installs on another, and never overwrites a look that is already there
+    import preset_pack as pp
+    real = pp.KIT
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        src, dst = Path(a), Path(b)
+        for k in (src, dst):
+            for d in ("presets", "motion", "fonts"):
+                (k / d).mkdir()
+        shutil.copy(ROOT / "presets" / "default.json", src / "presets" / "warm.json")
+        shutil.copytree(ROOT / "motion" / "cover-a", src / "motion" / "cover-warm")
+        shutil.copytree(ROOT / "motion" / "hook-title", src / "motion" / "warm-hook")
+        try:
+            pp.KIT = src
+            f = pp.make_pack(src, {"id": "warm", "name": "Warm", "tier": "team", "subtitles": ["warm"],
+                                   "covers": ["cover-warm"], "motion": ["warm-hook"]})
+            pp.KIT = dst
+            pp.install_pack(f)
+            assert (dst / "presets" / "warm.json").is_file() and (dst / "motion" / "cover-warm" / "index.html").is_file()
+            assert pp.items()["motion"] == ["warm-hook"], pp.items()
+            try:
+                pp.install_pack(f)
+                raise AssertionError("second install overwrote the first")
+            except pp.PackError:
+                pass
+            try:
+                pp.check_manifest({"format": 1, "id": "x", "name": "x", "tier": "basic", "covers": ["cover-a"]})
+                raise AssertionError("a basic pack with 1 cover passed")
+            except pp.PackError:
+                pass
+        finally:
+            pp.KIT = real
+
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)
