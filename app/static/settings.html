@@ -79,6 +79,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   <div class="card" data-tab="machine">
     <h2>ตัวเลือก</h2>
     <div class="row"><label>ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ (เร็ว)</option><option value="cpu">CPU (ช้า ใช้เมื่อไม่มีการ์ดจอ)</option></select></div>
+    <div class="row"><label>โมเดลถอดเสียง</label><select id="o_whisper_model"><option value="large-v3">large-v3 (แม่นสุด)</option><option value="large-v3-turbo">turbo (เร็วกว่าราว 4 เท่า สะกดผิดบ้าง)</option></select></div>
     <div class="row"><label>ภาพประกอบจาก</label><select id="o_stock_source"><option value="free">Pixabay (ฟรี)</option><option value="envato">Envato (บัญชีบริษัท)</option></select></div>
     <div class="row"><label>รหัส Pixabay</label><input id="o_pixabay_key" placeholder="วางรหัสที่ได้ตอนสมัคร" style="flex:1">
       <button class="ghost" onclick="window.open('https://pixabay.com/api/docs/','_blank')">ขอรหัสฟรี</button></div>
@@ -177,7 +178,7 @@ async function startJob(path, btn, msgId, logId, busyText) {
 
 async function loadConfig() {
   const c = await api('config');
-  for (const k of ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key']) if (c.options[k]) $('o_' + k).value = c.options[k];
+  for (const k of ['envato_backend', 'whisper_device', 'whisper_model', 'stock_source', 'pixabay_key']) if (c.options[k]) $('o_' + k).value = c.options[k];
   $('ws').value = c.options.workspace || '';
   renderTree(c.folders);
   if (!c.exists) say('mSave', 'ยังไม่มีไฟล์ตั้งค่า — ตรวจค่าแล้วกดบันทึก', false);
@@ -195,7 +196,7 @@ $('bStockTest').onclick = async () => {
 };
 async function saveConfig() {
   const values = {};
-  ['envato_backend', 'whisper_device', 'stock_source', 'pixabay_key'].forEach(k => values[k] = $('o_' + k).value.trim());
+  ['envato_backend', 'whisper_device', 'whisper_model', 'stock_source', 'pixabay_key'].forEach(k => values[k] = $('o_' + k).value.trim());
   try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
   catch (e) { say('mSave', '❌ ' + e.message, false); }
 }
