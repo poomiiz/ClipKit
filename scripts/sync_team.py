@@ -20,7 +20,7 @@ TEAM_OWN = {"README.md", "AGENTS.md", "skills/make-clip/SKILL.md", "scripts/setu
 
 # personal and client names never leave this repo; the sync stops and lists where they are
 NAMES = re.compile(r"Sample|REF|p'?ohm|poomi|พี่โอม", re.I)
-ALLOWED = ("ClipKit Sample", "poomiiz/ClipKit")  # the team icon name and the GitHub owner in links
+ALLOWED = ("poomiiz/ClipKit",)  # the GitHub owner in links
 
 
 def names_in(data: bytes) -> list[str]:
