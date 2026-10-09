@@ -92,15 +92,23 @@ def _start(name: str, cmd: list[str]) -> dict[str, Any]:
 def doctor(asr: bool = False) -> dict[str, Any]:
     """Run scripts/doctor.py and return one row per check."""
     cmd = [sys.executable, str(KIT / "scripts" / "doctor.py")] + (["--asr"] if asr else [])
-    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=420 if asr else 120)
+        out, code = p.stdout, p.returncode
+    except subprocess.TimeoutExpired as exc:   # report the checks that finished and name the one that hung
+        out = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        done = [line[5:23].strip() for line in out.splitlines() if line[:4].strip() in ("OK", "FAIL", "WARN")]
+        out += f"FAIL {'timeout':18} hung after '{done[-1] if done else 'start'}' for {exc.timeout:.0f} s\n"
+        code = 1
     rows = []
-    for line in p.stdout.splitlines():
+    for line in out.splitlines():
         state, rest = line[:4].strip(), line[5:]
         if state in ("OK", "FAIL", "WARN"):
             rows.append({"state": state, "name": rest[:18].strip(), "detail": rest[18:].strip()})
     if not rows:
         raise HTTPException(500, f"doctor produced no result: {p.stderr.strip()[-400:]}")
-    return {"ok": p.returncode == 0, "checks": rows}
+    return {"ok": code == 0, "checks": rows}
 
 
 @router.get("/config")
@@ -324,14 +332,43 @@ def library() -> dict[str, Any]:
     """Everything the motion library page shows: our own templates (ready to use) and the sorted HyperFrames
     registry (motion/library/hyperframes.json, rebuilt by scripts/catalog_hf.py)."""
     ours = [{"name": k, "title": v.get("label", k), "role": v.get("role", "ข้อความ"), "mood": v.get("mood", ""),
-             "source": "clipkit"} for k, v in motion_templates().items()]
+             "source": "clipkit", "bg": (KIT / "motion" / k / "preview-bg.jpg").is_file()}
+            for k, v in motion_templates().items()]
     ours += [{"name": d.name, "title": "ปก " + d.name.split("-")[-1].upper(), "role": "ปก", "mood": "", "source": "clipkit"}
              for d in sorted((KIT / "motion").glob("cover-*")) if (d / "index.html").is_file()]
     hf_file = KIT / "motion" / "library" / "hyperframes.json"
     hf = json.loads(hf_file.read_text(encoding="utf-8")) if hf_file.is_file() else []
+    # subtitle styles: the person's own (my-*, local only) and the team's (team-*), each with its GIF preview
+    from urllib.parse import quote
+    import style_lab_api
+    col = style_lab_api.style_lab.collection()
+    styles = [{"name": s["name"], "title": s["name"].split("-", 1)[1], "description": s["about"], "role": "ซับ",
+               "mood": "", "source": "style", "own": s["name"].startswith("my-"),
+               "gif": "/api/style/file?path=" + quote(s["gif"]) if s["gif"] else ""}
+              for s in col["presets"] + col["team"]]
+    hidden = set(_read_config().get("library_hidden") or [])
+    keep = lambda rows: [r for r in rows if f'{r.get("source", "hyperframes")}:{r["name"]}' not in hidden]  # noqa: E731
     # making new templates is the owner's job: only a machine whose config.json has "creator": true
     # (set by hand, not from the Settings page) sees the create buttons
-    return {"ours": ours, "hyperframes": hf, "can_create": bool(_read_config().get("creator"))}
+    return {"ours": keep(ours), "styles": keep(styles), "hyperframes": keep(hf), "hidden": len(hidden),
+            "can_create": bool(_read_config().get("creator"))}
+
+
+class Hide(BaseModel):
+    keys: list[str]        # "<source>:<name>"; empty with restore=True brings every hidden item back
+    restore: bool = False
+
+
+@router.post("/library/hide")
+def library_hide(body: Hide) -> dict[str, Any]:
+    """Take items off this machine's library page (repo items come back with every update, so they are hidden,
+    not deleted); restore=True with no keys shows them all again."""
+    cfg = _read_config()
+    hidden = set(cfg.get("library_hidden") or [])
+    hidden = set() if body.restore and not body.keys else hidden - set(body.keys) if body.restore else hidden | set(body.keys)
+    cfg["library_hidden"] = sorted(hidden)
+    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"hidden": len(hidden)}
 
 
 @router.get("/motion-templates")
@@ -686,8 +723,9 @@ def bug_report(body: BugReport) -> dict[str, Any]:
     f.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     md = chr(10).join([report["text"], "", f"- page: {report['page']}",
                      f"- version: {report['version']} ({report['commit']})",
-                     f"- machine: {report['machine']}", f"- time: {report['time']}", "", "errors:", "```",
+                     f"- time: {report['time']}", "", "errors:", "```",
                      *report["errors"], "```"])
+    md = md.replace(str(Path.home()), "~")   # the issue is public: no machine name or user folder in it
     title = report["text"].splitlines()[0][:80]
     url = "https://github.com/poomiiz/ClipKit/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
     return {"saved": str(f), "issue_url": url}
@@ -891,3 +929,54 @@ def version() -> dict[str, Any]:
     commit = subprocess.run(["git", "-C", str(KIT), "log", "-1", "--format=%h %cs"], capture_output=True,
                             text=True).stdout.strip()
     return {"version": meta.get("version"), "commit": commit}
+
+
+# ── preset packs (.clipkit): hand subtitle presets, covers and motion to the team as one file ──
+class PackPath(BaseModel):
+    path: str
+
+
+class PackMake(BaseModel):
+    id: str
+    name: str
+    author: str = ""
+    tier: str = "team"
+    subtitles: list[str] = []
+    covers: list[str] = []
+    motion: list[str] = []
+
+
+def _pack(fn, *a):
+    import preset_pack
+    try:
+        return fn(preset_pack, *a)
+    except preset_pack.PackError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/pack/items")
+def pack_items() -> dict[str, Any]:
+    return _pack(lambda pp: {**pp.items(), "tiers": pp.TIERS})
+
+
+@router.post("/pack/check")
+def pack_check(body: PackPath) -> dict[str, Any]:
+    return _pack(lambda pp: pp.read_pack(body.path))
+
+
+@router.post("/pack/install")
+def pack_install(body: PackPath) -> dict[str, Any]:
+    return _pack(lambda pp: pp.install_pack(body.path))
+
+
+@router.post("/pack/make")
+def pack_make(body: PackMake) -> dict[str, Any]:
+    """Write <output_dir>/packs/<id>.clipkit."""
+    cfg = _read_config()
+    base = Path(cfg.get("output_dir") or "")
+    if not cfg.get("output_dir") or not base.is_dir():
+        raise HTTPException(400, "set the finished-files folder (output_dir) in Settings first")
+    (base / "packs").mkdir(exist_ok=True)
+    m = {"id": body.id, "name": body.name, "author": {"name": body.author}, "version": "1.0.0", "tier": body.tier,
+         "subtitles": body.subtitles, "covers": body.covers, "motion": body.motion, "fonts": []}
+    return {"path": str(_pack(lambda pp: pp.make_pack(base / "packs", m)))}
