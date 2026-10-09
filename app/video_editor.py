@@ -951,6 +951,16 @@ def draft_zoomcut(req: ZoomCut) -> dict[str, Any]:
     return {"zoomcut": req.on}
 
 
+@router.post("/draft/spelling-request")
+def draft_spelling_request(req: DraftPath) -> dict[str, Any]:
+    """Lines for the agent to check for misheard words; the editor pastes the returned command into chat."""
+    lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
+    if not lines:
+        raise HTTPException(400, "ยังไม่มีซับ — ถอดเสียงก่อน")
+    (Path(req.path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"command": video_edit.agent_command("spelling", req.path), "lines": len(lines)}
+
+
 @router.post("/draft/punch-request")
 def draft_punch_request(req: DraftPath) -> dict[str, Any]:
     """Lines for the agent to pick punch words from; the editor pastes the returned command into chat."""
