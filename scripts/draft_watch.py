@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import capcut_edit  # noqa: E402
 import kitconfig  # noqa: E402
 
+sys.stdout.reconfigure(encoding="utf-8")
 root = kitconfig.need("capcut_drafts")
 print("watching", root, "(Ctrl+C to stop)")
 capcut_edit.watch(root)

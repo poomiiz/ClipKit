@@ -1420,6 +1420,38 @@ def set_line_time(path: str, text: str, start: float, end: float) -> dict[str, A
     raise VideoEditError(f"subtitle line not found: {text}")
 
 
+def _repick(picked: list, old: str, new: str) -> list:
+    """Carry the agent's [[lead, punch], ...] picks for a line over to its fixed text: the changed letters go
+    into the piece where the change starts (render._pair compares the pieces with spaces dropped)."""
+    tight = lambda t: "".join(t.split())  # noqa: E731
+    a, b = tight(old), tight(new)
+    p = 0
+    while p < min(len(a), len(b)) and a[p] == b[p]:
+        p += 1
+    q = 0
+    while q < min(len(a), len(b)) - p and a[-1 - q] == b[-1 - q]:
+        q += 1
+    cut_end, put = len(a) - q, b[p:len(b) - q]
+    out, at = [], 0
+    for pair in picked:
+        pieces = []
+        for piece in pair[:2]:
+            t = tight(piece)
+            lo, hi = at, at + len(t)
+            at = hi
+            if hi < p or lo > cut_end or (lo == hi and lo != p):
+                pieces.append(piece)
+                continue
+            keep_head, keep_tail = t[:max(0, p - lo)], t[max(0, cut_end - lo):]
+            pieces.append(keep_head + (put if lo <= p <= hi else "") + keep_tail)
+            if lo <= p <= hi:
+                put = ""  # placed once
+        out.append(pieces + list(pair[2:]))
+    if tight("".join(x[0] + x[1] for x in out)) != b:
+        raise VideoEditError(f"could not carry the punch picks over to the fixed line: {new}")
+    return out
+
+
 def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
     """Change one subtitle line's words (the timeline editor). The ClipKit side files keyed by the line text
     (word times, punch picks) are moved to the new text so they stay attached."""
@@ -1451,5 +1483,7 @@ def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
             data = json.loads(f.read_text(encoding="utf-8"))
             if old in data:
                 data[new] = data.pop(old)
+                if name == "clipkit_punch.json":
+                    data[new] = _repick(data[new], old, new)
                 f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"changed": hit}
