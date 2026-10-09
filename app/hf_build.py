@@ -110,23 +110,27 @@ def build(path: str) -> Path:
                        f'data-duration="{b["dur"]:.3f}" data-media-start="0" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
 
-    def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False) -> str:
-        i = nid("t")
-        # same fitting as the ffmpeg export: one line when it fits, two balanced lines, then smaller
-        lines, px = render._fit(words, render.DEFAULT_FONT, size * k, W * box["w"], one)
-        # a wrapped lead grows upward and a wrapped punch downward, so the pair never covers each other
-        top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
-        top = max(top, floor) if grow == "down" else top
-        shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
-        # same safe box as the ffmpeg export (render.safe_box): clear of the apps' top bar, buttons and caption
-        block = len(lines) * px * lh
-        upper = top - {"-100%": block, "0": 0}.get(shift, block / 2)
-        top += min(max(upper, H * box["top"]), H * box["bottom"] - block) - upper
-        tops[i] = top
-        els.append(f'<div id="{i}" class="clip txt" data-start="{a:.3f}" data-duration="{max(0.05, b - a - 0.034):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
-                   f'style="top:{top:.0f}px;transform:translateY({shift});font-size:{px:.0f}px;line-height:{lh};color:{_css_color(fill)};'
-                   f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{"<br>".join(html.escape(x) for x in lines)}</div>')
-        return i
+    def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False,
+             x: float = 0, rot: float = 0, shadow: bool = False) -> str:
+        # same as the ffmpeg export: one line only, a long subtitle goes on as the next piece (render.one_line)
+        first = ""
+        for piece, pa, pb, px in render.one_line(words, render.DEFAULT_FONT, size * k, W * (box["w"] - abs(x)), a, b):
+            i = nid("t")
+            first = first or i
+            # a lead grows upward and a punch downward, so the pair never covers each other
+            top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
+            top = max(top, floor) if grow == "down" else top
+            shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
+            # same safe box as the ffmpeg export (render.safe_box): clear of the apps' top bar, buttons and caption
+            block = px * lh
+            upper = top - {"-100%": block, "0": 0}.get(shift, block / 2)
+            top += min(max(upper, H * box["top"]), H * box["bottom"] - block) - upper
+            tops[i] = top
+            els.append(f'<div id="{i}" class="clip txt" data-start="{pa:.3f}" data-duration="{max(0.05, pb - pa - 0.034):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
+                       f'style="top:{top:.0f}px;left:{5 + x * 50:g}%;transform:translateY({shift}) rotate({rot:g}deg);'
+                       f'{"text-shadow:4px 4px 6px rgba(0,0,0,.9);" if shadow else ""}font-size:{px:.0f}px;line-height:{lh};color:{_css_color(fill)};'
+                       f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{html.escape(piece)}</div>')
+        return first
 
     tops: dict[str, float] = {}
     look = t["look"]
@@ -134,6 +138,11 @@ def build(path: str) -> Path:
         P = render.pair_look(st)
         held = ""
         en = t.get("caption_en") or {}
+        thai = P["caption_lang"] == "th"  # the whole spoken line, going on with the voice
+        if thai:
+            en = {p["line"]: render.unbreak(p["line"]) for p in t["phrases"]}
+        below: dict[int, float] = {}
+        pairs = render.stacks([(p.get("opts") or {}).get("look") for p in t["phrases"]])  # emphasis: two beats, one row each
         if P["caption"] and en:  # the preset's small translated caption: one per spoken line, also under the title
             lines_at: dict[str, list[float]] = {}
             for p in t["phrases"]:
@@ -141,8 +150,8 @@ def build(path: str) -> Path:
                 s[1] = max(s[1], p["end"])
             for line, (a, b) in lines_at.items():
                 if en.get(line):
-                    text(en[line], *P["caption"], a, b)
-        for p in t["phrases"]:
+                    text(en[line], *P["caption"], a, b, shadow=P["caption_shadow"])
+        for j, p in enumerate(t["phrases"]):
             a, b = p["start"], p["end"]
             white, colour, rgb = render._shown(p["lead"], p["punch"], p.get("opts"), held)
             held = white or held
@@ -156,10 +165,19 @@ def build(path: str) -> Path:
             if colour:
                 hit = min(b - 0.05, max(a + 0.2, a + 0.6)) if white else a
                 part = P["punch"] if rgb is None else P["punch"][:2] + (rgb,) + P["punch"][3:]
-                i = text(colour, *part, hit, b, "down", tops.get(lead_id, 0) + 8, one=bool(white))
+                if j in pairs:  # first beat: the upper row, on until the second beat is done
+                    part, b2 = part[:1] + (render.upper_row(P, W, H),) + part[2:], t["phrases"][pairs[j]]["end"]
+                    i = text(colour, *part, hit, b2)
+                    below[pairs[j]] = tops[i] + part[0] * k * lh / 2  # the second beat starts under it
+                else:
+                    i = text(colour, *part, hit, b, "down", max(tops.get(lead_id, 0), below.get(j, 0)) + 8, one=bool(white))
                 anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
+            second = (p.get("opts") or {}).get("second")
+            if second and P["second"]:  # the second person's short reaction, off centre and tilted
+                x, rot = P["second_at"]
+                text(second, *P["second"], a, b, x=x, rot=rot)
             if P["caption"] and not en:
-                text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b)
+                text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b, shadow=P["caption_shadow"])
     else:
         for p in t["phrases"]:
             if t["hook"] and p["start"] < render.HOOK_DUR:
@@ -169,11 +187,11 @@ def build(path: str) -> Path:
                 anim.append(f'tl.fromTo("#{i}",{{scale:0.7}},{{scale:1,duration:0.2,ease:"back.out(2)"}},{p["start"]:.3f});')
     # clip title: each line punches in, the second a beat after the first
     first = ""
-    for n, h in enumerate(t["hook"]):
+    for j, h in enumerate(t["hook"]):  # j: n is the id counter
         i = text(h["text"], h["size"], h["y"], h["fill"], h["stroke"], h["width"], h["start"], h["end"],
                  h["grow"], tops.get(first, 0) + 8, one=True)
         first = first or i
-        anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{n * 0.15:.2f});')
+        anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{j * 0.15:.2f});')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):
