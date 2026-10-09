@@ -72,6 +72,18 @@ def _watch_drafts() -> None:
     cfg = kit_settings._read_config()
     if cfg.get("autosave", True) and cfg.get("capcut_drafts"):
         threading.Thread(target=capcut_edit.watch, args=(cfg["capcut_drafts"],), daemon=True).start()
+        threading.Thread(target=_profile_daily, daemon=True).start()
+
+
+def _profile_daily() -> None:
+    """Remake the Autosave style profile (and presets/my-style.json) once a day; checked every hour."""
+    import time
+    sys.path.insert(0, str(HERE.parent / "scripts"))
+    import autosave_profile
+    while True:
+        if kit_settings._read_config().get("output_dir"):
+            autosave_profile.refresh()
+        time.sleep(3600)
 
 
 if __name__ == "__main__":

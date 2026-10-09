@@ -118,7 +118,9 @@ Each edit also keeps a copy of the project in `clipkit_history/` (an autosave hi
 This is ClipKit - Autosave. The app also runs its draft bot (`scripts/draft_watch.py`, on every machine unless
 config.json `"autosave": false`): every project CapCut itself saves goes into the same history and log, and a
 save CapCut could not open is reported there. `python scripts/autosave_profile.py` turns the log into the
-person's own editing style (`<output_dir>/autosave/profile.md`, profile.json); it never leaves their machine.
+person's own editing style (`<output_dir>/autosave/profile.md`, profile.json) and `presets/my-style.json` (the subtitle
+look of the project they edited last); the app remakes them once a day, run_clip.py uses my-style when no `--preset`
+is given, and none of it leaves their machine.
 
 **ClipKit itself goes wrong** (an error, CapCut will not open a project, a crash): report it through the log,
 never as a loose file on the Desktop - `python scripts/cutlog.py feedback "<project folder>" "BUG: <what happened,

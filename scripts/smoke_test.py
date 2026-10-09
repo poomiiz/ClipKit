@@ -175,6 +175,17 @@ def autosave_profile_reads_the_log():
         assert prof["edits"] == 1 and prof["by_op"] == [("subs", 1)], prof
         size = next(c for c in prof["changed"] if c["measure"] == "size")
         assert (size["before"], size["after"]) == (8.0, 12.0), size
+        # the last edited project's subtitle look becomes presets/my-style.json (here: a temp file)
+        style = lambda text, rgb: json.dumps({"text": text, "styles": [{"size": 22.0, "fill": {"content": {"solid": {"color": rgb}}}}]})  # noqa: E731
+        d["materials"]["texts"] = [{"id": "m", "content": style("ขาว", [1, 1, 1])}, {"id": "e", "content": style("ส้ม", [1, 0.5, 0])}]
+        d["tracks"][0]["segments"] = [{"material_id": i, "clip": {"transform": {"y": -0.4}},
+                                       "target_timerange": {"start": n * 1000000, "duration": 1000000}} for n, i in enumerate("me")]
+        capcut_edit._save(f, d, "subs")
+        autosave_profile.MY_STYLE = Path(t) / "my-style.json"
+        prof = autosave_profile.write(Path(t), Path(t) / "out")
+        mine = json.loads(autosave_profile.MY_STYLE.read_text(encoding="utf-8"))
+        assert (mine["normal"]["color"], mine["emphasis"]["color"]) == ("#ffffff", "#ff8000"), mine
+        assert (Path(t) / "out" / "profile.md").is_file() and prof["my_style"]["from"] == "p", prof["my_style"]
 
 
 def pictures_are_stills():
