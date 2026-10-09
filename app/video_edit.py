@@ -402,12 +402,22 @@ THAI_LEADING = "เแโใไ"  # vowels written before their consonant: never
 
 def _lines(words: list[list], gap: float = 0.3, longest: float = 3.0) -> list[dict[str, Any]]:
     """Group timed words into subtitle lines: break at a pause of `gap` s or before a line passes `longest` s,
-    never inside a Thai syllable (a word piece can be a lone vowel or tone mark)."""
+    never inside a Thai word: the recogniser's word pieces can end mid-syllable ("นั่|งสมาธิ"), so a break is
+    allowed only where pythainlp also puts a word boundary."""
+    from pythainlp.tokenize import word_tokenize
+    text = "".join(w[2] for w in words)
+    bounds, at = set(), 0
+    for token in word_tokenize(text, engine="newmm", keep_whitespace=True):
+        bounds.add(at)
+        at += len(token)
     groups: list[list[list]] = []
+    at = 0
     for w in words:
+        start, at = at, at + len(w[2])
         if groups:
             line = groups[-1]
-            inside = re.match(f"[{THAI_MARKS}]", w[2].lstrip()) or line[-1][2].rstrip()[-1:] in THAI_LEADING
+            inside = (start not in bounds or re.match(f"[{THAI_MARKS}]", w[2].lstrip())
+                      or line[-1][2].rstrip()[-1:] in THAI_LEADING)
             if not inside and (w[0] - line[-1][1] >= gap or w[1] - line[0][0] > longest):
                 groups.append([w])
                 continue
