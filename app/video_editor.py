@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,22 @@ from video_edit import VideoEditError
 router = APIRouter(prefix="/api/video", tags=["video-editor"])
 _transcribe_jobs: dict[str, subprocess.Popen[str]] = {}
 _APP_DIR = Path(__file__).resolve().parent
+_progress: dict[str, dict[str, Any]] = {}  # project path -> the step a long call is on, for the page's progress bar
+
+
+def _step(path: str, stages: list[str], i: int) -> None:
+    """Mark step i of `stages` as running for this project (i == len(stages) = finished)."""
+    if i == 0:
+        _progress[path] = {"stages": stages, "started": time.time()}
+    _progress[path]["i"] = i
+
+
+@router.get("/progress")
+def progress(path: str = Query(...)) -> dict[str, Any]:
+    p = _progress.get(path)
+    if not p:
+        raise HTTPException(status_code=404, detail="nothing running for this project")
+    return {"stages": p["stages"], "i": p["i"], "elapsed": round(time.time() - p["started"], 1)}
 
 
 class ScanRequest(BaseModel):
@@ -438,7 +455,9 @@ def draft_prepare(req: Prepare) -> dict[str, Any]:
     subtitles, breaths cut, colour, then capcut_build. No MP4 preview here (that is the ClipKit route)."""
     import capcut_build
     steps = []
+    stages = ["ถอดเสียงใส่ซับ", "ตัดช่วงหายใจ", "ปรับสี", "ทำโปรเจกต์ CapCut"]
     try:
+        _step(req.path, stages, 0)
         style = apply_template(req.path, req.template) if req.template else {}
         t = {**TEMPLATE_DEFAULT, **style}
         if not capcut_edit.read_draft(req.path)["subtitles"]:
@@ -446,17 +465,21 @@ def draft_prepare(req: Prepare) -> dict[str, Any]:
             capcut_edit.set_subtitles(req.path, got["subtitles"])
             capcut_edit.subtitles_language(req.path, "th")
             steps.append(f"ถอดเสียงใส่ซับ {got['count']} บรรทัด")
+        _step(req.path, stages, 1)
         if t.get("trim") and not (Path(req.path) / "draft_content.json.bak_trim").exists():
             capcut_edit.trim_pauses(req.path)
             steps.append("ตัดช่วงหายใจ")
+        _step(req.path, stages, 2)
         if t.get("auto_color") and not style.get("color"):
             auto_color(req.path)
             steps.append("ปรับสีอัตโนมัติ")
         out = None
+        _step(req.path, stages, 3)
         if req.capcut:
             out, warnings = capcut_build.build(req.path)
             steps.append("ทำโปรเจกต์ CapCut แล้ว")
             steps += warnings
+        _step(req.path, stages, 4)
     except VideoEditError as exc:
         raise HTTPException(400, "; ".join(steps + [str(exc)])) from exc
     return {"steps": steps, "capcut": str(out) if out else None}
@@ -1077,14 +1100,18 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
     import kit_settings
     import render
     steps = []
+    stages = ["ถอดเสียงใส่ซับ", "ตัดช่วงเงียบ", "ภาพประกอบ", "ทำตัวอย่าง MP4", "ทำปก"]
     try:
+        _step(req.path, stages, 0)
         if not capcut_edit.read_draft(req.path)["subtitles"]:
             got = capcut_edit.transcribe_draft(req.path)
             capcut_edit.set_subtitles(req.path, got["subtitles"])
             capcut_edit.subtitles_language(req.path, "th")
             steps.append(f"ถอดเสียงใส่ซับ {got['count']} บรรทัด")
+        _step(req.path, stages, 1)
         t = capcut_edit.trim_pauses(req.path)
         steps.append("ตัดช่วงเงียบแล้ว")
+        _step(req.path, stages, 2)
         f = Path(req.path) / "clipkit_style.json"
         style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
         style.setdefault("anim", req.look)
@@ -1098,7 +1125,9 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         out = cfg.get("output_dir") or cfg.get("work_root")
         if not out:
             raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
+        _step(req.path, stages, 3)
         r = render.render_draft(req.path, str(Path(out) / "exports"), preview=True)
+        _step(req.path, stages, 4)
         style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
         if not style.get("cover") or not Path(style["cover"]).is_file():
             steps.append("ทำปกจากชื่อเรื่องแล้ว" if auto_cover(req.path) else "")
@@ -1108,6 +1137,7 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
                                           "music": {"file": r["music_file"], "volume": r["music_volume"]},
                                           "sfx": {"on": r["sfx_on"], "volume": r["sfx_volume"]}},
                                          ensure_ascii=False, indent=1), encoding="utf-8")
+        _step(req.path, stages, 5)
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail="; ".join(steps + [str(exc)])) from exc
     return {"steps": steps, "preview": r, "trim": t, "agent_command": video_edit.agent_command("punch", req.path),
