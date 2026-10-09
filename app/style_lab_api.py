@@ -91,6 +91,11 @@ def share(body: Share) -> dict[str, Any]:
     return _run(style_lab.share, body.preset)
 
 
+@router.post("/remove")
+def remove(body: Share) -> dict[str, Any]:
+    return _run(style_lab.remove, body.preset)
+
+
 @router.get("/file")
 def file(path: str) -> FileResponse:
     """A frame or preview picture from the lab or the collection; nothing else on the disk."""
