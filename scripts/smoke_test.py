@@ -89,6 +89,105 @@ def outside_edit_is_caught():
         raise AssertionError("an edit made outside ClipKit was not caught")
 
 
+
+def edits_are_logged():
+    # the owner's edits are the data a personal style is learned from: each write records before and after
+    import capcut_edit
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        d = capcut_edit._load(f)
+        content = {"text": "สวัสดี", "styles": [{"size": 8.0}]}
+        d["materials"]["texts"] = [{"id": "m", "content": json.dumps(content)}]
+        d["tracks"] = [{"type": "text", "segments": [{"material_id": "m", "clip": {},
+                                                       "target_timerange": {"start": 0, "duration": 1000000}}]}]
+        capcut_edit._save(f, d, "smoke")
+        content["styles"][0]["size"] = 12.0
+        d["materials"]["texts"][0]["content"] = json.dumps(content)
+        capcut_edit._save(f, d, "smoke")
+        rows = [json.loads(x) for x in (f / capcut_edit.CHANGES).read_text(encoding="utf-8").splitlines()]
+        assert [r["added"]["cards"][0]["size"] for r in rows] == [8.0, 12.0], rows
+        assert rows[1]["removed"]["cards"][0]["size"] == 8.0, rows[1]
+        versions = capcut_edit.history(str(f))
+        assert len(versions) == 3 and versions[0].endswith(" start.json.gz"), versions
+        capcut_edit.restore(str(f), rows[0]["version"])  # back to size 8
+        assert capcut_edit._rows(capcut_edit._load(f))["cards"][0].count('"size": 8.0') == 1
+
+
+
+def broken_draft_is_not_written():
+    # a segment whose material is gone makes CapCut fail to open the project: refuse it, keep the file as it was
+    import capcut_edit
+    from video_edit import VideoEditError
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        before = (f / "draft_content.json").read_text(encoding="utf-8")
+        d = capcut_edit._load(f)
+        d["tracks"] = [{"type": "video", "segments": [{"material_id": "gone",
+                                                        "target_timerange": {"start": 0, "duration": 1}}]}]
+        try:
+            capcut_edit._save(f, d, "smoke")
+        except VideoEditError:
+            assert (f / "draft_content.json").read_text(encoding="utf-8") == before, "file changed"
+            return
+        raise AssertionError("a draft pointing at a missing material was written")
+
+
+
+def capcut_saves_are_recorded():
+    # the draft bot: an edit saved by CapCut itself lands in the history; a broken one is reported, not kept
+    import capcut_edit
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        assert capcut_edit.record_outside(str(f)) is None and len(capcut_edit.history(str(f))) == 1
+        assert capcut_edit.record_outside(str(f)) is None and len(capcut_edit.history(str(f))) == 1, "unchanged kept"
+        d = json.loads((f / "draft_content.json").read_text(encoding="utf-8"))
+        d["materials"]["texts"] = [{"id": "m", "content": json.dumps({"text": "จาก CapCut", "styles": [{"size": 9.0}]})}]
+        d["tracks"] = [{"type": "text", "segments": [{"material_id": "m", "clip": {},
+                                                       "target_timerange": {"start": 0, "duration": 1000000}}]}]
+        (f / "draft_content.json").write_text(json.dumps(d), encoding="utf-8")
+        assert capcut_edit.record_outside(str(f)) is None and len(capcut_edit.history(str(f))) == 2
+        assert "จาก CapCut" in (f / capcut_edit.CHANGES).read_text(encoding="utf-8")
+        d["tracks"][0]["segments"][0]["material_id"] = "gone"
+        (f / "draft_content.json").write_text(json.dumps(d), encoding="utf-8")
+        assert "missing material" in capcut_edit.record_outside(str(f))
+        assert len(capcut_edit.history(str(f))) == 2, "a broken save was kept as a version"
+
+
+
+def autosave_profile_reads_the_log():
+    # ClipKit - Autosave: the style profile comes from the change log, the AI's own build is not counted
+    import capcut_edit
+    import autosave_profile
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        d = capcut_edit._load(f)
+        d["materials"]["texts"] = [{"id": "m", "content": json.dumps({"text": "AI", "styles": [{"size": 8.0}]})}]
+        d["tracks"] = [{"type": "text", "segments": [{"material_id": "m", "clip": {},
+                                                       "target_timerange": {"start": 0, "duration": 1000000}}]}]
+        capcut_edit._save(f, d, "capcut_build")
+        d["materials"]["texts"][0]["content"] = json.dumps({"text": "คน", "styles": [{"size": 12.0}]})
+        capcut_edit._save(f, d, "subs")
+        prof = autosave_profile.build(Path(t))
+        assert prof["edits"] == 1 and prof["by_op"] == [("subs", 1)], prof
+        size = next(c for c in prof["changed"] if c["measure"] == "size")
+        assert (size["before"], size["after"]) == (8.0, 12.0), size
+        # the last edited project's subtitle look becomes presets/my-style.json (here: a temp file)
+        style = lambda text, rgb: json.dumps({"text": text, "styles": [{"size": 22.0, "fill": {"content": {"solid": {"color": rgb}}}}]})  # noqa: E731
+        d["materials"]["texts"] = [{"id": "m", "content": style("ขาว", [1, 1, 1])}, {"id": "e", "content": style("ส้ม", [1, 0.5, 0])}]
+        d["tracks"][0]["segments"] = [{"material_id": i, "clip": {"transform": {"y": -0.4}},
+                                       "target_timerange": {"start": n * 1000000, "duration": 1000000}} for n, i in enumerate("me")]
+        capcut_edit._save(f, d, "subs")
+        autosave_profile.MY_STYLE = Path(t) / "my-style.json"
+        prof = autosave_profile.write(Path(t), Path(t) / "out")
+        mine = json.loads(autosave_profile.MY_STYLE.read_text(encoding="utf-8"))
+        assert (mine["normal"]["color"], mine["emphasis"]["color"]) == ("#ffffff", "#ff8000"), mine
+        assert (Path(t) / "out" / "profile.md").is_file() and prof["my_style"]["from"] == "p", prof["my_style"]
+
+
 def pictures_are_stills():
     # a picture probed as a 0.04 s video showed for one frame
     import video_edit

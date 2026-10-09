@@ -9,3 +9,4 @@ app/sfx_builtin/
 project_templates/
 *.log
 motion/collection/
+presets/my-style.json

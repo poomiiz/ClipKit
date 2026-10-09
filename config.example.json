@@ -16,5 +16,7 @@
   "pixabay_key": "",
   "envato_backend": "local",
   "_envato_backend_note": "local = this machine's Chrome via scripts/envato.py (run: python scripts/envato.py login once); bot = team bot on the bot host",
-  "bot_api_url": "http://127.0.0.1:8765"
+  "bot_api_url": "http://127.0.0.1:8765",
+  "autosave": true,
+  "_autosave_note": "ClipKit - Autosave: every save of a CapCut project is kept (clipkit_history/) and its changes logged on this machine only; python scripts/autosave_profile.py turns them into your editing style"
 }
