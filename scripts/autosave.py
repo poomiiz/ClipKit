@@ -30,7 +30,13 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
-sys.stdout.reconfigure(encoding="utf-8")
+if sys.stdout is None:  # pythonw (the scheduled task) has no console: the output goes to a log next to the history
+    _log = Path(os.environ["LOCALAPPDATA"]) / "ClipKit" / "autosave.log"
+    _log.parent.mkdir(parents=True, exist_ok=True)
+    sys.stdout = sys.stderr = _log.open("a", encoding="utf-8")
+    print(f"--- {datetime.datetime.now().isoformat(timespec='seconds')}")
+else:
+    sys.stdout.reconfigure(encoding="utf-8")
 import capcut_edit  # noqa: E402
 import kitconfig  # noqa: E402  (on sys.path through video_edit)
 
