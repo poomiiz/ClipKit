@@ -167,6 +167,62 @@ def _log_change(folder: Path, before_text: str, text: str, op: str) -> None:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+
+def _newest_draft_file(folder: Path) -> Path:
+    """draft_content.json, or CapCut 9.x's Timelines/<id> copy when CapCut saved that one later."""
+    content = folder / "draft_content.json"
+    proj = folder / "Timelines" / "project.json"
+    if proj.is_file():
+        inner = folder / "Timelines" / str(json.loads(proj.read_text(encoding="utf-8")).get("main_timeline_id")) / "draft_content.json"
+        if inner.is_file() and inner.stat().st_mtime > content.stat().st_mtime:
+            return inner
+    return content
+
+
+def record_outside(folder: str) -> str | None:
+    """An edit saved by CapCut itself goes into the history and change log like ClipKit's own edits.
+    Returns what would stop CapCut opening it (the last good version stays in the history), else None.
+    The seal is left alone: ClipKit still will not build on it until accept_edit.py is run."""
+    import gzip
+    f = Path(folder)
+    text = _newest_draft_file(f).read_text(encoding="utf-8")
+    versions = history(folder)
+    last = gzip.decompress((f / HISTORY / versions[-1]).read_bytes()).decode("utf-8") if versions else None
+    if text == last:
+        return None
+    try:
+        _check(json.loads(text))
+    except (ValueError, KeyError, VideoEditError) as exc:  # ValueError: not JSON; KeyError: a segment lacks its times
+        problem = f"{type(exc).__name__}: {exc}"
+        with open(f / CHANGES, "a", encoding="utf-8") as out:
+            out.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": "capcut", "problem": problem},
+                                 ensure_ascii=False) + "\n")
+        return problem
+    if last is None:
+        _keep_version(f, text, "start")
+    else:
+        _log_change(f, last, text, "capcut")
+    return None
+
+
+def watch(root: str, every: float = 5.0, settle: float = 3.0, report=print) -> None:
+    """The bot: every few seconds, record each project CapCut has saved since the last look.
+    A file is read only after it has not changed for `settle` seconds, so a save in progress is not caught half-way."""
+    seen: dict[Path, float] = {}
+    while True:
+        for c in Path(root).glob("*/draft_content.json"):
+            f = c.parent
+            m = _newest_draft_file(f).stat().st_mtime
+            if seen.get(f) == m or time.time() - m < settle:
+                continue
+            seen[f] = m
+            problem = record_outside(str(f))
+            if problem:
+                report(f"{time.strftime('%H:%M:%S')} {f.name}: CapCut would not open this - {problem}. "
+                       f'Put back a good version: python scripts/draft_history.py "{f}"')
+        time.sleep(every)
+
+
 def _check(draft: dict[str, Any]) -> None:
     """Refuse a draft CapCut cannot open: a segment whose material is not there, or a negative time.
     Nothing is written, so the project stays at its last good version."""
@@ -189,10 +245,11 @@ def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
     if not backup.exists():
         shutil.copy2(content, backup)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
-    _log_change(folder, content.read_text(encoding="utf-8"), text, op)
+    before = content.read_text(encoding="utf-8")
     content.write_text(text, encoding="utf-8")
     sync_timeline(folder, text)
     _seal(folder, text)
+    _log_change(folder, before, text, op)  # after the write: the draft bot (watch) never sees history ahead of the file
     meta_path = folder / "draft_meta_info.json"
     if meta_path.is_file():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
