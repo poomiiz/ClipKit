@@ -63,7 +63,18 @@ app.mount("/motion", StaticFiles(directory=str(HERE.parent / "motion"), html=Tru
 app.mount("/ckfonts", StaticFiles(directory=str(HERE.parent / "fonts")), name="ckfonts")  # Kanit for the live player
 app.mount("/", StaticFiles(directory=str(HERE / "static"), html=True), name="static")
 
+
+def _watch_drafts() -> None:
+    """The owner's machine ("creator": true) records every project CapCut saves (capcut_edit.watch), in a thread."""
+    import threading
+    import capcut_edit
+    cfg = kit_settings._read_config()
+    if cfg.get("creator") and cfg.get("capcut_drafts"):
+        threading.Thread(target=capcut_edit.watch, args=(cfg["capcut_drafts"],), daemon=True).start()
+
+
 if __name__ == "__main__":
+    _watch_drafts()
     if sys.stdout:  # pythonw (autostart) has no console
         print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info",

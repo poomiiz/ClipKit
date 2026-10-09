@@ -134,6 +134,28 @@ def broken_draft_is_not_written():
         raise AssertionError("a draft pointing at a missing material was written")
 
 
+
+def capcut_saves_are_recorded():
+    # the draft bot: an edit saved by CapCut itself lands in the history; a broken one is reported, not kept
+    import capcut_edit
+    with tempfile.TemporaryDirectory() as t:
+        f = Path(t) / "p"
+        _fake_project(f, "X")
+        assert capcut_edit.record_outside(str(f)) is None and len(capcut_edit.history(str(f))) == 1
+        assert capcut_edit.record_outside(str(f)) is None and len(capcut_edit.history(str(f))) == 1, "unchanged kept"
+        d = json.loads((f / "draft_content.json").read_text(encoding="utf-8"))
+        d["materials"]["texts"] = [{"id": "m", "content": json.dumps({"text": "จาก CapCut", "styles": [{"size": 9.0}]})}]
+        d["tracks"] = [{"type": "text", "segments": [{"material_id": "m", "clip": {},
+                                                       "target_timerange": {"start": 0, "duration": 1000000}}]}]
+        (f / "draft_content.json").write_text(json.dumps(d), encoding="utf-8")
+        assert capcut_edit.record_outside(str(f)) is None and len(capcut_edit.history(str(f))) == 2
+        assert "จาก CapCut" in (f / capcut_edit.CHANGES).read_text(encoding="utf-8")
+        d["tracks"][0]["segments"][0]["material_id"] = "gone"
+        (f / "draft_content.json").write_text(json.dumps(d), encoding="utf-8")
+        assert "missing material" in capcut_edit.record_outside(str(f))
+        assert len(capcut_edit.history(str(f))) == 2, "a broken save was kept as a version"
+
+
 def pictures_are_stills():
     # a picture probed as a 0.04 s video showed for one frame
     import video_edit
