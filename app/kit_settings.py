@@ -23,7 +23,7 @@ EXAMPLE = KIT / "config.example.json"
 # keys the settings page may edit; everything else in config.json is kept untouched
 FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx", "output_dir", "models_dir"]
 TEXT_KEYS = ["card_font", "envato_backend", "whisper_device", "whisper_model", "bot_api_url", "workspace",
-             "stock_source", "pixabay_key"]
+             "stock_source", "pixabay_key", "team_url", "team_key"]
 # standard layout under one workspace folder: every machine in the team looks the same
 WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stock_music": "stock\\music",
                     "sfx": "sfx", "output_dir": "output", "models_dir": "models"}
@@ -980,3 +980,37 @@ def pack_make(body: PackMake) -> dict[str, Any]:
     m = {"id": body.id, "name": body.name, "author": {"name": body.author}, "version": "1.0.0", "tier": body.tier,
          "subtitles": body.subtitles, "covers": body.covers, "motion": body.motion, "fonts": []}
     return {"path": str(_pack(lambda pp: pp.make_pack(base / "packs", m)))}
+
+# ── team sign-in (Supabase Auth); the app holds only the URL and the public anon key ──
+class TeamLogin(BaseModel):
+    email: str
+    password: str
+
+
+def _team(fn, *a):
+    import team
+    try:
+        return fn(team, *a)
+    except team.TeamError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/team/status")
+def team_status() -> dict[str, Any]:
+    return _team(lambda t: t.status())
+
+
+@router.post("/team/signup")
+def team_signup(body: TeamLogin) -> dict[str, Any]:
+    return _team(lambda t: t.sign_up(body.email.strip(), body.password))
+
+
+@router.post("/team/login")
+def team_login(body: TeamLogin) -> dict[str, Any]:
+    return _team(lambda t: t.sign_in(body.email.strip(), body.password))
+
+
+@router.post("/team/logout")
+def team_logout() -> dict[str, Any]:
+    return _team(lambda t: t.sign_out())
+
