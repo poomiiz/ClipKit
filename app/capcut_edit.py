@@ -97,11 +97,46 @@ def fresh_ids(folder: Path) -> str:
     return new
 
 
+CHANGES = "clipkit_changes.jsonl"
+
+
+def _rows(draft: dict[str, Any]) -> dict[str, list[str]]:
+    """The draft as editdata.py reads an approved clip (cuts, cards, inserts, audio, effects), one JSON row each."""
+    import sqlite3
+    import editdata
+    con = sqlite3.connect(":memory:")
+    con.executescript(editdata.SCHEMA)
+    editdata.read(con.cursor(), 0, "", draft)
+    out = {}
+    for t in ("cuts", "cards", "inserts", "audio", "effects"):
+        cur = con.execute(f"SELECT * FROM {t}")
+        cols = [c[0] for c in cur.description][2:]  # without clip_id, version
+        out[t] = [json.dumps(dict(zip(cols, [round(v, 2) if isinstance(v, float) else v for v in r[2:]])),
+                             ensure_ascii=False, sort_keys=True) for r in cur]
+    return out
+
+
+def _log_change(folder: Path, before: dict[str, Any], after: dict[str, Any], op: str) -> None:
+    """Every edit ClipKit writes, as rows removed and added, in the project folder (stays on this machine).
+    editdata.py extract loads it into edits.sqlite, so the owner's own way of editing can be learned from it."""
+    from collections import Counter
+    b, a = _rows(before), _rows(after)
+    removed = {t: [json.loads(r) for r in (Counter(b[t]) - Counter(a[t])).elements()] for t in b}
+    added = {t: [json.loads(r) for r in (Counter(a[t]) - Counter(b[t])).elements()] for t in a}
+    removed, added = {t: v for t, v in removed.items() if v}, {t: v for t, v in added.items() if v}
+    if not removed and not added:
+        return
+    row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "op": op, "removed": removed, "added": added}
+    with open(folder / CHANGES, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
     content = folder / "draft_content.json"
     backup = content.with_suffix(f".json.bak_{op}")
     if not backup.exists():
         shutil.copy2(content, backup)
+    _log_change(folder, json.loads(content.read_text(encoding="utf-8")), draft, op)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
     content.write_text(text, encoding="utf-8")
     sync_timeline(folder, text)
