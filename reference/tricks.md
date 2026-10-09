@@ -1,7 +1,7 @@
 # Trick catalog (ลูกเล่น)
 
 Every effect in the catalog, with **when** to use it. One row = one reusable unit: in CapCut it is copied from the reference draft; in HyperFrames/Remotion it becomes one template component.
-Source: measured from P'Ohm's own CapCut edits.
+Source: measured from real CapCut edits.
 
 ## How to pick
 1. Label every beat of the cut transcript: hook / setup / proof / twist / lesson / button / listener-line / reaction / laugh / list / number / contrast / question / pain-word.

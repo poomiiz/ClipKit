@@ -13,3 +13,8 @@ presets/my-*.json
 presets/previews/
 presets/parts/
 corrections.json
+
+# personal / client data, never in the public repo
+*.sqlite
+presets/pace/
+.env
