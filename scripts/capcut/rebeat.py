@@ -1,6 +1,6 @@
 from kitconfig import DRAFTS, ROOT_META, font_file  # machine paths live in config.json
 # -*- coding: utf-8 -*-
-"""Rebuild white/orange card timing as short beats locked to spoken keywords (Nina 01 style).
+"""Rebuild white/orange card timing as short beats locked to spoken keywords (punch-on-keyword style).
 
 usage: python rebeat.py "<project>" words.json beats.json
 beats.json = [[white_text, white_key, orange_text, orange_key], ...]

@@ -2,7 +2,7 @@ from kitconfig import DRAFTS, ROOT_META, font_file  # machine paths live in conf
 # -*- coding: utf-8 -*-
 """Re-align Thai cards to the actual speech (from timeline ASR word timestamps).
 - white/context card: moved to where its words are spoken if found within +-3s
-- orange/punch card: pops in when its keyword is spoken (Nina 01 style), ends with its white card
+- orange/punch card: pops in when its keyword is spoken (punch-on-keyword style), ends with its white card
 - English line: follows its white card
 - mouse-click SFX follow the orange pops
 usage: python resync.py "<project>" words.json [--dry]
