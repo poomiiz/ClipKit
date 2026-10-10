@@ -2780,7 +2780,7 @@ function webAiBox(step, target) {
         if (step === 'stories') { el('msg').textContent = '✓ นำเข้า ' + r.stories.length + ' เรื่อง'; return; }
         el('msg').innerHTML = '<span class="spin"></span> นำเข้า ' + r.lines + ' บรรทัดแล้ว' + (r.cut ? ' · ตัดทิ้ง ' + r.cut + ' บรรทัด' : '') + ' · กำลังสร้างโปรเจกต์ CapCut ใหม่…';
         const p = await api('draft/prepare', {path: target});  // the "· CapCut" copy is rebuilt with the AI's emphasis + title
-        el('msg').textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"';
+        el('msg').textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"' + (r.same_text ? ' · ⚠️ ' + r.same_text : '');
       } catch (e) { el('msg').textContent = '❌ ' + e.message; }
     };
   });
