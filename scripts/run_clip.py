@@ -4,6 +4,7 @@
     python scripts/run_clip.py "<video>" --all           # every story
     python scripts/run_clip.py "<video>" --insert        # put the downloaded Envato clips in
     python scripts/run_clip.py "<video>" --all --export  # MP4 for every story
+    python scripts/run_clip.py "<video>" --all --no-ai --capcut  # no AI step: straight to CapCut projects
 
 Steps: transcribe -> split into stories (max --max seconds) -> one project per story (crop on the face,
 subtitles, silences trimmed, subtitle look, zoom cut) -> punch words and b-roll searches -> free Pixabay
@@ -36,6 +37,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
     ap.add_argument("--export", action="store_true", help="render the MP4s")
     ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
+    ap.add_argument("--no-ai", action="store_true",
+                    help="no AI agent: stories split at the longest pauses; each project gets a file for a web AI to pick emphasis + title "
+                         "(scripts/web_ai.py import clip, then run again), until then emphasis on each phrase's last words, no title")
     ap.add_argument("--client", help="with --capcut: check the CapCut project against this client's pace (presets/pace/<client>.json)")
     return ap
 
@@ -119,14 +123,20 @@ def detail(exc: Exception) -> str:
     return exc.detail if isinstance(exc, HTTPException) else str(exc)
 
 
-def stories(raw: str, max_s: int) -> list[dict] | None:
+def stories(raw: str, max_s: int, no_ai: bool = False) -> list[dict] | None:
     tf = video_edit.transcript_file(raw)
     if not tf.is_file():
         say(step="ถอดเสียงทั้งไฟล์")
         phrases = video_edit.transcribe(raw, 0, video_edit.probe(raw)["duration"], "th", None)
         tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
     video_edit.STORY_MAX_S, video_edit.STORY_AIM_S = max_s, int(max_s * 0.65)
-    return video_edit.stories_from_agent(raw, json.loads(tf.read_text(encoding="utf-8")))
+    phrases = json.loads(tf.read_text(encoding="utf-8"))
+    sf = video_edit.stories_file(raw)
+    if no_ai and not sf.is_file() and phrases:  # written like the agent's, so a rerun (or a person) can use it
+        parts = video_edit._split_long(0, len(phrases) - 1, phrases, Path(raw).stem, "")
+        sf.write_text(json.dumps([{k: p[k] for k in ("title", "summary", "start", "end")} for p in parts],
+                                 ensure_ascii=False, indent=1), encoding="utf-8")
+    return video_edit.stories_from_agent(raw, phrases)
 
 
 def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str = "default") -> str:
@@ -146,6 +156,8 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str 
 
 def queries(path: str) -> list[str]:
     p = Path(path) / "clipkit_punch.json"
+    if not p.is_file():  # --no-ai: no b-roll searches were picked
+        return []
     seen = []
     for pairs in json.loads(p.read_text(encoding="utf-8")).values():
         for x in pairs:
@@ -204,7 +216,7 @@ def main() -> int:
     state_f = Path(raw).with_name(Path(raw).name + ".clipkit_run.json")
     state = json.loads(state_f.read_text(encoding="utf-8")) if state_f.is_file() else {}
 
-    sts = timed("ถอดเสียง + เรื่อง", stories, raw, a.max)
+    sts = timed("ถอดเสียง + เรื่อง", stories, raw, a.max, a.no_ai)
     if sts is None:
         say(WAIT=video_edit.agent_command("stories", raw), then=" ".join(sys.argv))
         return 2
@@ -219,13 +231,16 @@ def main() -> int:
                 state[key] = timed("ทำโปรเจกต์", make_project, raw, n, st, a.shape, a.look, a.preset)
                 state_f.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
             path = state[key]
-            need = ["clipkit_punch.json", "clipkit_hook.json"]
+            need = [] if a.no_ai else ["clipkit_punch.json", "clipkit_hook.json"]
             style = json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8"))
-            if style.get("anim") == "pair" and render.pair_look(style)["caption"]:
+            if style.get("anim") == "pair" and render.pair_look(style)["caption"] and not a.no_ai:
                 need.append("clipkit_caption.json")  # the preset has a small translated caption
             if not all((Path(path) / f).is_file() for f in need):
                 waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
                 continue
+            if a.no_ai and not (Path(path) / "clipkit_punch.json").is_file():
+                import web_ai_json  # emphasis + title from an AI in the browser: upload this file, import its answer, run again
+                say(web_ai=str(web_ai_json.export_clip(path)), story=n)
             if a.insert:
                 say(step="ใส่คลิปที่โหลดมา", story=n, files=insert(path))
             note = ""
