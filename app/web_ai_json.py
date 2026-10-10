@@ -144,7 +144,7 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     cut = ans.get("cut") or []
     if not isinstance(cut, list) or any(n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
         raise VideoEditError(f"cut ต้องเป็นรายการเลขบรรทัด 1..{len(subs)} ที่จะตัดทิ้ง และต้องเหลืออย่างน้อย 1 บรรทัด")
-    punch = {}
+    punch, same = {}, []
     for s, x in zip(subs, lines):
         if x["n"] in cut:
             continue
@@ -156,6 +156,9 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         if got != want:
             raise VideoEditError(f"บรรทัด {x['n']}: lead + punch ต้องเป็นคำพูดเดิมครบทุกตัวอักษรตามลำดับ\n"
                                  f"  ซับ: {want}\n  ได้: {got}")
+        if s["text"] in punch and punch[s["text"]] != items:
+            same.append(x["n"])  # clipkit_punch.json holds one choice per line text: the first one stays
+            continue
         punch[s["text"]] = items
     hook = ans.get("hook")
     if not isinstance(hook, list) or not 1 <= len(hook) <= 2 or any(
@@ -195,7 +198,10 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
             video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"],
                                                                        start=s["start"], end=s["end"], text=s["text"]))
         written.append(video_editor.OVERLAYS)
-    return {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
+    out = {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
+    if same:
+        out["same_text"] = f"บรรทัด {same} พูดซ้ำคำเดิมกับบรรทัดก่อนหน้า: ใช้คำเน้นของบรรทัดแรกแทน"
+    return out
 
 
 def import_answer(step: str, target: str, text: str) -> dict[str, Any]:
