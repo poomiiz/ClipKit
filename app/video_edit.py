@@ -294,11 +294,8 @@ def _get_model(model_size: str | None = None):
         root = kitconfig._load().get("models_dir") or None  # chosen drive; None = the default cache on C:
         try:
             _model = (wanted, WhisperModel(name, device=device, compute_type=compute, download_root=root))
-        except Exception as exc:
-            if device == "cpu":
-                raise VideoEditError(f"cannot load speech model {name}: {exc}") from exc
-            fallback = (WHISPER_CPU_FALLBACK, "cpu", "int8")
-            _model = (fallback, WhisperModel(fallback[0], device="cpu", compute_type="int8", download_root=root))
+        except Exception as exc:  # no quiet switch to a smaller CPU model: the person must know the GPU failed
+            raise VideoEditError(f"cannot load speech model {name} on {device}: {exc}") from exc
     return _model[1], "/".join(_model[0])
 
 
@@ -590,6 +587,25 @@ COLOUR_FLAGS = ("enable_adjust", "enable_color_curves", "enable_smart_color_adju
                 "enable_adjust_mask")
 
 
+def _drop_unused_materials(draft: dict[str, Any]) -> None:
+    """The template project's own materials (hundreds of effects, stickers, sounds) that nothing in the new clip
+    uses: keep a material only when its id appears in the tracks or in another kept material."""
+    materials = draft["materials"]
+    ids = {m["id"] for v in materials.values() if isinstance(v, list) for m in v if isinstance(m, dict) and "id" in m}
+    rest = json.dumps({k: v for k, v in draft.items() if k != "materials"})
+    keep = {i for i in ids if i in rest}
+    while True:  # a kept material can point at another (a text at its animation, a clip at its mask)
+        inside = json.dumps([m for v in materials.values() if isinstance(v, list) for m in v
+                             if isinstance(m, dict) and m.get("id") in keep])
+        more = {i for i in ids - keep if i in inside}
+        if not more:
+            break
+        keep |= more
+    for key, value in materials.items():
+        if isinstance(value, list):
+            materials[key] = [m for m in value if not (isinstance(m, dict) and "id" in m and m["id"] not in keep)]
+
+
 def _new_id() -> str:
     return str(uuid.uuid4()).upper()
 
@@ -810,6 +826,7 @@ def create_capcut_draft(video_path: str, project_name: str,
         for seg in segments:
             seg["clip"]["scale"] = {"x": clip["scale"], "y": clip["scale"]}
             seg["clip"]["transform"] = {"x": clip["x"], "y": clip["y"]}
+    _drop_unused_materials(draft)
     content_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
 
     meta_path = target / "draft_meta_info.json"
