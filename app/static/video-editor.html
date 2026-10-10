@@ -428,6 +428,14 @@
   .clip-left video { width: 100%; max-height: 46vh; border-radius: 12px; background: #000; display: block; margin-bottom: 4px; }
   .clip-right .card + .card { margin-top: 14px; }
   .make-wrap { max-width: 860px; margin: 22px auto 0; text-align: center; }
+  /* on/off chips above the make buttons: lit = on */
+  .opt-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin: 4px 0 14px; }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .opt span { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 99px; font-size: 15px; cursor: pointer;
+              border: 1px solid #3a4260; background: #1b2030; color: #8a93aa; transition: .15s; }
+  .opt input:checked + span { background: #7c5cff; border-color: #7c5cff; color: #fff; font-weight: 600; }
+  .opt input:focus-visible + span { outline: 2px solid #fff; }
+  .opt-sep { margin-left: 10px; color: #8a93aa; font-size: 14px; }
   .make-pair { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .make-pair b { font-size: 17px; white-space: nowrap; }
   .make-pair button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; text-align: center; }
@@ -583,10 +591,13 @@
           <option value="source">ตามฟุตเทจ</option></select>
         <span class="hint" id="focusNote"></span>
         &nbsp; เทมเพลต <select id="tpl" onchange="try{localStorage.setItem('ck_tpl',this.value)}catch(e){}"><option value="">ค่าเริ่มต้น</option></select></div>
-      <div class="shape-row" id="makeOpts" onchange="saveMakeOpts()">
-        <label><input type="checkbox" id="optColor" checked> 🎨 ปรับสี</label>
-        <label><input type="checkbox" id="optSkin" checked> ✨ ผิวเนียน</label>
-        <label>🔤 ซับ <select id="optSubs"><option value="th">ไทย</option><option value="en">อังกฤษ</option><option value="none">ไม่ใส่</option></select></label>
+      <div class="opt-row" id="makeOpts" onchange="saveMakeOpts()">
+        <label class="opt"><input type="checkbox" id="optColor" checked><span>🎨 ปรับสี</span></label>
+        <label class="opt"><input type="checkbox" id="optSkin" checked><span>✨ ผิวเนียน</span></label>
+        <span class="opt-sep">ซับ</span>
+        <label class="opt"><input type="radio" name="optSubs" value="th" checked><span>ไทย</span></label>
+        <label class="opt"><input type="radio" name="optSubs" value="en"><span>อังกฤษ</span></label>
+        <label class="opt"><input type="radio" name="optSubs" value="none"><span>ไม่ใส่</span></label>
       </div>
       <div class="make-pair">
         <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
@@ -1870,11 +1881,11 @@ fetch('/api/video/templates').then(r => r.json()).then(r => {
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
 // the ticks under the make buttons (remembered on this machine): what each new project gets
 const makeOpts = () => ({auto_color: document.getElementById('optColor').checked, skin: document.getElementById('optSkin').checked,
-                         subs: document.getElementById('optSubs').value});
+                         subs: document.querySelector('[name=optSubs]:checked').value});
 function saveMakeOpts() { try { localStorage.setItem('ck_make_opts', JSON.stringify(makeOpts())); } catch {} }
 try {
   const o = JSON.parse(localStorage.getItem('ck_make_opts') || 'null');
-  if (o) { const $ = id => document.getElementById(id); $('optColor').checked = o.auto_color; $('optSkin').checked = o.skin; $('optSubs').value = o.subs; }
+  if (o) { const $ = id => document.getElementById(id); $('optColor').checked = o.auto_color; $('optSkin').checked = o.skin; document.querySelector(`[name=optSubs][value=${o.subs}]`).checked = true; }
 } catch {}
 async function makeDraft(open = true) {
   const main = document.getElementById('mainAction');
