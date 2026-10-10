@@ -34,5 +34,8 @@ $win = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
          "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
          "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 $opened = $false
-if ($win) { try { Start-Process $win -ArgumentList "--app=$url", "--window-size=1320,860" -ErrorAction Stop; $opened = $true } catch {} }
+# its own browser profile: a ClipKit window opened inside the person's running Chrome can stay grey when that
+# Chrome is stuck, while the same page in a normal tab works (10 Oct 2026)
+$winProfile = "$env:LOCALAPPDATA\ClipKit\window"
+if ($win) { try { Start-Process $win -ArgumentList "--app=$url", "--window-size=1320,860", "--user-data-dir=`"$winProfile`"", "--no-first-run" -ErrorAction Stop; $opened = $true } catch {} }
 if (-not $opened) { Start-Process $url }
