@@ -917,13 +917,6 @@ def envato_login() -> dict[str, Any]:
     return _start("envato-login", [sys.executable, str(KIT / "scripts" / "envato.py"), "login"])
 
 
-@router.post("/update")
-def update() -> dict[str, Any]:
-    if not (KIT / ".git").is_dir():
-        raise HTTPException(400, "this copy is not a git clone - download a fresh copy from GitHub")
-    return _start("update", [sys.executable, str(KIT / "scripts" / "update.py")])
-
-
 @router.get("/job/{name}")
 def job(name: str) -> dict[str, Any]:
     if name not in _jobs:
