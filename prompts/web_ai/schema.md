@@ -56,3 +56,19 @@ are still split at a pause by ClipKit, as for the local agent.
 | `cut` | (footage) | optional; line numbers dropped with their footage (up to the next line), via `trim_pauses(ranges=...)`; whole lines only, order kept; a cut line needs no items / caption / motion; at least one line stays. The project's `draft_content.json` is backed up first (`.bak_trim`). Export again before importing a second answer: line numbers change |
 | `motion` | Motion text | optional; line number + template, rendered here like the editor's Motion button |
 | `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per line number |
+
+## `inserts` (Envato files to links)
+
+After downloading Envato clips by hand into one folder:
+
+    python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-sheet "<folder>"   # writes "<video> - inserts.md" + ".jpg"
+    python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>" --insert-plan answer.json
+
+Upload both files; the picture has one numbered frame per video. The answer pairs files with the page's links:
+
+```json
+{"clipkit_web_ai": 1, "step": "inserts", "video": "EP07.mov", "place": [{"file": "coffee-cup-X1.mp4", "link": 2}]}
+```
+
+Every file must be in the folder, every link on the page, each used once; a link that already has a file in
+`clipkit_insert` raises. Files left out stay in the folder. Nothing moves until the whole answer checks out.

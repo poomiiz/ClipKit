@@ -41,6 +41,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
     ap.add_argument("--insert-from", metavar="FOLDER",
                     help="move the Envato files downloaded into FOLDER into each project by the page's link numbers, then --insert")
+    ap.add_argument("--insert-sheet", metavar="FOLDER",
+                    help="picture + prompt of the videos in FOLDER for a web AI to match to the links (answer: --insert-plan)")
+    ap.add_argument("--insert-plan", metavar="ANSWER", help="with --insert-from: the web AI's JSON answer to --insert-sheet")
     ap.add_argument("--no-ai", action="store_true",
                     help="no AI agent: stories split at the longest pauses; each project gets a file for a web AI to pick emphasis + title "
                          "(scripts/web_ai.py import clip, then run again), until then emphasis on each phrase's last words, no title")
@@ -191,35 +194,122 @@ def insert(path: str) -> int:
     return len(files)
 
 
-def place(sts: list[dict], picked, state: dict, folder: str) -> list[dict]:
-    """Envato files a person downloaded into one folder, moved into each project's clipkit_insert by the page's
-    numbers (counted across all projects): a file whose name starts with a number goes to that link; the others
-    fill the links still empty in download order. More files than empty links raises before anything moves."""
-    src = Path(folder)
-    if not src.is_dir():
-        raise video_edit.VideoEditError(f"download folder not found: {folder}")
-    links = []  # (project, its own link number, search), in page order
+def _links(sts: list[dict], picked, state: dict) -> list[tuple[str, int, str]]:
+    """(project, its own link number, search) for every Envato link on the page, in page order."""
+    out = []
     for n in picked:
         st = sts[n - 1]
         path = state.get(f"{st['start']:.2f}-{st['end']:.2f}")
         if path:
-            links += [(path, i, q) for i, q in enumerate(queries(path), 1)]
+            out += [(path, i, q) for i, q in enumerate(queries(path), 1)]
+    return out
+
+
+def _downloads(folder: str) -> list[Path]:
+    src = Path(folder)
+    if not src.is_dir():
+        raise video_edit.VideoEditError(f"download folder not found: {folder}")
+    return sorted((f for f in src.iterdir() if f.is_file() and f.suffix.lower() in VIDEO_EXT), key=lambda f: f.stat().st_mtime)
+
+
+def sheet(raw: str, sts: list[dict], picked, state: dict, folder: str) -> tuple[Path, Path]:
+    """For a web AI to match downloads to links: one picture of every downloaded file (a frame each, numbered)
+    and a prompt listing the links (search + the words they go under) and the files. Its JSON answer goes to
+    --insert-plan."""
+    import cv2
+    import numpy as np
+    links, files = _links(sts, picked, state), _downloads(folder)
+    if not links or not files:
+        raise video_edit.VideoEditError(f"nothing to match: {len(links)} links on the page, {len(files)} videos in {folder}")
+    tiles = []
+    for n, f in enumerate(files, 1):
+        cap = cv2.VideoCapture(str(f))
+        cap.set(cv2.CAP_PROP_POS_MSEC, 1000)
+        ok, img = cap.read()
+        cap.release()
+        if not ok:
+            raise video_edit.VideoEditError(f"cannot read a frame from {f.name}")
+        img = cv2.resize(img, (320, round(320 * img.shape[0] / img.shape[1])))
+        img = cv2.copyMakeBorder(img[:320], 0, 320 - min(320, img.shape[0]), 0, 0, cv2.BORDER_CONSTANT)
+        cv2.rectangle(img, (0, 0), (70, 44), (0, 0, 0), -1)
+        cv2.putText(img, str(n), (8, 34), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 2)
+        tiles.append(img)
+    tiles += [np.zeros_like(tiles[0])] * (-len(tiles) % 4)
+    grid = np.vstack([np.hstack(tiles[i:i + 4]) for i in range(0, len(tiles), 4)])
+    base = Path(raw).with_name(Path(raw).stem + " - inserts")
+    jpg, md = base.with_suffix(".jpg"), base.with_suffix(".md")
+    cv2.imwrite(str(jpg), grid)
+    said = {}
+    for path in {p for p, _, _ in links}:
+        for line_items in json.loads((Path(path) / "clipkit_punch.json").read_text(encoding="utf-8")).values():
+            for x in line_items:
+                if len(x) > 2 and isinstance(x[2], str) and x[2]:
+                    said.setdefault((path, x[2]), (x[0] + x[1]).strip())
+    data = {"clipkit_web_ai": 1, "step": "inserts", "video": Path(raw).name,
+            "links": [{"link": k, "search": q, "words": said.get((p, q), "")} for k, (p, i, q) in enumerate(links, 1)],
+            "files": [{"n": n, "file": f.name} for n, f in enumerate(files, 1)]}
+    md.write_text(f"""# ClipKit: จับคู่ภาพแทรก
+
+รูป `{jpg.name}` คือเฟรมจากไฟล์วิดีโอที่โหลดมา เลขมุมซ้ายบน = `n` ในรายการ files ด้านล่าง
+`links` คือจุดที่จะวางภาพแทรกในคลิป: `search` คือคำค้นที่ใช้ และ `words` คือคำพูดตรงจุดนั้น
+
+ดูรูปแล้วเลือกไฟล์ที่เข้ากับคำพูดของแต่ละ link ที่สุด ไฟล์ละไม่เกินหนึ่ง link ถ้าไม่มีไฟล์ไหนเข้า ให้ปล่อย link นั้นว่าง
+
+ตอบเป็น JSON ก้อนเดียวในบล็อก ```json เท่านั้น ไม่ต้องอธิบาย:
+
+```json
+{{"clipkit_web_ai": 1, "step": "inserts", "video": "{Path(raw).name}", "place": [{{"file": "<ชื่อไฟล์ตาม files>", "link": 1}}]}}
+```
+
+## ข้อมูล
+
+```json
+{json.dumps(data, ensure_ascii=False, indent=1)}
+```
+""", encoding="utf-8")
+    return md, jpg
+
+
+def place(raw: str, sts: list[dict], picked, state: dict, folder: str, plan: str | None = None) -> list[dict]:
+    """Envato files a person downloaded into one folder, moved into each project's clipkit_insert. With plan (a
+    web AI's answer to sheet()), its {"file", "link"} pairs; without, by the page's numbers (counted across all
+    projects): a file whose name starts with a number goes to that link, the others fill the links still empty in
+    download order. Any bad pairing raises before anything moves."""
+    links, files = _links(sts, picked, state), _downloads(folder)
     lead = lambda f: f.stem.split()[0].split("_")[0].split("-")[0]  # noqa: E731  (as insert() reads it)
-    files = sorted((f for f in src.iterdir() if f.is_file() and f.suffix.lower() in VIDEO_EXT), key=lambda f: f.stat().st_mtime)
-    nums = [int(lead(f)) for f in files if lead(f).isdigit()]
-    if len(nums) != len(set(nums)):
-        raise video_edit.VideoEditError(f"two files start with the same link number in {folder}: {sorted(nums)}")
-    numbered = {int(lead(f)): f for f in files if lead(f).isdigit()}
-    if any(not 1 <= k <= len(links) for k in numbered):
-        raise video_edit.VideoEditError(f"file numbers must be 1-{len(links)} (the page's links): {sorted(numbered)}")
-    have = lambda path, i: any(lead(f) == str(i) for f in (Path(path) / "clipkit_insert").glob("*"))  # noqa: E731
-    empty = [k for k, (path, i, _) in enumerate(links, 1) if k not in numbered and not have(path, i)]
-    rest = [f for f in files if f not in numbered.values()]
-    if len(rest) > len(empty):
-        raise video_edit.VideoEditError(f"{len(rest)} unnumbered files in {folder} but only {len(empty)} links still need one: "
-                                        "download into an empty folder, or start each name with its link number")
+    if plan:
+        import web_ai_json
+        ans = web_ai_json.parse(Path(plan).read_text(encoding="utf-8-sig"))
+        web_ai_json._head(ans, "inserts", "video", Path(raw).name)
+        by_name = {f.name: f for f in files}
+        pairs = ans.get("place")
+        if not isinstance(pairs, list) or any(not isinstance(x, dict) or x.get("file") not in by_name
+                                              or x.get("link") not in range(1, len(links) + 1) for x in pairs):
+            raise video_edit.VideoEditError(f'place must be [{{"file": <a file in {folder}>, "link": 1-{len(links)}}}]: {pairs}')
+        if len({x["file"] for x in pairs}) != len(pairs) or len({x["link"] for x in pairs}) != len(pairs):
+            raise video_edit.VideoEditError("place uses a file or a link twice")
+        chosen = [(x["link"], by_name[x["file"]]) for x in pairs]
+    else:
+        nums = [int(lead(f)) for f in files if lead(f).isdigit()]
+        if len(nums) != len(set(nums)):
+            raise video_edit.VideoEditError(f"two files start with the same link number in {folder}: {sorted(nums)}")
+        numbered = {int(lead(f)): f for f in files if lead(f).isdigit()}
+        if any(not 1 <= k <= len(links) for k in numbered):
+            raise video_edit.VideoEditError(f"file numbers must be 1-{len(links)} (the page's links): {sorted(numbered)}")
+        have = lambda path, i: any(lead(f) == str(i) for f in (Path(path) / "clipkit_insert").glob("*"))  # noqa: E731
+        empty = [k for k, (path, i, _) in enumerate(links, 1) if k not in numbered and not have(path, i)]
+        rest = [f for f in files if f not in numbered.values()]
+        if len(rest) > len(empty):
+            raise video_edit.VideoEditError(f"{len(rest)} unnumbered files in {folder} but only {len(empty)} links still need one: "
+                                            "download into an empty folder, start each name with its link number, or use --insert-sheet")
+        chosen = [*numbered.items(), *zip(empty, rest)]
+    for k, _ in chosen:
+        path, i, _ = links[k - 1]
+        old = [g.name for g in (Path(path) / "clipkit_insert").glob("*") if lead(g) == str(i)]
+        if old:
+            raise video_edit.VideoEditError(f"link {k} already has {old[0]} in {Path(path).name}/clipkit_insert: move it out first")
     moved = []
-    for k, f in [*numbered.items(), *zip(empty, rest)]:
+    for k, f in chosen:
         path, i, q = links[k - 1]
         box = Path(path) / "clipkit_insert"
         box.mkdir(exist_ok=True)
@@ -264,9 +354,17 @@ def main() -> int:
         say(WAIT=video_edit.agent_command("stories", raw), then=" ".join(sys.argv))
         return 2
     picked = range(1, len(sts) + 1) if a.all else [1]
+    if a.insert_sheet:
+        try:
+            md, jpg = sheet(raw, sts, picked, state, a.insert_sheet)
+        except video_edit.VideoEditError as exc:
+            say(error=str(exc))
+            return 1
+        say(upload=[str(md), str(jpg)], then=f'save the answer, then run again with --insert-from "{a.insert_sheet}" --insert-plan <answer>')
+        return 0
     if a.insert_from:
         try:
-            say(placed=place(sts, picked, state, a.insert_from))
+            say(placed=place(raw, sts, picked, state, a.insert_from, a.insert_plan))
         except video_edit.VideoEditError as exc:
             say(error=str(exc))
             return 1
