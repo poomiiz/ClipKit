@@ -96,7 +96,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
       <button id="bAddBr" class="media">+ ภาพประกอบตรงเส้นแดง</button>
       <span class="hint" style="cursor:help" title="คลิกชิ้นไหนเพื่อแก้ทางขวา · ลากภาพประกอบเพื่อเลื่อน ลากขอบขวาเพื่อยืด · Space เล่น/หยุด · Delete ลบ">⌨ คลิกชิ้นเพื่อแก้ · Space เล่น</span></div>
     <div class="tracks" id="tracks">
-      <div><div style="height:18px"></div><div class="lab">ข้อความ</div><div class="lab media">ภาพประกอบ</div><div class="lab">ข้อความใหญ่</div><div class="lab media">เพลง</div></div>
+      <div><div style="height:18px"></div><div class="lab">Motion text</div><div class="lab media">ภาพประกอบ</div><div class="lab">เน้น</div><div class="lab media">เพลง</div></div>
       <div class="scroll" id="scroll"><div class="inner" id="inner"></div></div>
     </div>
   </div>
@@ -245,17 +245,17 @@ function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
   s.innerHTML = `<h3>ตั้งค่าทั้งคลิป</h3>
     <div class="steps"><b>1</b> ⚡ ทำให้ครบ → <b>2</b> แก้ซับบนไทม์ไลน์ → <b>3</b> 🎬 ส่งออก</div>
-    <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
-    <h4>หัวคลิป (4 วินาทีแรก)</h4>
+    <h4>Motion text</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
+    <h4>HL Hook (ต้นคลิป · 4 วิแรก)</h4>
     ${[0, 1].map(n => `<div class="row"><input id="hk${n}" style="flex:1" placeholder="${n ? 'บรรทัด 2 (ไม่ใส่ก็ได้)' : 'บรรทัด 1 เช่น ธุรกิจสะดุด'}">
       <select id="hc${n}"><option value="white">ขาว</option><option value="orange">ส้ม</option><option value="red">แดง</option></select></div>`).join('')}
-    <div class="row"><button class="pri" id="hks">บันทึกหัวคลิป</button><span class="hint">ลบทั้ง 2 บรรทัด = ไม่มีหัวคลิป</span></div>
+    <div class="row"><button class="pri" id="hks">บันทึก HL Hook</button><span class="hint">ลบทั้ง 2 บรรทัด = ไม่มี HL Hook</span></div>
     <h4>ตัดเนื้อหา</h4>
     <div class="row"><button id="uncut">↶ ย้อนการตัดล่าสุด</button><span class="hint">เลือกข้อความบนไทม์ไลน์ แล้วกด ✂️</span></div>
     <details id="adv"><summary>ตั้งค่าเพิ่มเติม <span class="hint">ไม่ต้องแตะก็ได้</span></summary>
     <div class="row"><label>ชุดตัวหนังสือ</label><select id="preset" style="flex:1"></select></div>
     <div class="hint">สร้างชุดเอง: บอกในแชท</div>
-    <h4 id="txtH">ข้อความ (ซับ)</h4>
+    <h4 id="txtH">ขนาด / ตำแหน่ง Motion text</h4>
     <div class="row"><label>ขนาด</label><input type="range" id="tSize" min="8" max="24" step="0.5"><span id="tSizeV" class="hint"></span></div>
     <div class="row"><label>ตำแหน่ง</label><input type="range" id="tY" min="-0.6" max="0.6" step="0.01"><span id="tYV" class="hint"></span></div>
     <div class="row"><label>ระยะบรรทัด</label><input type="range" id="tLh" min="0.9" max="2" step="0.05"><span id="tLhV" class="hint"></span></div>
@@ -297,7 +297,7 @@ function sideClip(s) {
   else if (T.hook.length === 1) $('hc1').value = (st.hook_colors || [])[1] || 'orange';
   $('hks').onclick = async () => {
     const lines = [0, 1].map(n => ({text: $('hk' + n).value.trim(), color: $('hc' + n).value})).filter(x => x.text);
-    try { await api('draft/hook', {path: PATH, lines}); say('บันทึกหัวคลิปแล้ว'); await reload(); live(); } catch (e) { say('❌ ' + e.message); }
+    try { await api('draft/hook', {path: PATH, lines}); say('บันทึก HL Hook แล้ว'); await reload(); live(); } catch (e) { say('❌ ' + e.message); }
   };
   $('tsave').onclick = async () => {
     const name = prompt('ชื่อเทมเพลต (เช่น ชื่อลูกค้า หรือ สไตล์)', st.template || '');
@@ -336,7 +336,7 @@ function sidePhrase(s, p) {
       <option value="red">ขาว + แดง (จุดแรงสุด)</option><option value="hold">ขาวค้างจากท่อนก่อน + สี (ลิสต์)</option><option value="skip">ไม่ขึ้นซับ</option></select></div>
     <div class="row media"><label>หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
     <div class="row"><label>ซับแปล (ทั้งประโยค)</label><input id="pc" style="flex:1" placeholder="ตัวเล็กด้านล่าง ถ้าพรีเซ็ตมีซับแปล"></div>
-    <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นข้อความใหญ่กลางจอ</button></div>
+    <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นเน้น</button></div>
     <div class="row"><button id="pcut" style="color:#fca5a5">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
     <div class="hint">แก้คำ = แก้ซับด้วย · ใส่คำค้น ระบบหาภาพให้ตอน "ทำให้ครบ"</div>`;
   $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || ''; $('po').value = (p.opts || {}).look || 'pair'; $('pc').value = (T.caption_en || {})[p.line] || '';
@@ -358,7 +358,7 @@ function sidePhrase(s, p) {
     catch (e) { say('❌ ' + e.message); }
   };
   $('pm').onclick = async () => {
-    say('<span class="spin"></span> กำลังทำข้อความใหญ่… (ราว 30 วิ)');
+    say('<span class="spin"></span> กำลังทำเน้น… (ราว 30 วิ)');
     try { await api('draft/overlay', {path: PATH, template: 'hook-title', start: p.start, end: p.end, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว'); }
     catch (e) { say('❌ ' + e.message); }
   };
@@ -390,7 +390,7 @@ function sideBroll(s, b, i) {
   };
 }
 function sideMotion(s, m) {
-  s.innerHTML = `${back()}<h3>ข้อความใหญ่กลางจอ ${mm(m.start)}</h3><div class="hint">${esc(m.text)}</div>
+  s.innerHTML = `${back()}<h3>เน้น ${mm(m.start)}</h3><div class="hint">${esc(m.text)}</div>
     <div class="row"><button id="mdel" style="color:#fca5a5">ลบ</button></div>`;
   $('mdel').onclick = () => del();
 }
