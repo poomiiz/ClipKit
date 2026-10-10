@@ -198,14 +198,13 @@
       go.onclick = async () => {
         go.disabled = true; go.textContent = 'กำลังอัปเดต…';
         try {
-          const r = await fetch('/api/kit/update', {method: 'POST'});
-          if (!r.ok) throw new Error((await r.json()).detail);
-          let j;
-          do { await new Promise(x => setTimeout(x, 1500)); j = await fetch('/api/kit/job/update').then(x => x.json()); }
-          while (j.status === 'running');
-          if (j.status !== 'done') throw new Error((j.log || '').trim().split('\n').pop());
-          bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด ClipKit ใหม่ให้ครบทุกส่วน';
+          // the same as the editor's update button: pull, then the app restarts itself so the new code is what runs
+          const r = await fetch('/api/video/update', {method: 'POST'});
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.detail);
+          bar.firstChild.textContent = '✅ ' + j.note;
           go.remove(); later.textContent = 'ปิด';
+          if (j.updated) setTimeout(() => location.reload(), 6000);
         } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
       };
       document.body.appendChild(bar);
