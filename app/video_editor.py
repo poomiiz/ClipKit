@@ -820,8 +820,11 @@ def config() -> dict[str, Any]:
 
 @router.post("/update")
 def update() -> dict[str, Any]:
-    """The Update button: take the newest ClipKit from GitHub (team clones), then restart the app."""
+    """Both Update buttons (top banner and editor): take the newest ClipKit from GitHub, then always restart the
+    app - new pages served by the old server fail (405 / Failed to fetch) until it restarts."""
     root = Path(__file__).resolve().parents[1]
+    if not (root / ".git").is_dir():
+        raise HTTPException(400, "this copy is not a git clone - download a fresh copy from GitHub")
     git = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, timeout=120)  # noqa: E731
     if git("fetch", "-q").returncode != 0:
         raise HTTPException(400, "ต่อ GitHub ไม่ได้ ลองเช็กเน็ตแล้วกดใหม่")
