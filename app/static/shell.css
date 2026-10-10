@@ -101,3 +101,20 @@ html.sb-mini .sb-projects + .sb-item { margin-top: auto; }
 .sb-raw-h .cnt { font-size: 11px; color: #6b7590; }
 .sb-raw-b { display: none; padding-left: 18px; }
 .sb-raw.open .sb-raw-b { display: block; }
+
+/* line icons that stand in for emoji (shell.js) */
+.ck-ic { width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ck-ic-ok, .ck-ic-check { color: #10b981; }
+.ck-ic-err { color: #ef4444; }
+.ck-ic-warn { color: #f59e0b; }
+
+/* progress bar for long jobs (shell.js ckBar) */
+.ckp { display: grid; gap: 6px; padding: 10px 12px; margin: 6px 0; border: 1px solid #262d40; border-radius: 10px; background: #141824; font-size: 13.5px; }
+.ckp-top { display: flex; gap: 8px; align-items: baseline; }
+.ckp-top b { color: #fff; font-size: 15px; min-width: 3.2em; }
+.ckp-bar { height: 8px; border-radius: 99px; background: #262d40; overflow: hidden; }
+.ckp-bar i { display: block; height: 100%; background: var(--brand, #7c5cff); transition: width .4s; }
+.ckp-steps { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #6f7891; }
+.ckp-steps .done { color: #10b981; }
+.ckp-steps .done::before { content: "✓ "; }
+.ckp-steps .on { color: #fff; font-weight: 600; }

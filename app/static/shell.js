@@ -1,5 +1,95 @@
 // ClipKit app shell: draws the sidebar on every page and marks where you are.
 (() => {
+  // one line-icon set for the whole app (same stroke style as the sidebar): emoji in page text become these icons
+  const L = {
+    err: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    ok: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
+    check: '<path d="M5 12l5 5 9-10"/>',
+    warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/>',
+    zap: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+    music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+    cut: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1L20 20M8.1 15.9L20 4"/>',
+    spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>',
+    tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+    undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
+    save: '<path d="M5 3h11l4 4v13a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M8 3v5h8V3M8 21v-7h8v7"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+    bot: '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 4v4M9 13v1M15 13v1M9 17h6"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+    palette: '<path d="M12 3a9 9 0 100 18c1.1 0 1.6-.9 1.2-1.8-.5-1-.1-2.2 1.2-2.2H17a4 4 0 004-4c0-5.5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/>',
+    export: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 14v5a2 2 0 002 2h12a2 2 0 002-2v-5"/>',
+    up: '<path d="M12 20V4M5 11l7-7 7 7"/>',
+    folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+    fix: '<path d="M14.7 6.3a4 4 0 00-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 005.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+    sound: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 010 6M19 6a8 8 0 010 12"/>',
+    timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>',
+    chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+    eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    redo: '<path d="M20 11a8 8 0 00-14-5L4 8M4 4v4h4M4 13a8 8 0 0014 5l2-2M20 20v-4h-4"/>',
+    spell: '<path d="M3 18l5-12 5 12M5 14h6"/><path d="M15 15l2.5 2.5L22 12"/>',
+    hand: '<path d="M8 13V5.5a1.5 1.5 0 013 0V11M11 10V4.5a1.5 1.5 0 013 0V11M14 10.5V6a1.5 1.5 0 013 0v8a7 7 0 01-7 7 6 6 0 01-5-2.7L3.5 15a1.5 1.5 0 012.5-1.7L8 15"/>',
+    go: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    note: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
+    pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
+    type: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
+    square: '<rect x="4" y="4" width="16" height="16" rx="2"/>',
+    kbd: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  };
+  const E = {'❌': 'err', '✅': 'ok', '✓': 'check', '⚠': 'warn', '⚡': 'zap', '🎬': 'film', '🎞': 'film', '🎵': 'music',
+    '✂': 'cut', '✨': 'spark', '🏷': 'tag', '↶': 'undo', '↺': 'undo', '💾': 'save', '🔎': 'search', '🔍': 'search',
+    '🤖': 'bot', '🎙': 'mic', '🖼': 'image', '🎨': 'palette', '📤': 'export', '⬆': 'up', '📂': 'folder', '📁': 'folder',
+    '🩹': 'fix', '🔊': 'sound', '⏱': 'timer', '⏳': 'timer', '💬': 'chat', '👀': 'eye', '🔄': 'redo', '🔤': 'spell',
+    '✋': 'hand', '🚀': 'go', '📝': 'note', '✍': 'pen',
+    '🅰': 'type', '⬜': 'square', '⌨': 'kbd'};
+  window.ckIcon = (k, e = '') => `<svg class="ck-ic ck-ic-${k}" viewBox="0 0 24 24" aria-hidden="true"><desc>${e}</desc>${L[k]}</svg>`;
+  // <desc> keeps the emoji in textContent, so code that reads messages (the ❌ watcher below) still sees it
+  const RE = new RegExp('(' + Object.keys(E).join('|') + ')️?', 'u');
+  const SKIP = /^(SCRIPT|STYLE|TEXTAREA|OPTION|TITLE|desc|INPUT)$/;
+  const fix = node => {
+    const p = node.parentNode;
+    if (!p || SKIP.test(p.nodeName) || p.isContentEditable || !RE.test(node.data)) return;
+    const parts = node.data.split(new RegExp(RE.source, 'gu'));   // text, emoji, text, emoji, …
+    const f = document.createDocumentFragment();
+    parts.forEach((t, k) => {
+      if (k % 2 === 0) { if (t) f.append(t); }
+      else f.append(document.createRange().createContextualFragment(window.ckIcon(E[t], t)));
+    });
+    p.replaceChild(f, node);
+  };
+  const swap = root => {
+    if (root.nodeType === 3) return fix(root);
+    if (root.nodeType !== 1) return;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), hits = [];
+    while (w.nextNode()) if (RE.test(w.currentNode.data)) hits.push(w.currentNode);
+    hits.forEach(fix);
+  };
+  swap(document.body);
+  new MutationObserver(ms => ms.forEach(m => m.type === 'characterData' ? fix(m.target) : m.addedNodes.forEach(swap)))
+    .observe(document.body, {subtree: true, childList: true, characterData: true});
+
+  // progress bar for a long job: stages, the one running now (i), and a note (time, what is left)
+  window.ckTime = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+  window.ckBar = (stages, i, note = '') => {
+    const n = stages.length, pct = Math.round(Math.min(i, n) / n * 100);
+    return `<div class="ckp"><div class="ckp-top"><b>${pct}%</b><span>${i < n ? `ขั้น ${i + 1}/${n} · ${stages[i]}` : 'เสร็จ'}` +
+      `${note ? ' · ' + note : ''}</span></div><div class="ckp-bar"><i style="width:${pct}%"></i></div>` +
+      `<div class="ckp-steps">${stages.map((s, k) => `<span class="${k < i ? 'done' : k === i ? 'on' : ''}">${s}</span>`).join('')}</div></div>`;
+  };
+  // wait for a long API call while showing the step the server says it is on (GET /api/video/progress)
+  window.ckTrack = async (path, call, show) => {
+    let live = true;
+    (async () => {
+      while (live) {
+        await new Promise(r => setTimeout(r, 1200));
+        const r = await fetch('/api/video/progress?path=' + encodeURIComponent(path)).catch(() => null);
+        if (live && r && r.ok) show(await r.json());
+      }
+    })();
+    try { return await call; } finally { live = false; }
+  };
+
   if (window !== window.top) return;   // embedded inside the editor: no second sidebar
   const I = {
     home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',

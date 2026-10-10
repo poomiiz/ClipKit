@@ -31,7 +31,7 @@ button:disabled{opacity:.5;cursor:wait}
 .preview .tag{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:3px 8px;border-radius:99px}
 [hidden]{display:none!important}
 </style>
-<link rel="stylesheet" href="/shell.css?v=5">
+<link rel="stylesheet" href="/shell.css?v=6">
 </head>
 <body>
 <main>
@@ -125,6 +125,6 @@ Promise.all([fetch('/api/kit/motion-templates').then(r => r.json()), fontsReady]
   drawFields(); refresh();
 }).catch(e => { $('msg').className = 'msg bad'; $('msg').textContent = '❌ โหลดรายชื่อเอฟเฟกต์ไม่ได้: ' + e.message; });
 </script>
-<script src="/shell.js?v=8"></script>
+<script src="/shell.js?v=10"></script>
 </body>
 </html>

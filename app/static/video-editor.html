@@ -428,6 +428,14 @@
   .clip-left video { width: 100%; max-height: 46vh; border-radius: 12px; background: #000; display: block; margin-bottom: 4px; }
   .clip-right .card + .card { margin-top: 14px; }
   .make-wrap { max-width: 860px; margin: 22px auto 0; text-align: center; }
+  /* on/off chips above the make buttons: lit = on */
+  .opt-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin: 4px 0 14px; }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .opt span { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 99px; font-size: 15px; cursor: pointer;
+              border: 1px solid #3a4260; background: #1b2030; color: #8a93aa; transition: .15s; }
+  .opt input:checked + span { background: #7c5cff; border-color: #7c5cff; color: #fff; font-weight: 600; }
+  .opt input:focus-visible + span { outline: 2px solid #fff; }
+  .opt-sep { margin-left: 10px; color: #8a93aa; font-size: 14px; }
   .make-pair { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .make-pair b { font-size: 17px; white-space: nowrap; }
   .make-pair button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; text-align: center; }
@@ -515,7 +523,7 @@
   body.simple .media { display: none !important; }
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
-<link rel="stylesheet" href="/shell.css?v=5">
+<link rel="stylesheet" href="/shell.css?v=6">
 </head>
 <body>
 <div class="app">
@@ -583,6 +591,14 @@
           <option value="source">ตามฟุตเทจ</option></select>
         <span class="hint" id="focusNote"></span>
         &nbsp; เทมเพลต <select id="tpl" onchange="try{localStorage.setItem('ck_tpl',this.value)}catch(e){}"><option value="">ค่าเริ่มต้น</option></select></div>
+      <div class="opt-row" id="makeOpts" onchange="saveMakeOpts()">
+        <label class="opt"><input type="checkbox" id="optColor" checked><span>🎨 ปรับสี</span></label>
+        <label class="opt"><input type="checkbox" id="optSkin" checked><span>✨ ผิวเนียน</span></label>
+        <span class="opt-sep">Subtitle</span>
+        <label class="opt"><input type="radio" name="optSubs" value="th" checked><span>ไทย</span></label>
+        <label class="opt"><input type="radio" name="optSubs" value="en"><span>อังกฤษ</span></label>
+        <label class="opt"><input type="radio" name="optSubs" value="none"><span>ไม่ใส่</span></label>
+      </div>
       <div class="make-pair">
         <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
         <button class="ghost" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">สร้างโปรเจกต์ แล้วเปิด CapCut</small></button>
@@ -617,7 +633,7 @@
       <div class="hint" id="draftMetricsBar" style="margin:4px 0 14px">
         ⏱️ <b id="mDuration">-</b> วินาที · 🎬 <b id="mSegments">-</b> ท่อน · 💬 <b id="mSubtitles">-</b> บรรทัดซับ
         <span id="mGradePill" style="display:none"> · 🎨 เกรดสีแล้ว</span>
-        <br>⚠️ ปิด CapCut ก่อนกดแก้ทุกครั้ง
+        <br>⚠️ ปิด CapCut ก่อนแก้
       </div>
 
       <!-- one step at a time: stepper on top, clip preview left, only this step's controls right -->
@@ -631,7 +647,7 @@
           <div id="wzShow"></div>
           <details id="wzMoreBox"><summary>ปรับเพิ่ม</summary><div id="wzMore"></div></details>
           <div class="wz-nav"><button class="ghost" id="wzPrev">← ก่อนหน้า</button><button id="wzNext">ถัดไป →</button></div>
-          <div class="hint" style="margin-top:10px">คีย์ลัด: 1–7 สลับเครื่องมือ · Enter ปุ่มหลัก · Ctrl+E ส่งออก · ↑↓ เลือกข้อความ · Ctrl+C / Ctrl+V คัดลอกตำแหน่งข้อความ · Ctrl+S บันทึกตำแหน่ง</div>
+          <div class="hint" style="margin-top:10px;cursor:help" title="1–7 สลับเครื่องมือ · Enter ปุ่มหลัก · Ctrl+E ส่งออก · ↑↓ เลือกข้อความ · Ctrl+C / Ctrl+V คัดลอกตำแหน่งข้อความ · Ctrl+S บันทึกตำแหน่ง">⌨ คีย์ลัด</div>
         </div>
       </div>
       <div id="wzHold" style="display:none"></div>
@@ -661,7 +677,7 @@
         <!-- Review: the quick preview of everything the tool did, before the real export -->
         <div class="tool-card" id="c-review">
           <div class="tc-head"><div class="icon">👀</div><div class="titles">
-            <h3>รีวิวก่อนส่งออก</h3><p>ดูตัวอย่างให้ครบทั้งคลิป ถ้าต้องแก้ ไปแท็บนั้นแล้วกด "ทำให้ครบ" ใหม่</p></div></div>
+            <h3>รีวิวก่อนส่งออก</h3><p>ดูให้จบก่อนส่งออก</p></div></div>
           <div id="rvBusy" class="busy"></div>
           <video id="rvVideo" controls style="display:none;width:100%;max-height:60vh;border-radius:12px;background:#000"></video>
           <div id="rvSteps" class="hint"></div>
@@ -677,7 +693,7 @@
         <!-- How subtitles move in the MP4 export -->
         <div class="tool-card" id="c-subanim">
           <div class="tc-head"><div class="icon">✨</div><div class="titles">
-            <h3>ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก ClipKit</p></div></div>
+            <h3>Motion text</h3><p>ใช้ตอนส่งออก MP4</p></div></div>
           <div class="row" id="saBtns" style="gap:8px;flex-wrap:wrap">
             <button class="small" data-a="pair">คู่ประโยค</button>
             <button class="small" data-a="none">ซับนิ่ง</button>
@@ -686,7 +702,7 @@
           <div class="hint" id="saNote"></div>
           <label class="hint" style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer">
             <input type="checkbox" id="zoomCut" onchange="api('draft/zoomcut', {path: state.draft.path, on: this.checked})">
-            ตัดสลับด้วยการซูม · ประโยคเว้นประโยคซูมเข้า 12% ให้ภาพเปลี่ยนจังหวะ (ไม่ต้องใช้ภาพเพิ่ม)</label>
+            ตัดสลับด้วยการซูม</label>
           <div id="saPunch" style="display:none;margin-top:8px">
             <button class="small" onclick="punchAsk()">✨ ให้ Claude เลือกคำเน้น</button>
             <div id="saPunchBox"></div>
@@ -697,7 +713,7 @@
         <!-- Motion on top: click a line, pick a look; it renders and sits at that moment -->
         <div class="tool-card" id="c-overlay">
           <div class="tc-head"><div class="icon">⚡</div><div class="titles">
-            <h3>ใส่โมชั่น</h3><p>กดปุ่มที่ประโยคไหน ระบบทำตัวหนังสือเคลื่อนไหวจากประโยคนั้นแล้ววางตรงเวลานั้นให้ (ราว 30 วินาทีต่อชิ้น)</p></div></div>
+            <h3>เน้น</h3><p>กดที่ประโยคที่ต้องการผลักอารมณ์ (ราว 30 วิ)</p></div></div>
           <div id="ovList" class="ov-list"><div class="hint">กำลังอ่านซับ…</div></div>
           <div class="busy" id="ovBusy"></div>
         </div>
@@ -730,7 +746,7 @@
         <!-- Place each subtitle: the system lays them out, the editor drags / tilts any of them -->
         <div class="tool-card" id="c-layout">
           <div class="tc-head"><div class="icon">✋</div><div class="titles">
-            <h3>จัดวางข้อความ</h3><p>ระบบวางและย่อให้พอดีจอก่อน กดข้อความในรายการแล้วลากบนภาพซ้ายเพื่อย้าย</p></div></div>
+            <h3>จัดวางข้อความ</h3><p>เลือกข้อความ แล้วลากบนภาพซ้าย</p></div></div>
           <div class="row" style="gap:8px;flex-wrap:wrap">
             <button class="small" onclick="layoutLoad()">โหลดข้อความ</button>
             <button class="small" onclick="layoutAuto()">จัดอัตโนมัติ (ย่อให้พอดีจอ)</button>
@@ -1776,7 +1792,7 @@ const GUIDE = [
   {key: 'trim',  label: 'ตัดช่วงเงียบ',           run: () => { openAllTools(); jump('c-trim'); }},
   {key: 'check', label: 'ตรวจแก้คำผิดในซับ',      run: () => openSubs()},
   {key: 'style', label: 'ปรับสไตล์ซับ',           run: () => { openAllTools(); jump('c-style'); }},
-  {key: 'motion', label: 'หัวคลิป / คำโปรยเคลื่อนไหว', run: () => { openAllTools(); jump('c-motion'); }},
+  {key: 'motion', label: 'HL Hook / เน้น', run: () => { openAllTools(); jump('c-motion'); }},
   {key: 'broll', label: 'หาภาพประกอบ (Envato)',   run: () => openStock()},
   {key: 'music', label: 'ใส่เพลง / เสียงประกอบ',  run: () => { openAllTools(); jump('c-music'); }},
   // last: the cover needs the finished clip and its title
@@ -1788,19 +1804,19 @@ function guideDone(d) { try { return JSON.parse(localStorage.getItem(guideKey(d)
 function openAllTools() { const t = document.getElementById('allTools'); if (t) t.open = true; }
 // steps of the workbench: main = the one obvious action, show = cards needed to act, more = folded extras
 const WZ = [
-  {key: 'subs', label: '🎙️ ซับ', help: 'ฟังเสียงแล้วใส่ซับให้อัตโนมัติ ตรวจแก้คำผิดได้หลังจากนั้น',
+  {key: 'subs', label: '🎙️ ซับ', help: 'ใส่ซับอัตโนมัติ แล้วตรวจคำผิด',
    main: [['🎙️ ถอดเสียงใส่ซับ', () => draftTranscribe()], ['✍️ ตรวจแก้คำผิด', () => openSubs(), 'ghost']], show: ['c-fill']},
-  {key: 'trim', label: '✂️ ตัด', help: 'ตัดช่วงที่ไม่มีเสียงพูดออก ซับเลื่อนตามให้เอง',
+  {key: 'trim', label: '✂️ ตัด', help: 'ตัดช่วงเงียบ ซับเลื่อนตาม',
    main: [['✂️ ตัดช่วงเงียบ', () => draftTrim(true)], ['🔍 ดูก่อนว่าจะตัดตรงไหน', () => draftTrim(false), 'ghost']],
    show: ['filmstripCard', 'c-grade']},
-  {key: 'text', label: '🅰️ ตัวหนังสือ', help: 'สไตล์ซับ จัดวางข้อความ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
+  {key: 'text', label: '🅰️ ตัวหนังสือ', help: 'สไตล์ · ตำแหน่ง · ตัวหนังสือเคลื่อนไหว',
    main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')]], show: ['c-subanim', 'c-overlay', 'c-style', 'c-layout']},
-  {key: 'music', label: '🎵 เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
-  {key: 'broll', label: '🖼️ ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
+  {key: 'music', label: '🎵 เพลง', help: 'เพลงคลอจากคลัง', show: ['c-music']},
+  {key: 'broll', label: '🖼️ ภาพประกอบ', help: 'ค้นจาก Envato · โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง',
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
-  {key: 'cover', label: '🏷️ ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
+  {key: 'cover', label: '🏷️ ปก', help: 'ภาพจากคลิป + หัวข้อ',
    main: [['🖼️ ทำปก', () => { const src = (state.draft.sources || [])[0] || ''; location.href = '/cover.html?src=' + encodeURIComponent(src) + '&l1=' + encodeURIComponent(state.draft.name); }]]},
-  {key: 'export', label: '📤 ส่งออก', help: 'กด "ทำให้ครบ" ระบบทำทุกขั้นแล้วได้ตัวอย่างให้ดู · ผ่านแล้วกด "ส่งออกตัวจริง" · อยากเกลาเพิ่ม เปิดใน CapCut',
+  {key: 'export', label: '📤 ส่งออก', help: 'ทำให้ครบ → ดูตัวอย่าง → ส่งออกตัวจริง',
    show: ['c-review'],
    main: [['⚡ ทำให้ครบ + ดูตัวอย่าง', () => autoRun()], ['🎬 ส่งออกตัวจริง', async () => {
      draftSays('<span class="spin"></span> กำลังส่งออก MP4… (คลิป 1–2 นาที ราว 1 นาที)', '');
@@ -1863,6 +1879,14 @@ fetch('/api/video/templates').then(r => r.json()).then(r => {
 }).catch(() => {});
 
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
+// the ticks under the make buttons (remembered on this machine): what each new project gets
+const makeOpts = () => ({auto_color: document.getElementById('optColor').checked, skin: document.getElementById('optSkin').checked,
+                         subs: document.querySelector('[name=optSubs]:checked').value});
+function saveMakeOpts() { try { localStorage.setItem('ck_make_opts', JSON.stringify(makeOpts())); } catch {} }
+try {
+  const o = JSON.parse(localStorage.getItem('ck_make_opts') || 'null');
+  if (o) { const $ = id => document.getElementById(id); $('optColor').checked = o.auto_color; $('optSkin').checked = o.skin; document.querySelector(`[name=optSubs][value=${o.subs}]`).checked = true; }
+} catch {}
 async function makeDraft(open = true) {
   const main = document.getElementById('mainAction');
   const out = document.getElementById('result');
@@ -1870,14 +1894,15 @@ async function makeDraft(open = true) {
   if (!state.file) { out.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
   if (!name) { out.textContent = '❌ ตั้งชื่อโปรเจกต์ก่อน'; return; }
   main.disabled = true;
-  out.innerHTML = '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
+  out.innerHTML = (state.batchBar || '') + '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
     const template = document.getElementById('tpl').value || null;
-    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, template, ...(state.range || {})});
+    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, template, options: makeOpts(), ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
     if ((state.via || 'capcut') === 'capcut') {  // CapCut route: settle everything the template asks for, then lay it out in CapCut
-      out.innerHTML = '<span class="spin"></span> ถอดเสียง · ตัดช่วงหายใจ · ปรับสี · ทำโปรเจกต์ CapCut… (ราว 1–3 นาที)';
-      const p = await api('draft/prepare', {path: r.draft_path, template});
+      const show = p => out.innerHTML = (state.batchBar || '') + ckBar(['สร้างโปรเจกต์', ...p.stages], p.i + 1, ckTime(p.elapsed));
+      show({stages: ['ถอดเสียงใส่ซับ', 'ตัดช่วงหายใจ', 'ปรับสี', 'ทำโปรเจกต์ CapCut'], i: 0, elapsed: 0});
+      const p = await ckTrack(r.draft_path, api('draft/prepare', {path: r.draft_path, template}), show);
       out.textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"';
     }
     drafts = (await api('drafts')).drafts;
@@ -1901,11 +1926,12 @@ async function planStories() {
   if (!state.file) { box.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
   const file = state.file.path;
   document.getElementById('planStoriesBtn').disabled = true;
+  const t0 = Date.now(), PLAN = ['ถอดเสียงทั้งไฟล์', 'Claude แบ่งเรื่อง', 'เลือกเรื่องแล้วสร้างโปรเจกต์'];
   try {
     let job = await api('story-plan', {file});
     while (job.status === 'running' || job.status === 'waiting') {
-      if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
-      else if (!box.querySelector('.agent-cmd')) box.innerHTML = agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
+      if (job.status === 'running') box.innerHTML = ckBar(PLAN, 0, ckTime((Date.now() - t0) / 1000) + ' · ไฟล์ยาวอาจใช้หลายนาที');
+      else if (!box.querySelector('.agent-cmd')) box.innerHTML = ckBar(PLAN, 1) + agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
       await new Promise(r => setTimeout(r, 3000));
       job = await api('story-plan?file=' + encodeURIComponent(file));
     }
@@ -1985,12 +2011,15 @@ async function makeChosen(kind) {
   if (!list.length) return kind === 'hyperframes' ? makeHyperframes() : makeDraft();
   const nameBox = document.getElementById('pname');
   const base = nameBox.value.trim().replace(/ - \d+ .*$/, '') || state.file.name.replace(/\.[^.]+$/, '');
-  const done = [], made = [];
+  const done = [], made = [], t0 = Date.now();
   const out = document.getElementById('result');
   out.scrollIntoView({block: 'center'});
   try {
     for (const i of list) {
       const st = storyList[i];
+      // several stories: a bar over the stories, time left = average time per finished story so far
+      const left = done.length ? ' · เหลือราว ' + ckTime((Date.now() - t0) / 1000 / done.length * (list.length - done.length)) : '';
+      state.batchBar = list.length > 1 ? ckBar(list.map(k => 'เรื่อง ' + (k + 1)), done.length, ckTime((Date.now() - t0) / 1000) + left) : '';
       nameBox.value = base + ' - ' + (i + 1) + ' ' + st.title;
       state.range = {start: st.start, end: st.end};
       const single = list.length === 1;
@@ -1998,14 +2027,14 @@ async function makeChosen(kind) {
         const f = await api('focus', {file: state.file.path, start: st.start, end: st.end}).catch(() => null);
         if (f && f.found) { state.focus = {x: f.x, y: f.y}; drawCrop(); }
       }
-      const say = step => { if (!single) out.innerHTML = `<span class="spin"></span> เรื่อง ${i + 1} (${done.length + 1}/${list.length}) · ${step}…`; };
+      const say = step => { if (!single) out.innerHTML = state.batchBar + `<span class="spin"></span> เรื่อง ${i + 1} · ${step}…`; };
       say('สร้างโปรเจกต์');
       if (kind === 'hyperframes') await makeHyperframes(single);
       else if (single) await makeDraft(true);
       else if (kind === 'clipkit') {   // several stories: subtitles + MP4 without stopping at the workbench
         const d = await makeDraft(false);
         say('ทำทุกขั้น (ซับ ตัด ภาพประกอบ เพลง) แล้วทำตัวอย่าง');
-        await api('draft/auto', {path: d.path});
+        await ckTrack(d.path, api('draft/auto', {path: d.path}), p => out.innerHTML = state.batchBar + ckBar(p.stages, p.i, ckTime(p.elapsed)));
         made.push(d.path);
       } else await makeDraft(false);
       done.push(i + 1);
@@ -2018,7 +2047,7 @@ async function makeChosen(kind) {
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
-  } finally { state.range = null; nameBox.value = base; markMade(); if (window.ckLoadProjects) window.ckLoadProjects(); }
+  } finally { state.range = null; state.batchBar = ''; nameBox.value = base; markMade(); if (window.ckLoadProjects) window.ckLoadProjects(); }
 }
 
 // Alternative to CapCut: open the raw file as a HyperFrames project (motion graphics, renders to MP4)
@@ -2435,7 +2464,7 @@ async function punchAsk() {
 }
 // one button: subtitles, trim, look, zoom cut, b-roll, music, effects -> a preview to review
 // the libraries this work pulls from / saves into, changeable right here (same values as Settings > folders)
-const LIBS = [['stock_music', '🎵 คลังเพลง (ระบบหยิบเพลงจากที่นี่)'], ['stock_video', '🖼️ คลังคลิปและรูป (ภาพประกอบที่โหลดมาเก็บที่นี่)'],
+const LIBS = [['stock_music', '🎵 คลังเพลง'], ['stock_video', '🖼️ คลังภาพประกอบ'],
               ['output_dir', '📤 ไฟล์ที่ส่งออก']];
 async function libsLoad() {
   const box = document.getElementById('rvLibs');
@@ -2465,7 +2494,7 @@ async function plLoad() {
   const r = await fetch('/api/video/draft/placed?path=' + encodeURIComponent(state.draft.path)).then(x => x.json()).catch(() => null);
   if (!r) { box.textContent = '❌ อ่านรายการไม่ได้'; return; }
   PL = r.placed; PLSUBS = r.subs;
-  if (!PL) { box.innerHTML = '<div class="hint">กด "ทำให้ครบ + ดูตัวอย่าง" ก่อน แล้วรายการภาพประกอบ เพลง และเอฟเฟกต์จะขึ้นที่นี่ให้แก้</div>'; return; }
+  if (!PL) { box.innerHTML = '<div class="hint">กด "ทำให้ครบ + ดูตัวอย่าง" ก่อน</div>'; return; }
   if (!PLMUSIC) PLMUSIC = api('music').then(d => d.music || []).catch(() => []);
   plDraw();
 }
@@ -2584,7 +2613,8 @@ async function autoRun() {
   busy.innerHTML = '<span class="spin"></span> กำลังทำทุกขั้น… (ถอดเสียง ตัด ซับ ภาพประกอบ เพลง เอฟเฟกต์ · ราว 1–3 นาที)';
   v.style.display = 'none';
   try {
-    const r = await api('draft/auto', {path: state.draft.path});
+    const r = await ckTrack(state.draft.path, api('draft/auto', {path: state.draft.path}),
+                            p => busy.innerHTML = ckBar(p.stages, p.i, ckTime(p.elapsed)));
     busy.textContent = '✅ ตัวอย่างพร้อมแล้ว · ดูให้จบก่อนกด "ส่งออกตัวจริง"';
     v.src = '/api/kit/media?path=' + encodeURIComponent(r.preview.file) + '&t=' + Date.now();
     v.style.display = 'block';
@@ -2787,7 +2817,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 </script>
-<script src="/shell.js?v=8"></script>
+<script src="/shell.js?v=10"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {
