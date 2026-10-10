@@ -80,6 +80,12 @@ class CutIn(BaseModel):
     end: float
 
 
+class MakeOptions(BaseModel):
+    auto_color: bool = True
+    skin: bool = True
+    subs: str = Field(default="th", pattern="^(th|en|none)$")  # subtitle language, or none
+
+
 class DraftRequest(BaseModel):
     file: str
     name: str
@@ -96,6 +102,7 @@ class DraftRequest(BaseModel):
     focus_x: float = Field(default=0.5, ge=0, le=1)  # where to keep in frame when cropping (0 left, 1 right)
     focus_y: float = Field(default=0.5, ge=0, le=1)  # which button made it: finish in ClipKit or in CapCut
     template: str | None = None  # project template (project_templates/<name>.json) to start from
+    options: MakeOptions | None = None  # the ticks under the make buttons; win over the template
 
 
 class BriefRequest(BaseModel):
@@ -380,15 +387,22 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
         json.dumps({"raw": req.file, "start": req.start, "end": end, "via": req.via}, ensure_ascii=False), encoding="utf-8")
     if req.template:
         apply_template(result["draft_path"], req.template)
+    if req.options:
+        f = Path(result["draft_path"]) / "clipkit_style.json"
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        o = req.options
+        style.update(auto_color=o.auto_color, subs=o.subs,
+                     skin=(style.get("skin") or TEMPLATE_DEFAULT["skin"]) if o.skin else 0)
+        f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return result
 
 
 # ── project templates: the whole look of a clip, saved once and given to every new project ──
 TEMPLATES_DIR = _APP_DIR.parent / "project_templates"   # this machine's own (git-ignored)
 TEMPLATE_KEYS = ("anim", "preset", "zoomcut", "skin", "music", "music_volume", "sfx", "sfx_volume",
-                 "auto_color", "trim", "hook_colors")
+                 "auto_color", "trim", "hook_colors", "subs")
 TEMPLATE_DEFAULT = {"anim": "pair", "preset": "default", "zoomcut": True, "skin": 0.6, "auto_color": True, "trim": True,
-                    "sfx": True, "sfx_volume": 1.0, "music_volume": 0.12, "hook_colors": ["white", "orange"]}
+                    "sfx": True, "sfx_volume": 1.0, "music_volume": 0.12, "hook_colors": ["white", "orange"], "subs": "th"}
 
 
 def _template(name: str) -> dict[str, Any]:
@@ -443,6 +457,22 @@ def template_save(req: TemplateSave) -> dict[str, Any]:
     return {"template": req.name.strip(), "settings": t}
 
 
+def _subtitles(path: str, lang: str, steps: list[str]) -> None:
+    """Transcribe when the project has no subtitles yet, in the language ticked (none = leave it without)."""
+    if lang == "none" or capcut_edit.read_draft(path)["subtitles"]:
+        return
+    got = capcut_edit.transcribe_draft(path)
+    capcut_edit.set_subtitles(path, got["subtitles"])
+    capcut_edit.subtitles_language(path, "th")
+    steps.append(f"ถอดเสียงใส่ซับ {got['count']} บรรทัด")
+    if lang == "en":
+        try:
+            capcut_edit.subtitles_language(path, "en")
+            steps.append("ซับอังกฤษ")
+        except capcut_edit.NeedsAgent as exc:  # the translation is done by the agent in chat
+            steps.append(f"ซับอังกฤษ: ส่ง {exc} ให้ Claude แปล")
+
+
 class Prepare(BaseModel):
     path: str
     template: str | None = None
@@ -459,12 +489,11 @@ def draft_prepare(req: Prepare) -> dict[str, Any]:
     try:
         _step(req.path, stages, 0)
         style = apply_template(req.path, req.template) if req.template else {}
+        if not style:
+            f = Path(req.path) / "clipkit_style.json"
+            style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
         t = {**TEMPLATE_DEFAULT, **style}
-        if not capcut_edit.read_draft(req.path)["subtitles"]:
-            got = capcut_edit.transcribe_draft(req.path)
-            capcut_edit.set_subtitles(req.path, got["subtitles"])
-            capcut_edit.subtitles_language(req.path, "th")
-            steps.append(f"ถอดเสียงใส่ซับ {got['count']} บรรทัด")
+        _subtitles(req.path, t["subs"], steps)
         _step(req.path, stages, 1)
         if t.get("trim") and not (Path(req.path) / "draft_content.json.bak_trim").exists():
             capcut_edit.trim_pauses(req.path)
@@ -1103,11 +1132,12 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
     stages = ["ถอดเสียงใส่ซับ", "ตัดช่วงเงียบ", "ภาพประกอบ", "ทำตัวอย่าง MP4", "ทำปก"]
     try:
         _step(req.path, stages, 0)
-        if not capcut_edit.read_draft(req.path)["subtitles"]:
-            got = capcut_edit.transcribe_draft(req.path)
-            capcut_edit.set_subtitles(req.path, got["subtitles"])
-            capcut_edit.subtitles_language(req.path, "th")
-            steps.append(f"ถอดเสียงใส่ซับ {got['count']} บรรทัด")
+        f = Path(req.path) / "clipkit_style.json"
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        _subtitles(req.path, style.get("subs", "th"), steps)
+        if style.get("auto_color") and not style.get("color"):
+            auto_color(req.path)
+            steps.append("ปรับสีอัตโนมัติ")
         _step(req.path, stages, 1)
         t = capcut_edit.trim_pauses(req.path)
         steps.append("ตัดช่วงเงียบแล้ว")

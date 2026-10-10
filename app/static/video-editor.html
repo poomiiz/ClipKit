@@ -583,6 +583,11 @@
           <option value="source">ตามฟุตเทจ</option></select>
         <span class="hint" id="focusNote"></span>
         &nbsp; เทมเพลต <select id="tpl" onchange="try{localStorage.setItem('ck_tpl',this.value)}catch(e){}"><option value="">ค่าเริ่มต้น</option></select></div>
+      <div class="shape-row" id="makeOpts" onchange="saveMakeOpts()">
+        <label><input type="checkbox" id="optColor" checked> 🎨 ปรับสี</label>
+        <label><input type="checkbox" id="optSkin" checked> ✨ ผิวเนียน</label>
+        <label>🔤 ซับ <select id="optSubs"><option value="th">ไทย</option><option value="en">อังกฤษ</option><option value="none">ไม่ใส่</option></select></label>
+      </div>
       <div class="make-pair">
         <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
         <button class="ghost" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">สร้างโปรเจกต์ แล้วเปิด CapCut</small></button>
@@ -1863,6 +1868,14 @@ fetch('/api/video/templates').then(r => r.json()).then(r => {
 }).catch(() => {});
 
 // Step 2 -> 3: create the CapCut project from the chosen raw file, then open its workbench
+// the ticks under the make buttons (remembered on this machine): what each new project gets
+const makeOpts = () => ({auto_color: document.getElementById('optColor').checked, skin: document.getElementById('optSkin').checked,
+                         subs: document.getElementById('optSubs').value});
+function saveMakeOpts() { try { localStorage.setItem('ck_make_opts', JSON.stringify(makeOpts())); } catch {} }
+try {
+  const o = JSON.parse(localStorage.getItem('ck_make_opts') || 'null');
+  if (o) { const $ = id => document.getElementById(id); $('optColor').checked = o.auto_color; $('optSkin').checked = o.skin; $('optSubs').value = o.subs; }
+} catch {}
 async function makeDraft(open = true) {
   const main = document.getElementById('mainAction');
   const out = document.getElementById('result');
@@ -1873,7 +1886,7 @@ async function makeDraft(open = true) {
   out.innerHTML = (state.batchBar || '') + '<span class="spin"></span> กำลังสร้างโปรเจกต์ CapCut… (ปิด CapCut ไว้ก่อน)';
   try {
     const template = document.getElementById('tpl').value || null;
-    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, template, ...(state.range || {})});
+    const r = await api('capcut', {file: state.file.path, name: name, via: state.via || 'capcut', shape: shapeNow(), focus_x: state.focus.x, focus_y: state.focus.y, template, options: makeOpts(), ...(state.range || {})});
     out.textContent = '✅ สร้างแล้ว: ' + r.draft_name;
     if ((state.via || 'capcut') === 'capcut') {  // CapCut route: settle everything the template asks for, then lay it out in CapCut
       const show = p => out.innerHTML = (state.batchBar || '') + ckBar(['สร้างโปรเจกต์', ...p.stages], p.i + 1, ckTime(p.elapsed));
