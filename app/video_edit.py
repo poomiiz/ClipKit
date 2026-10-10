@@ -581,6 +581,15 @@ def _template_dir() -> Path:
     return max(candidates, key=lambda p: (p / "draft_content.json").stat().st_mtime)
 
 
+# CapCut's colour panel on a clip: the adjust effects (by type) and the switches that turn each part on
+# (every type seen in the drafts on 10 Oct 2026; "figure" is face/body retouch and "mix_mode" blending, so they stay)
+COLOUR_EFFECTS = {"saturation", "temperature", "tone", "lut", "smart_color_adjust", "color_match", "color_correct",
+                  "bloom"}
+COLOUR_FLAGS = ("enable_adjust", "enable_color_curves", "enable_smart_color_adjust", "enable_lut", "enable_hsl",
+                "enable_hsl_curves", "enable_color_wheels", "enable_color_match_adjust", "enable_color_correct_adjust",
+                "enable_adjust_mask")
+
+
 def _new_id() -> str:
     return str(uuid.uuid4()).upper()
 
@@ -700,6 +709,11 @@ def create_capcut_draft(video_path: str, project_name: str,
     base_segment.update(speed=1.0, reverse=False, intensifies_audio=False, is_tone_modify=False,
                         volume=1.0, last_nonzero_volume=1.0, keyframe_refs=[], common_keyframes=[])
     grade_template = [(k, m) for k, m in grade_template if k not in ("audio_fades", "audio_effects", "loudnesses")]
+    # nor is its colour (P'Ohm 2026-10-10): auto adjust, colour match to a reference frame, temperature/saturation,
+    # LUT, HSL and curves came along from the last hand-made project; a new clip starts with no colour settings
+    grade_template = [(k, m) for k, m in grade_template
+                      if k not in ("hsl", "color_curves") and not (k == "effects" and m.get("type") in COLOUR_EFFECTS)]
+    base_segment.update({flag: False for flag in COLOUR_FLAGS if flag in base_segment})
     for k, m in grade_template:
         if k == "speeds":
             m.update(speed=1.0, mode=0, curve_speed=None)
