@@ -198,14 +198,19 @@
       go.onclick = async () => {
         go.disabled = true; go.textContent = 'กำลังอัปเดต…';
         try {
-          const r = await fetch('/api/kit/update', {method: 'POST'});
-          if (!r.ok) throw new Error((await r.json()).detail);
-          let j;
-          do { await new Promise(x => setTimeout(x, 1500)); j = await fetch('/api/kit/job/update').then(x => x.json()); }
-          while (j.status === 'running');
-          if (j.status !== 'done') throw new Error((j.log || '').trim().split('\n').pop());
-          bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด ClipKit ใหม่ให้ครบทุกส่วน';
-          go.remove(); later.textContent = 'ปิด';
+          // every update restarts the app (P'Ohm 2026-10-10): new pages on the old server fail with 405 / Failed to fetch
+          const r = await fetch('/api/video/update', {method: 'POST'});
+          const u = await r.json();
+          if (!r.ok) throw new Error(u.detail);
+          bar.firstChild.textContent = '✅ ' + u.note;
+          go.remove(); later.remove();
+          if (!u.updated) return;
+          await new Promise(x => setTimeout(x, 3000));
+          for (let i = 0; i < 60; i++) {  // back up within a minute, then reload onto the new version
+            if (await fetch('/api/kit/version').then(x => x.ok, () => false)) return location.reload();
+            await new Promise(x => setTimeout(x, 1000));
+          }
+          bar.firstChild.textContent = '⚠️ อัปเดตแล้วแต่ ClipKit ยังไม่เปิดกลับมา · ปิดแล้วเปิดใหม่เอง';
         } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
       };
       document.body.appendChild(bar);
