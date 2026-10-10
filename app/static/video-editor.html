@@ -594,7 +594,7 @@
       <div class="opt-row" id="makeOpts" onchange="saveMakeOpts()">
         <label class="opt"><input type="checkbox" id="optColor" checked><span>🎨 ปรับสี</span></label>
         <label class="opt"><input type="checkbox" id="optSkin" checked><span>✨ ผิวเนียน</span></label>
-        <span class="opt-sep">ซับ</span>
+        <span class="opt-sep">Subtitle</span>
         <label class="opt"><input type="radio" name="optSubs" value="th" checked><span>ไทย</span></label>
         <label class="opt"><input type="radio" name="optSubs" value="en"><span>อังกฤษ</span></label>
         <label class="opt"><input type="radio" name="optSubs" value="none"><span>ไม่ใส่</span></label>
@@ -693,7 +693,7 @@
         <!-- How subtitles move in the MP4 export -->
         <div class="tool-card" id="c-subanim">
           <div class="tc-head"><div class="icon">✨</div><div class="titles">
-            <h3>ซับเคลื่อนไหว</h3><p>ใช้ตอนส่งออก MP4</p></div></div>
+            <h3>Motion text</h3><p>ใช้ตอนส่งออก MP4</p></div></div>
           <div class="row" id="saBtns" style="gap:8px;flex-wrap:wrap">
             <button class="small" data-a="pair">คู่ประโยค</button>
             <button class="small" data-a="none">ซับนิ่ง</button>
@@ -713,7 +713,7 @@
         <!-- Motion on top: click a line, pick a look; it renders and sits at that moment -->
         <div class="tool-card" id="c-overlay">
           <div class="tc-head"><div class="icon">⚡</div><div class="titles">
-            <h3>ใส่โมชั่น</h3><p>กดที่ประโยค ได้ตัวหนังสือเคลื่อนไหว (ราว 30 วิ)</p></div></div>
+            <h3>เน้น</h3><p>กดที่ประโยคที่ต้องการผลักอารมณ์ (ราว 30 วิ)</p></div></div>
           <div id="ovList" class="ov-list"><div class="hint">กำลังอ่านซับ…</div></div>
           <div class="busy" id="ovBusy"></div>
         </div>
@@ -1792,7 +1792,7 @@ const GUIDE = [
   {key: 'trim',  label: 'ตัดช่วงเงียบ',           run: () => { openAllTools(); jump('c-trim'); }},
   {key: 'check', label: 'ตรวจแก้คำผิดในซับ',      run: () => openSubs()},
   {key: 'style', label: 'ปรับสไตล์ซับ',           run: () => { openAllTools(); jump('c-style'); }},
-  {key: 'motion', label: 'หัวคลิป / คำโปรยเคลื่อนไหว', run: () => { openAllTools(); jump('c-motion'); }},
+  {key: 'motion', label: 'HL Hook / เน้น', run: () => { openAllTools(); jump('c-motion'); }},
   {key: 'broll', label: 'หาภาพประกอบ (Envato)',   run: () => openStock()},
   {key: 'music', label: 'ใส่เพลง / เสียงประกอบ',  run: () => { openAllTools(); jump('c-music'); }},
   // last: the cover needs the finished clip and its title

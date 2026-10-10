@@ -210,7 +210,7 @@ def subtitles_stay_on_one_line():
     assert render.stacks(["color", "color", "color", None, "hold", "color"]) == {0: 1}
     assert render.stacks(["color", "hold", "color"]) == {}
     p = render.pair_look({"preset": "4-levels"})
-    assert p["caption_shadow"] and p["second"] and p["second_at"] == (0.3, -6.0) and p["caption_lang"] == "en"
+    assert p["caption_shadow"] and p["second"] and p["second_at"] == (0.3, -6.0) and p["caption_lang"] == "th"
 
 
 def hand_fixes_are_learned():

@@ -1,7 +1,7 @@
 {
- "about": "Four levels, measured from the hand-made project 'IMG_6808 - 3 บทสรุป คุณค่าไม่มีถูกไม่มีผิด': normal white text, the largest emphasis (its colour can be changed per line), a small reading subtitle with a dark shadow (language en = translation, th = the spoken Thai line), and a short second-person line off centre and tilted. The second role is not in that project: its numbers are a starting point to tune.",
+ "about": "Four levels, measured from the hand-made project 'IMG_6808 - 3 บทสรุป คุณค่าไม่มีถูกไม่มีผิด': normal white text, the largest emphasis (its colour can be changed per line), a small reading subtitle with a dark shadow (language th = the spoken Thai line, the default here; en = translation), and a short second-person line off centre and tilted. The second role is not in that project: its numbers are a starting point to tune.",
  "normal":   {"size": 25, "y": -0.29, "color": "#ffffff", "outline": "#000000", "outline_width": 0.04},
  "emphasis": {"size": 30, "y": -0.44, "color": "#ff7d00", "outline": "#ffffff", "outline_width": 0.039},
- "caption":  {"size": 8, "y": -0.80, "color": "#ffffff", "outline": "#000000", "outline_width": 0, "shadow": true, "language": "en"},
+ "caption":  {"size": 8, "y": -0.80, "color": "#ffffff", "outline": "#000000", "outline_width": 0, "shadow": true, "language": "th"},
  "second":   {"size": 16, "y": 0.10, "color": "#ffffff", "outline": "#000000", "outline_width": 0.05, "x": 0.3, "rotation": -6}
 }
