@@ -368,6 +368,53 @@ def new_clip_keeps_its_own_sound():
             assert not any(f["id"] in refs for f in m.get("audio_fades", [])), "template fade on every cut"
             assert all(x["speed"] == 1.0 for x in m["speeds"] if x["id"] in refs), m["speeds"]
 
+def web_ai_answers_are_checked():
+    # the web AI's JSON goes into the same files the local agent writes; a wrong answer writes nothing
+    import capcut_edit
+    import web_ai_json as web_ai
+    from video_edit import VideoEditError
+    with tempfile.TemporaryDirectory() as t:
+        video = Path(t) / "ep.mov"
+        video.write_bytes(b"")
+        (Path(t) / "ep.mov.transcript.json").write_text(json.dumps(
+            [{"start": 0.0, "end": 2.0, "text": "สวัสดี"}, {"start": 10.0, "end": 14.0, "text": "เรื่องเงิน"}]), encoding="utf-8")
+        assert "เรื่องเงิน" in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
+        for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},
+                    {**head, "stories": [{"title": "a", "start": 3, "end": 5}]}):  # wrong video / no speech
+            try:
+                web_ai.import_answer("stories", str(video), json.dumps(bad))
+                raise AssertionError(f"accepted {bad}")
+            except VideoEditError:
+                pass
+        assert not (Path(t) / "ep.mov.stories.json").exists()
+        ans = "here:\n```json\n" + json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 15}]}) + "\n```"
+        assert web_ai.import_answer("stories", str(video), ans)["stories"][0]["end"] == 15
+
+        proj = Path(t) / "proj"
+        proj.mkdir()
+        keep = capcut_edit.read_draft
+        capcut_edit.read_draft = lambda p: {"subtitles": [{"start": 0.0, "end": 2.0, "text": "เงินไม่พอใช้"}]}
+        try:
+            web_ai.export_clip(str(proj))
+            good = {"clipkit_web_ai": 1, "step": "clip", "project": "proj", "hook": [{"text": "เงินหมด", "color": "red"}],
+                    "lines": [{"n": 1, "items": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}]}
+            for bad in ({**good, "lines": [{"n": 1, "items": [["เงิน", "พอใช้"]]}]},  # words changed
+                        {**good, "hook": [{"text": "x", "color": "blue"}]}):
+                try:
+                    web_ai.import_answer("clip", str(proj), json.dumps(bad))
+                    raise AssertionError(f"accepted {bad}")
+                except VideoEditError:
+                    pass
+            assert not (proj / "clipkit_punch.json").exists()
+            web_ai.import_answer("clip", str(proj), json.dumps(good))
+        finally:
+            capcut_edit.read_draft = keep
+        punch = json.loads((proj / "clipkit_punch.json").read_text(encoding="utf-8"))
+        assert punch == {"เงินไม่พอใช้": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}, punch
+        assert json.loads((proj / "clipkit_hook.json").read_text(encoding="utf-8"))[0]["color"] == "red"
+
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)

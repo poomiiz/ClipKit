@@ -973,6 +973,33 @@ def draft_punch_request(req: DraftPath) -> dict[str, Any]:
             "picked": sum(1 for t in lines if t in picked)}
 
 
+class WebAiRequest(BaseModel):
+    step: str = Field(pattern="^(stories|clip)$")
+    target: str  # the video (stories) or the project folder (clip)
+    answer: str = ""
+
+
+@router.post("/web-ai/export")
+def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
+    """The file to upload to an AI in the browser instead of pasting the command to the agent here."""
+    import web_ai_json as web_ai
+    try:
+        out = (web_ai.export_stories if req.step == "stories" else web_ai.export_clip)(req.target)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"file": str(out), "name": out.name, "text": out.read_text(encoding="utf-8")}
+
+
+@router.post("/web-ai/import")
+def web_ai_import(req: WebAiRequest) -> dict[str, Any]:
+    """The web AI's JSON answer, checked, into the same files the agent writes."""
+    import web_ai_json as web_ai
+    try:
+        return web_ai.import_answer(req.step, req.target, req.answer)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 class FreeSearch(BaseModel):
     query: str
     count: int = Field(default=6, ge=1, le=20)
