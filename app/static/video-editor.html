@@ -2784,7 +2784,7 @@ function webAiBox(step, target) {
       } catch (e) { el('msg').textContent = '❌ ' + e.message; }
     };
   });
-  return '<details class="agent-cmd"><summary>หรือใช้ AI บนเว็บ (claude.ai ฯลฯ)</summary>'
+  return '<details class="agent-cmd" open><summary>หรือใช้ AI บนเว็บ (claude.ai ฯลฯ)</summary>'
     + '<button class="small" id="' + id + 'dl">⬇ ไฟล์ให้ AI</button>'
     + '<textarea id="' + id + 'ta" rows="4" style="width:100%" placeholder="วางคำตอบ JSON จาก AI"></textarea>'
     + '<button class="small primary" id="' + id + 'in">นำเข้าคำตอบ</button><div class="hint" id="' + id + 'msg"></div></details>';
