@@ -30,7 +30,8 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
 3. Pilot rule: without `--all` only story 1 is built. Send the person the HTML file and wait for their OK
    before `--all`.
 4. Envato: the person opens the links, downloads into each project's `clipkit_insert` folder (name starts with
-   the link number, e.g. `2 coffee.mp4`), then you run with `--insert`. Never log in to Envato for them.
+   the link number, e.g. `2 coffee.mp4`), then you run with `--insert`; or downloads them in link order into one empty
+   folder and you run with `--insert-from "<folder>"` (the page numbers links across all projects). Never log in to Envato for them.
 5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
    tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
 6. Before showing the person any project, do the `ClipKit: ตรวจคำผิด` steps below on it. This is not optional and

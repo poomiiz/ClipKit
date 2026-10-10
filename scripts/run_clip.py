@@ -5,6 +5,7 @@
     python scripts/run_clip.py "<video>" --insert        # put the downloaded Envato clips in
     python scripts/run_clip.py "<video>" --all --export  # MP4 for every story
     python scripts/run_clip.py "<video>" --all --no-ai --capcut  # no AI step: straight to CapCut projects
+    python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>"  # Envato files downloaded there
 
 Steps: transcribe -> split into stories (max --max seconds) -> one project per story (crop on the face,
 subtitles, silences trimmed, subtitle look, zoom cut) -> punch words and b-roll searches -> free Pixabay
@@ -19,6 +20,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -37,6 +39,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--insert", action="store_true", help="use the clips downloaded into each clipkit_insert folder")
     ap.add_argument("--export", action="store_true", help="render the MP4s")
     ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
+    ap.add_argument("--insert-from", metavar="FOLDER",
+                    help="move the Envato files downloaded into FOLDER into each project by the page's link numbers, then --insert")
     ap.add_argument("--no-ai", action="store_true",
                     help="no AI agent: stories split at the longest pauses; each project gets a file for a web AI to pick emphasis + title "
                          "(scripts/web_ai.py import clip, then run again), until then emphasis on each phrase's last words, no title")
@@ -187,17 +191,56 @@ def insert(path: str) -> int:
     return len(files)
 
 
+def place(sts: list[dict], picked, state: dict, folder: str) -> list[dict]:
+    """Envato files a person downloaded into one folder, moved into each project's clipkit_insert by the page's
+    numbers (counted across all projects): a file whose name starts with a number goes to that link; the others
+    fill the links still empty in download order. More files than empty links raises before anything moves."""
+    src = Path(folder)
+    if not src.is_dir():
+        raise video_edit.VideoEditError(f"download folder not found: {folder}")
+    links = []  # (project, its own link number, search), in page order
+    for n in picked:
+        st = sts[n - 1]
+        path = state.get(f"{st['start']:.2f}-{st['end']:.2f}")
+        if path:
+            links += [(path, i, q) for i, q in enumerate(queries(path), 1)]
+    lead = lambda f: f.stem.split()[0].split("_")[0].split("-")[0]  # noqa: E731  (as insert() reads it)
+    files = sorted((f for f in src.iterdir() if f.is_file() and f.suffix.lower() in VIDEO_EXT), key=lambda f: f.stat().st_mtime)
+    nums = [int(lead(f)) for f in files if lead(f).isdigit()]
+    if len(nums) != len(set(nums)):
+        raise video_edit.VideoEditError(f"two files start with the same link number in {folder}: {sorted(nums)}")
+    numbered = {int(lead(f)): f for f in files if lead(f).isdigit()}
+    if any(not 1 <= k <= len(links) for k in numbered):
+        raise video_edit.VideoEditError(f"file numbers must be 1-{len(links)} (the page's links): {sorted(numbered)}")
+    have = lambda path, i: any(lead(f) == str(i) for f in (Path(path) / "clipkit_insert").glob("*"))  # noqa: E731
+    empty = [k for k, (path, i, _) in enumerate(links, 1) if k not in numbered and not have(path, i)]
+    rest = [f for f in files if f not in numbered.values()]
+    if len(rest) > len(empty):
+        raise video_edit.VideoEditError(f"{len(rest)} unnumbered files in {folder} but only {len(empty)} links still need one: "
+                                        "download into an empty folder, or start each name with its link number")
+    moved = []
+    for k, f in [*numbered.items(), *zip(empty, rest)]:
+        path, i, q = links[k - 1]
+        box = Path(path) / "clipkit_insert"
+        box.mkdir(exist_ok=True)
+        name = f.name if lead(f) == str(k) and k == i else f"{i} {f.name}"
+        shutil.move(str(f), box / name)
+        moved.append({"link": k, "search": q, "file": name, "project": Path(path).name})
+    return moved
+
+
 def page(raw: str, rows: list[dict]) -> Path:
     out = Path(raw).with_name(Path(raw).stem + " - ClipKit.html")
-    parts = []
+    parts, k = [], 0
     for r in rows:
         links = "".join(
-            f'<li><a href="https://elements.envato.com/stock-video/{quote(q)}" target="_blank">{i}. {html.escape(q)}</a>'
+            f'<li><a href="https://elements.envato.com/stock-video/{quote(q)}" target="_blank">{k + i}. {html.escape(q)}</a>'
             f'{" · มีแล้ว (Pixabay)" if q in r["have"] else ""}</li>' for i, q in enumerate(r["queries"], 1))
+        k += len(r["queries"])
         parts.append(f"""<section><h2>{r['n']}. {html.escape(r['title'])} <small>{r['length']} วิ</small></h2>
 <p><a href="{Path(r['hf']).as_uri()}">▶ ดูคลิป (HyperFrames)</a>{f' · <a href="{Path(r["mp4"]).as_uri()}">MP4</a>' if r.get('mp4') else ''}</p>
-<p>โหลดคลิปจาก Envato ใส่โฟลเดอร์ <code>{html.escape(str(Path(r['path']) / 'clipkit_insert'))}</code>
-ตั้งชื่อขึ้นต้นด้วยเลขลิงก์ (เช่น <code>1 coffee.mp4</code>) แล้วสั่ง <code>--insert</code></p><ol style="list-style:none;padding:0">{links}</ol></section>""")
+<p>โหลดคลิปจาก Envato ทีละลิงก์ตามลำดับเลข ลงโฟลเดอร์ว่างโฟลเดอร์เดียว (ข้ามลิงก์ไหน ให้ตั้งชื่อไฟล์ขึ้นต้นด้วยเลขลิงก์ เช่น <code>7 coffee.mp4</code>)
+แล้วสั่งคำสั่งเดิมเติม <code>--insert-from "&lt;โฟลเดอร์นั้น&gt;"</code></p><ol style="list-style:none;padding:0">{links}</ol></section>""")
     out.write_text(f"""<!doctype html><html lang="th"><head><meta charset="utf-8"><title>{html.escape(Path(raw).stem)} · ClipKit</title>
 <style>body{{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#111;color:#eee}}
 a{{color:#8fb8ff}}section{{border:1px solid #333;border-radius:10px;padding:12px 16px;margin:12px 0}}small{{color:#999}}code{{color:#fc6}}</style>
@@ -221,6 +264,13 @@ def main() -> int:
         say(WAIT=video_edit.agent_command("stories", raw), then=" ".join(sys.argv))
         return 2
     picked = range(1, len(sts) + 1) if a.all else [1]
+    if a.insert_from:
+        try:
+            say(placed=place(sts, picked, state, a.insert_from))
+        except video_edit.VideoEditError as exc:
+            say(error=str(exc))
+            return 1
+        a.insert = True
     rows, waits = [], []
     for n in picked:
         st = sts[n - 1]
