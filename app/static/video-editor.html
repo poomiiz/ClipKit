@@ -2778,7 +2778,7 @@ function webAiBox(step, target) {
       try {
         const r = await api('web-ai/import', {step, target, answer: el('ta').value});
         if (step === 'stories') { el('msg').textContent = '✓ นำเข้า ' + r.stories.length + ' เรื่อง'; return; }
-        el('msg').innerHTML = '<span class="spin"></span> นำเข้า ' + r.lines + ' บรรทัดแล้ว · กำลังสร้างโปรเจกต์ CapCut ใหม่…';
+        el('msg').innerHTML = '<span class="spin"></span> นำเข้า ' + r.lines + ' บรรทัดแล้ว' + (r.cut ? ' · ตัดทิ้ง ' + r.cut + ' บรรทัด' : '') + ' · กำลังสร้างโปรเจกต์ CapCut ใหม่…';
         const p = await api('draft/prepare', {path: target});  // the "· CapCut" copy is rebuilt with the AI's emphasis + title
         el('msg').textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"';
       } catch (e) { el('msg').textContent = '❌ ' + e.message; }

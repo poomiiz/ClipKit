@@ -400,7 +400,8 @@ def web_ai_answers_are_checked():
             good = {"clipkit_web_ai": 1, "step": "clip", "project": "proj", "hook": [{"text": "เงินหมด", "color": "red"}],
                     "lines": [{"n": 1, "items": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}]}
             for bad in ({**good, "lines": [{"n": 1, "items": [["เงิน", "พอใช้"]]}]},  # words changed
-                        {**good, "hook": [{"text": "x", "color": "blue"}]}):
+                        {**good, "hook": [{"text": "x", "color": "blue"}]},
+                        {**good, "cut": [1]}):  # nothing left
                 try:
                     web_ai.import_answer("clip", str(proj), json.dumps(bad))
                     raise AssertionError(f"accepted {bad}")
