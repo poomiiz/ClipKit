@@ -141,8 +141,13 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     lines = ans.get("lines")
     if not isinstance(lines, list) or [x.get("n") if isinstance(x, dict) else None for x in lines] != list(range(1, len(subs) + 1)):
         raise VideoEditError(f"lines ต้องมีครบ {len(subs)} บรรทัด เรียง n = 1..{len(subs)} ตามไฟล์ที่ส่งไป")
+    cut = ans.get("cut") or []
+    if not isinstance(cut, list) or any(n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
+        raise VideoEditError(f"cut ต้องเป็นรายการเลขบรรทัด 1..{len(subs)} ที่จะตัดทิ้ง และต้องเหลืออย่างน้อย 1 บรรทัด")
     punch = {}
     for s, x in zip(subs, lines):
+        if x["n"] in cut:
+            continue
         items = x.get("items")
         if not isinstance(items, list) or not items:
             raise VideoEditError(f"บรรทัด {x['n']}: items ต้องมีอย่างน้อย 1 ท่อน")
@@ -161,12 +166,12 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     if lang:
         cap = ans.get("caption")
         if not isinstance(cap, dict) or any(not isinstance(cap.get(str(n)), str) or not cap[str(n)].strip()
-                                            for n in range(1, len(subs) + 1)):
+                                            for n in range(1, len(subs) + 1) if n not in cut):
             raise VideoEditError(f'preset นี้มีซับแปล ({lang}): caption ต้องเป็น {{"1": "...", ...}} ครบทุกบรรทัด')
-        caption = {s["text"]: cap[str(n)].strip() for n, s in enumerate(subs, 1)}
+        caption = {s["text"]: cap[str(n)].strip() for n, s in enumerate(subs, 1) if n not in cut}
     motion = ans.get("motion") or []
     if not isinstance(motion, list) or any(not isinstance(m, dict) or m.get("template") not in MOTION
-                                           or m.get("n") not in range(1, len(subs) + 1) for m in motion):
+                                           or m.get("n") not in range(1, len(subs) + 1) or m["n"] in cut for m in motion):
         raise VideoEditError(f'motion (Motion text) ต้องเป็น [{{"n": เลขบรรทัด, "template": "{"|".join(sorted(MOTION))}"}}]')
 
     folder = Path(path)
@@ -177,6 +182,12 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     if caption is not None:
         (folder / "clipkit_caption.json").write_text(json.dumps(caption, ensure_ascii=False, indent=1), encoding="utf-8")
         written.append("clipkit_caption.json")
+    if cut:  # the footage of each dropped line (up to the next line) goes, its subtitle with it
+        ends = [max(s["end"], nxt["start"]) for s, nxt in zip(subs, subs[1:])] + [subs[-1]["end"]]
+        capcut_edit.trim_pauses(path, ranges=[(subs[n - 1]["start"], ends[n - 1]) for n in sorted(set(cut))])
+        written.append(f"ตัด {len(set(cut))} บรรทัด")
+        kept = {s["text"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
+        subs = [kept.get(s["text"], s) for s in subs]  # motion goes at the lines' new times
     if motion:
         import video_editor  # renders each motion here, the same as the editor's Motion button
         for m in motion:
@@ -184,7 +195,7 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
             video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"],
                                                                        start=s["start"], end=s["end"], text=s["text"]))
         written.append(video_editor.OVERLAYS)
-    return {"written": written, "lines": len(punch), "motion": len(motion)}
+    return {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
 
 
 def import_answer(step: str, target: str, text: str) -> dict[str, Any]:
