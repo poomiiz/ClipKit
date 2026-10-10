@@ -256,7 +256,8 @@ def _enable_cuda_libs() -> None:
                 os.add_dll_directory(str(lib))
             except (AttributeError, OSError):
                 pass
-            os.environ["PATH"] = str(lib) + os.pathsep + os.environ.get("PATH", "")
+            if str(lib) not in os.environ.get("PATH", "").split(os.pathsep):  # runs on every transcription
+                os.environ["PATH"] = str(lib) + os.pathsep + os.environ.get("PATH", "")
 
 
 def _has_cuda() -> bool:
