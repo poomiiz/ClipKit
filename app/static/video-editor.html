@@ -1905,7 +1905,7 @@ async function planStories() {
     let job = await api('story-plan', {file});
     while (job.status === 'running' || job.status === 'waiting') {
       if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
-      else if (!box.querySelector('.agent-cmd')) box.innerHTML = agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
+      else if (!box.querySelector('.agent-cmd')) box.innerHTML = agentBox(job.command, 'ถอดเสียงเสร็จแล้ว · ส่งคำสั่งนี้ให้ Claude ในแชตเพื่อแบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ') + webAiBox('stories', file);
       await new Promise(r => setTimeout(r, 3000));
       job = await api('story-plan?file=' + encodeURIComponent(file));
     }
@@ -2430,7 +2430,7 @@ async function punchAsk() {
     const r = await api('draft/punch-request', {path: state.draft.path});
     box.innerHTML = agentBox(r.command, r.picked === r.lines
       ? `Claude เลือกคำเน้นครบ ${r.lines} บรรทัดแล้ว · กดส่งออก MP4 ได้เลย (ส่งคำสั่งซ้ำได้ถ้าแก้ซับ)`
-      : `ส่งคำสั่งนี้ให้ Claude ในแชต (เลือกแล้ว ${r.picked}/${r.lines} บรรทัด) · บรรทัดที่ยังไม่ได้เลือก ระบบเน้นคำท้ายช่วงให้แทน`);
+      : `ส่งคำสั่งนี้ให้ Claude ในแชต (เลือกแล้ว ${r.picked}/${r.lines} บรรทัด) · บรรทัดที่ยังไม่ได้เลือก ระบบเน้นคำท้ายช่วงให้แทน`) + webAiBox('clip', state.draft.path);
   } catch (e) { box.textContent = '❌ ' + e.message; }
 }
 // one button: subtitles, trim, look, zoom cut, b-roll, music, effects -> a preview to review
@@ -2758,6 +2758,34 @@ function agentBox(cmd, note) {
     navigator.clipboard.writeText(cmd).then(() => { b.textContent = '✓ คัดลอกแล้ว'; }); }; });
   return '<div class="agent-cmd"><div class="hint">' + note + '</div><code></code><button class="small primary" id="' + id + '">คัดลอกคำสั่ง</button></div>'
     .replace('<code></code>', '<code>' + cmd.replace(/</g, '&lt;') + '</code>');
+}
+// the same step done by an AI in the browser (claude.ai, ChatGPT...): download a file to upload, paste its JSON back
+function webAiBox(step, target) {
+  const id = 'w' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => {
+    const el = k => document.getElementById(id + k);
+    if (!el('dl')) return;
+    el('dl').onclick = async () => {
+      try {
+        const r = await api('web-ai/export', {step, target});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([r.text], {type: 'text/markdown'}));
+        a.download = r.name; a.click();
+        el('msg').textContent = 'บันทึกไว้ที่ ' + r.file + ' · อัปโหลดไฟล์นี้ให้ AI แล้ววางคำตอบ JSON ด้านล่าง';
+      } catch (e) { el('msg').textContent = '❌ ' + e.message; }
+    };
+    el('in').onclick = async () => {
+      try {
+        const r = await api('web-ai/import', {step, target, answer: el('ta').value});
+        el('msg').textContent = step === 'stories' ? '✓ นำเข้า ' + r.stories.length + ' เรื่อง'
+          : '✓ นำเข้า ' + r.lines + ' บรรทัด' + (r.motion ? ' · motion ' + r.motion : '') + ' · กด "ทำให้ครบ" ต่อได้เลย';
+      } catch (e) { el('msg').textContent = '❌ ' + e.message; }
+    };
+  });
+  return '<details class="agent-cmd"><summary>หรือใช้ AI บนเว็บ (claude.ai ฯลฯ)</summary>'
+    + '<button class="small" id="' + id + 'dl">⬇ ไฟล์ให้ AI</button>'
+    + '<textarea id="' + id + 'ta" rows="4" style="width:100%" placeholder="วางคำตอบ JSON จาก AI"></textarea>'
+    + '<button class="small primary" id="' + id + 'in">นำเข้าคำตอบ</button><div class="hint" id="' + id + 'msg"></div></details>';
 }
 // plain white subtitles with the recommended look; English lines come from the agent (clipkit_subs_en.json)
 async function subsLang(lang) {

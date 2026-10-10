@@ -40,6 +40,8 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
 
 ## Commands pasted from the ClipKit app
 The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
+The same two steps (แบ่งเรื่อง, เลือกคำเน้น) can instead go to an AI in the browser: `scripts/web_ai.py` exports a file
+to upload and imports its JSON answer (`prompts/web_ai/schema.md`). The files it writes are the ones below.
 
 ### `ClipKit: แบ่งเรื่อง "<video path>"`
 1. Read `<video path>.transcript.json` (list of `{start, end, text}`, seconds). Missing = tell the person to press the button in the app again.
