@@ -48,7 +48,7 @@ def main():
         assert client.post("/api/team/login", json={"email": user["email"], "password": "password"}).status_code == 503
         assert client.get("/api/team/setup").json()["supabase_anon_key"] == ""
     with TemporaryDirectory() as folder, TestClient(app) as client, patch.object(hub.kit_settings, "CONFIG", Path(folder)/"config.json"), patch.object(hub.kit_settings, "_read_config", return_value={"work_root":"preserved"}):
-        setup={"supabase_url":"https://hub.example.test","supabase_anon_key":"sb_publishable_public","google_drive_client_id":"123-desktop.apps.googleusercontent.com"}
+        setup={"supabase_url":"https://hub.example.test","supabase_anon_key":"sb_publishable_public"}
         assert client.post("/api/team/setup",json=setup,headers={"Origin":"https://other.example.test"}).status_code == 403
         assert not hub.kit_settings.CONFIG.exists()
         assert client.post("/api/team/setup",json=setup).status_code == 200

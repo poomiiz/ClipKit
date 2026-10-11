@@ -58,12 +58,10 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <form id="teamSetup">
       <div class="row"><label for="teamUrl">Supabase URL</label><input id="teamUrl" type="url" required autocomplete="off"></div>
       <div class="row"><label for="teamKey">Publishable / anon key</label><input id="teamKey" required autocomplete="off"></div>
-      <div class="row"><label for="driveClient">Google Drive Client ID</label><input id="driveClient" autocomplete="off" placeholder="Desktop app OAuth Client ID"></div>
-      <div class="row"><label for="driveSecret">Google Client secret</label><input id="driveSecret" type="password" autocomplete="off" placeholder="เว้นว่างเพื่อเก็บค่าเดิม"></div>
       <p class="sub">ใช้รหัสสาธารณะเท่านั้น ห้ามใส่ service role key · ผู้ดูแลต้องติดตั้งฐานข้อมูลองค์กรและเปิดการยืนยันอีเมลใน Supabase ก่อนใช้งาน</p>
       <button>บันทึกระบบทีม</button> <span id="mTeam" class="msg" role="status"></span>
     </form>
-    <p class="sub">บัญชี Drive ของแต่ละคนต้องอนุญาตสิทธิ์ก่อนรับส่งไฟล์ การใส่ Client ID อย่างเดียวยังไม่เปิดการซิงก์</p>
+    <p class="sub">เลือกโฟลเดอร์ทีมในหน้าทีม แล้วตั้งค่า Syncthing หรือ Drive for desktop ให้ซิงก์เฉพาะ footage และ exports</p>
     <a class="back" href="/team.html">เปิดหน้าสมัครบัญชีและจัดการองค์กร →</a>
   </div>
 
@@ -155,10 +153,10 @@ async function teamSetupRequest(body) {
   if (!response.ok) throw new Error(typeof result.detail==='string' ? result.detail : 'ค่าตั้งค่าไม่ถูกต้อง');
   return result;
 }
-teamSetupRequest().then(cfg=>{$('teamUrl').value=cfg.supabase_url;$('teamKey').value=cfg.supabase_anon_key;$('driveClient').value=cfg.google_drive_client_id;$('driveSecret').placeholder=cfg.drive_secret_configured ? 'ตั้งค่าแล้ว · เว้นว่างเพื่อเก็บค่าเดิม' : 'Client secret จาก Desktop OAuth';}).catch(e=>say('mTeam',e.message,false));
+teamSetupRequest().then(cfg=>{$('teamUrl').value=cfg.supabase_url;$('teamKey').value=cfg.supabase_anon_key;}).catch(e=>say('mTeam',e.message,false));
 $('teamSetup').onsubmit=async event=>{
   event.preventDefault();const button=$('teamSetup').querySelector('button');button.disabled=true;
-  try {const result=await teamSetupRequest({supabase_url:$('teamUrl').value,supabase_anon_key:$('teamKey').value,google_drive_client_id:$('driveClient').value,google_drive_client_secret:$('driveSecret').value});$('driveSecret').value='';say('mTeam',result.note,true);}
+  try {const result=await teamSetupRequest({supabase_url:$('teamUrl').value,supabase_anon_key:$('teamKey').value});say('mTeam',result.note,true);}
   catch(e){say('mTeam',e.message,false);}finally{button.disabled=false;}
 };
 async function api(path, opt={}) {
