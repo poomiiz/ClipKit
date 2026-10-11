@@ -407,25 +407,26 @@
   .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 8px; }
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
   .foot-grid { display: grid; grid-template-columns: 1fr; gap: 8px; align-items: start; }
-  .foot { background: #141824; border: 1px solid #262d40; border-radius: 12px; overflow: hidden; min-width: 0; }
-  .foot .ft-th { aspect-ratio: 16/9; background: #1b2030; display: grid; place-items: center; font-size: 28px; cursor: pointer; }
-  .foot .ft-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .foot .ft-info { padding: 10px 12px 4px; min-width: 0; }
+  .foot { display: grid; grid-template-columns: 128px minmax(0, 1fr); column-gap: 16px; padding: 12px; background: #141824; border: 1px solid #262d40; border-radius: 12px; overflow: hidden; min-width: 0; }
+  .foot .ft-th { grid-column: 1; grid-row: 1 / 3; width: 128px; height: 96px; align-self: start; background: #1b2030; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 28px; cursor: pointer; }
+  .foot .ft-th img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; display: block; }
+  .foot .ft-info { grid-column: 2; min-width: 0; padding-bottom: 8px; }
+  .foot .ft-title { display: flex; align-items: center; gap: 8px; }
+  .foot .ft-title .ft-nm { flex: 1; min-width: 0; }
+  .foot .ft-nm input { width: 100%; min-width: 0; padding: 3px 6px; font-size: 14px; }
+  .foot .ft-rename { min-height: 28px; padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+  .foot .ft-rename[hidden] { display: none; }
   .foot .ft-nm { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .foot .ft-nm span { color: #828ca4; font-weight: 400; font-size: 12.5px; margin-left: 6px; }
   .foot .ft-path { font-size: 11.5px; color: #6b7590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
-  .foot .ft-ps { padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-  /* One compact row per source: thumbnail left, source and its projects on the right. */
-  .foot-grid.list { grid-template-columns: 1fr; gap: 4px; }
-  .foot-grid.list .foot { display: grid; grid-template-columns: 128px minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 12px; background: #141824; border-radius: 10px; }
-  .foot-grid.list .ft-th { grid-column: 1; grid-row: 1 / 3; aspect-ratio: 16/9; border-radius: 7px; overflow: hidden; margin: 8px 0 8px 8px; font-size: 20px; }
-  .foot-grid.list .ft-info { grid-column: 2; grid-row: 1; padding: 8px 10px 2px; align-self: center; cursor: pointer; }
-  .foot-grid.list .ft-info:hover { background: #141824; border-radius: 6px; }
-  .foot-grid.list .ft-nm { font-size: 14px; }
-  .foot-grid.list .ft-nm::before { content: ''; }
-  .foot-grid.list .foot.closed .ft-nm::before { content: ''; }
-  .foot-grid.list .foot.closed .ft-ps { display: none; }
-  .foot-grid.list .ft-ps { grid-column: 2; grid-row: 2; margin: 0 8px 6px 0; padding: 0 0 0 4px; gap: 0; }
+  .foot .ft-ps { grid-column: 2; min-width: 0; max-height: 224px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; color-scheme: dark; display: flex; flex-direction: column; gap: 2px; }
+  .foot .ft-ps .proj { flex-shrink: 0; }
+  @media (max-width: 600px) {
+    .foot { grid-template-columns: 72px minmax(0, 1fr); column-gap: 8px; padding: 8px; }
+    .foot .ft-th { width: 72px; height: 54px; }
+    .foot .ft-ps { grid-column: 1 / -1; margin-top: 4px; }
+    .foot .ft-th { grid-row: 1; }
+  }
   .proj { display: flex; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; }
   .proj:hover { background: #1b2030; }
   .proj .pr-top { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
@@ -557,7 +558,6 @@
       <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
     </div>
     <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
-      <button class="small" id="homeView" onclick="setHomeView()"></button>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
@@ -2326,7 +2326,6 @@ async function loadHomeDrafts() {
     groups.forEach(g => g.ps.forEach(d => left.delete(d.path)));
     if (left.size) groups.push({raw: '', name: 'ไม่ทราบไฟล์ดิบ', exists: false, ps: [...left.values()]});   // listed after raw-groups was read
     groups.filter(g => g.ps.length).forEach(g => box.appendChild(footCard(g)));
-    setHomeView(false);
     const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw'), tools = q.get('tools');
     if (want || raw || tools) history.replaceState(null, '', location.pathname);
     if (want) ckOpenProject(want);
@@ -2340,21 +2339,11 @@ window.ckOpenProject = async path => {
   if (!card) { toast('❌ ไม่พบโปรเจกต์นี้แล้ว: ' + path); return; }
   card.querySelector('[data-a=open]').click();
 };
-// grid = footage cards in columns, list = one footage per row (remembered on this machine)
-function setHomeView(flip = true) {
-  let v = 'grid';
-  try { v = localStorage.getItem('ck_home_view_v2') || 'list'; } catch {}
-  if (flip) { v = v === 'grid' ? 'list' : 'grid'; try { localStorage.setItem('ck_home_view_v2', v); } catch {} }
-  document.getElementById('homeDrafts').classList.toggle('list', v === 'list');
-  const b = document.getElementById('homeView');
-  b.textContent = v === 'grid' ? '☰ รายการ' : '▦ การ์ด';
-  b.title = v === 'grid' ? 'แสดงฟุตเป็นรายการ' : 'แสดงฟุตเป็นการ์ด';
-}
 // one footage: cover frame, name, path, then a row for every project cut from it
 function footCard(g) {
   const el = document.createElement('div');
   el.className = 'foot';
-  el.innerHTML = '<div class="ft-th">🎞️</div><div class="ft-info"><div class="ft-nm"></div><div class="ft-path"></div></div><div class="ft-ps"></div>';
+  el.innerHTML = '<div class="ft-th">🎞️</div><div class="ft-info"><div class="ft-title"><div class="ft-nm"></div><button class="ft-rename" hidden>✎ แก้ชื่อ</button></div><div class="ft-path"></div></div><div class="ft-ps" tabindex="0" aria-label="รายการโปรเจกต์"></div>';
   const th = el.querySelector('.ft-th'), nm = el.querySelector('.ft-nm'), pth = el.querySelector('.ft-path');
   nm.textContent = g.name;
   nm.insertAdjacentHTML('beforeend', `<span>${g.ps.length} โปรเจกต์</span>`);
@@ -2365,28 +2354,35 @@ function footCard(g) {
     th.firstChild.src = '/api/kit/raw-thumb?path=' + encodeURIComponent(g.raw);
     th.title = 'เลือกเรื่องจากไฟล์นี้อีกครั้ง';
     th.onclick = () => ckOpenRaw(g.raw);
-    nm.title = 'ดับเบิลคลิกเพื่อตั้งชื่อที่แสดง (ไฟล์จริงไม่ถูกเปลี่ยนชื่อ)';
-    nm.ondblclick = async () => {
-      const name = prompt('ชื่อที่แสดงของฟุตนี้ · ไฟล์จริงไม่ถูกเปลี่ยนชื่อ · เว้นว่าง = ใช้ชื่อไฟล์', g.name);
-      if (name === null) return;
-      const r = await fetch('/api/kit/footage-name', {method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({path: g.raw, name})});
-      if (!r.ok) { toast('❌ ตั้งชื่อไม่ได้: ' + ((await r.json()).detail || r.status)); return; }
-      loadHomeDrafts();
+    const rename = el.querySelector('.ft-rename');
+    rename.hidden = false;
+    rename.title = 'แก้ชื่อที่แสดง · ไฟล์จริงไม่ถูกเปลี่ยนชื่อ';
+    rename.onclick = async () => {
+      let input = nm.querySelector('input');
+      if (!input) {
+        input = document.createElement('input');
+        input.value = g.name;
+        input.setAttribute('aria-label', 'ชื่อฟุต');
+        nm.replaceChildren(input);
+        rename.textContent = 'บันทึก';
+        input.onkeydown = e => {
+          if (e.key === 'Enter') rename.click();
+          if (e.key === 'Escape') loadHomeDrafts();
+        };
+        input.focus(); input.select();
+        return;
+      }
+      rename.disabled = true;
+      try {
+        const r = await fetch('/api/kit/footage-name', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({path: g.raw, name: input.value})});
+        if (!r.ok) throw new Error((await r.json()).detail || r.status);
+        await loadHomeDrafts();
+      } catch (e) { toast('❌ ตั้งชื่อไม่ได้: ' + e.message); }
+      finally { rename.disabled = false; }
     };
   }
   g.ps.forEach(d => el.querySelector('.ft-ps').appendChild(projCard(d)));
-  // list view: click the footage line to fold its projects (remembered on this machine)
-  let closed = {};
-  try { closed = JSON.parse(localStorage.getItem('ck_home_closed') || '{}'); } catch {}
-  const key = g.raw || g.name;
-  el.classList.toggle('closed', !!closed[key]);
-  el.querySelector('.ft-info').onclick = () => {
-    if (!document.getElementById('homeDrafts').classList.contains('list')) return;
-    closed[key] = el.classList.toggle('closed');
-    if (!closed[key]) delete closed[key];
-    try { localStorage.setItem('ck_home_closed', JSON.stringify(closed)); } catch {}
-  };
   return el;
 }
 // share of the workbench steps done (the same ticks the step bar shows)
