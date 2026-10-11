@@ -549,8 +549,7 @@
     <span class="hint">ลากไฟล์วิดีโอหรือโฟลเดอร์วางได้ทั้งหน้า · หรือกด ➕ สร้างโปรเจกต์</span>
     <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
-        <select id="selDelivery" aria-label="สถานะส่งงานของโปรเจกต์ที่เลือก"><option value="awaiting_review">รอลูกค้าตรวจ</option><option value="editing">กำลังทำ</option><option value="changes_requested">ต้องแก้</option><option value="approved">อนุมัติแล้ว</option></select>
-        <button class="small primary" id="selDeliveryApply" onclick="setSelectedDelivery()">เปลี่ยนสถานะที่เลือก</button>
+        <a href="/review.html">🔎 ตรวจงานทีม</a>
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
       <span class="hint" id="selHint">ลากคลุมเพื่อเลือกหลายโปรเจกต์ · Ctrl+คลิก เลือกทีละอัน</span></div>
@@ -2364,30 +2363,17 @@ function projCard(d) {
   const el = document.createElement('div');
   el.className = 'proj';
   const badge = `<span class="badge ${d.sys}">${{clipkit: 'CK', capcut: 'CC', hyperframes: 'HF'}[d.sys]}</span>`;
-  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open"></span><select class="delivery"><option value="">ยังไม่ระบุสถานะ</option><option value="editing">กำลังทำ</option><option value="awaiting_review">รอลูกค้าตรวจ</option><option value="changes_requested">ต้องแก้</option><option value="approved">อนุมัติแล้ว</option></select></div>' +
+  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open"></span><span class="delivery"></span></div>' +
     '<div class="acts"><button data-a="ren" title="เปลี่ยนชื่อ">✎</button><button data-a="del" class="del" title="ลบ">🗑️</button></div>';
   el.querySelector('.nm').textContent = d.name;
   el.querySelector('.nm').title = d.name + ' · คลิกเพื่อเปิด';
   el._d = d;
   const delivery = el.querySelector('.delivery');
   delivery.setAttribute('aria-label', 'สถานะส่งงาน ' + d.name);
-  delivery.querySelector('option[value=""]').disabled = true;
-  const show = () => {
-    delivery.value = d.delivery?.status || '';
-    delivery.dataset.status = delivery.value;
-    delivery.title = 'สถานะที่ยืนยันเอง' + (d.delivery?.updated_at ? ' · บันทึก ' + new Date(d.delivery.updated_at).toLocaleString('th-TH') : '');
-  };
-  show();
-  el._showDelivery = show;
-  delivery.onchange = async () => {
-    delivery.disabled = true;
-    try {
-      const r = await fetch('/api/kit/delivery-status', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: d.path, status: delivery.value})});
-      if (!r.ok) throw new Error((await r.json()).detail || r.status);
-      d.delivery = await r.json();
-    } catch (e) { toast('❌ บันทึกสถานะไม่ได้: ' + e.message); }
-    finally { show(); delivery.disabled = false; }
-  };
+  const labels = {editing:'✂️ กำลังตัด',awaiting_lead:'📤 รอหัวหน้าตรวจ',awaiting_review:'⏳ รอลูกค้าตรวจ',changes_requested:'🛠️ ส่งกลับแก้',approved:'✅ ลูกค้าอนุมัติ'};
+  delivery.textContent = labels[d.delivery?.status] || 'ยังไม่ระบุสถานะ';
+  delivery.dataset.status = d.delivery?.status || '';
+  delivery.title = 'สถานะเดิมในเครื่อง · สถานะร่วมขององค์กรอยู่ในหน้าทีม';
   const open = async () => {
     if (d.kind === 'capcut') { openDraft(d.i); return; }
     const r = await kit('draft-open', d.path);
@@ -2415,31 +2401,6 @@ function showSel() {
   document.getElementById('selHint').style.display = selSet.size ? 'none' : '';
 }
 function clearSel() { selSet.clear(); showSel(); }
-async function setSelectedDelivery() {
-  const selected = [...selSet];
-  if (!selected.length) return;
-  if (selected.some(el => el.querySelector('.delivery').disabled)) { toast('รอการบันทึกสถานะก่อนหน้าให้เสร็จก่อน'); return; }
-  const status = document.getElementById('selDelivery').value;
-  const controls = [...document.querySelectorAll('#selBar button, #selBar select'), ...selected.flatMap(el => [...el.querySelectorAll('button, select')])];
-  const disabled = controls.map(el => el.disabled);
-  controls.forEach(el => { el.disabled = true; });
-  const apply = document.getElementById('selDeliveryApply');
-  apply.textContent = 'กำลังบันทึก…';
-  try {
-    const r = await fetch('/api/kit/delivery-status/bulk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({paths: selected.map(el => el._d.path), status})});
-    const result = await r.json();
-    if (!r.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'บันทึกสถานะไม่ได้');
-    selected.forEach(el => {
-      el._d.delivery = result.statuses[el._d.path.replaceAll('/', '\\').toLowerCase()];
-      el._showDelivery();
-    });
-    toast('เปลี่ยนสถานะแล้ว ' + result.updated + ' โปรเจกต์');
-  } catch (e) { toast('❌ ' + e.message); }
-  finally {
-    controls.forEach((el, i) => { el.disabled = disabled[i]; });
-    apply.textContent = 'เปลี่ยนสถานะที่เลือก';
-  }
-}
 async function delSelected() {
   const list = [...selSet].map(el => el._d);
   if (!list.length || !confirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)\n\n' + list.map(d => '• ' + d.name).join('\n'))) return;

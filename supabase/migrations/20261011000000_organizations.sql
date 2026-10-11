@@ -126,8 +126,9 @@ begin
   member_role := public.clipkit_role(org);
   if member_role is null then raise exception 'Not an organization member' using errcode = '42501'; end if;
   select count(distinct x) into total from unnest(asset_ids) as x;
-  if total = 0 or total > 500 then raise exception 'Select 1 to 500 projects'; end if;
-  if next_status not in ('editing','awaiting_lead','awaiting_review','changes_requested','approved') then raise exception 'Invalid status'; end if;
+  if total = 0 or cardinality(asset_ids) > 500 or exists(select 1 from unnest(asset_ids) as x where x is null) then raise exception 'Select 1 to 500 projects'; end if;
+  if next_status is null or next_status not in ('editing','awaiting_lead','awaiting_review','changes_requested','approved') then raise exception 'Invalid status'; end if;
+  if note is null or length(note)>5000 then raise exception 'Invalid review note'; end if;
   if next_status in ('awaiting_review','changes_requested','approved') and member_role not in ('owner','lead') then
     raise exception 'Review decisions require a lead' using errcode = '42501';
   end if;

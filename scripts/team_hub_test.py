@@ -1,6 +1,7 @@
 """Check the local auth boundary without calling a live identity provider."""
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
@@ -29,11 +30,28 @@ def main():
         provider.return_value = "new-org"
         assert client.post("/api/team/organizations", json={"name": "Team"}).json() == {"id": "new-org"}
         provider.assert_called_with("/rest/v1/rpc/clipkit_create_organization", "POST", {"org_name": "Team"}, "provider-access")
+        session_id = client.cookies.get(hub.COOKIE)
+        hub._sessions[session_id]["expires_at"] = 0
+        provider.return_value = {**session, "access_token": "renewed-access"}
+        assert client.get("/api/team/session").status_code == 200
+        provider.assert_called_with("/auth/v1/token?grant_type=refresh_token", "POST", {"refresh_token": "provider-refresh"})
+        assert hub._sessions[session_id]["access_token"] == "renewed-access"
         assert client.post("/api/team/logout", json={}).status_code == 200
         assert client.get("/api/team/organizations").status_code == 401
     with TestClient(app) as client, patch.object(hub.kit_settings, "_read_config", return_value={}):
         assert client.get("/api/team/session").json() == {"configured": False, "signed_in": False}
         assert client.post("/api/team/signup", json={"email": user["email"], "password": "password", "display_name": "Editor"}).status_code == 503
+    with TestClient(app) as client, patch.object(hub.kit_settings, "_read_config", return_value={"supabase_url": "https://hub.example.test", "supabase_anon_key": "sb_secret_private"}):
+        assert client.post("/api/team/login", json={"email": user["email"], "password": "password"}).status_code == 503
+        assert client.get("/api/team/setup").json()["supabase_anon_key"] == ""
+    with TemporaryDirectory() as folder, TestClient(app) as client, patch.object(hub.kit_settings, "CONFIG", Path(folder)/"config.json"), patch.object(hub.kit_settings, "_read_config", return_value={"work_root":"preserved"}):
+        setup={"supabase_url":"https://hub.example.test","supabase_anon_key":"sb_publishable_public","google_drive_client_id":"123-desktop.apps.googleusercontent.com"}
+        assert client.post("/api/team/setup",json=setup,headers={"Origin":"https://other.example.test"}).status_code == 403
+        assert not hub.kit_settings.CONFIG.exists()
+        assert client.post("/api/team/setup",json=setup).status_code == 200
+        import json
+        saved=json.loads(hub.kit_settings.CONFIG.read_text())
+        assert saved["work_root"] == "preserved" and saved["supabase_anon_key"]==setup["supabase_anon_key"]
     print("Local team session, cookie, origin and provider-token boundary checks passed")
 
 

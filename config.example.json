@@ -19,6 +19,7 @@
   "bot_api_url": "http://127.0.0.1:8765",
   "supabase_url": "https://wqyjsewitmctlgmiznxz.supabase.co",
   "supabase_anon_key": "",
+  "google_drive_client_id": "",
   "_supabase_note": "team hub. The anon key is public by design (RLS guards every table); the database password and service key never go in this file",
   "auto_bug_report": true,
   "_auto_bug_report_note": "send errors the app hits to the team hub on its own (text, page, version, last errors; no machine name, user folder shown as ~)",

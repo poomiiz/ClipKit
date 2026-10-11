@@ -892,13 +892,12 @@ def delivery_statuses() -> dict[str, Any]:
 
 @router.post("/delivery-status")
 def delivery_status(body: DeliveryStatus) -> dict[str, Any]:
-    return next(iter(_set_delivery_status([body.path], body.status).values()))
+    raise HTTPException(410, "สถานะส่งงานให้ใช้ระบบทีม คนตัดส่งหัวหน้าตรวจ และหัวหน้าบันทึกผลจากหน้าตรวจงาน")
 
 
 @router.post("/delivery-status/bulk")
 def bulk_delivery_status(body: BulkDeliveryStatus) -> dict[str, Any]:
-    changed = _set_delivery_status(body.paths, body.status)
-    return {"updated": len(changed), "statuses": changed}
+    raise HTTPException(410, "เปลี่ยนสถานะหลายโปรเจกต์จากหน้าทีมหรือหน้าตรวจงาน")
 
 
 @router.get("/hf-projects")
