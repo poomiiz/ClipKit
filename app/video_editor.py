@@ -325,6 +325,9 @@ def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
 @router.get("/story-plan")
 def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
     job = _story_jobs.get(file)
+    if not job and video_edit.stories_file(file).is_file() and video_edit.transcript_file(file).is_file():
+        job = _story_jobs[file] = {"status": "running"}  # split before ClipKit restarted: reload it, no Whisper
+        _run_story_plan(file)
     if not job:
         raise HTTPException(status_code=404, detail="no plan started for this file")
     if job["status"] == "waiting":

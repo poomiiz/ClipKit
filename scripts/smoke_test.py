@@ -243,6 +243,26 @@ def stories_are_not_transcribed_twice():
         assert capcut_edit._from_transcript(str(video), 11.0, 15.0) is None, "a phrase cut by the edge was reused"
 
 
+def saved_stories_come_back_after_restart():
+    # the split is saved beside the video; after ClipKit restarts, opening the file shows it again with no new AI round
+    import video_editor
+    from fastapi import HTTPException
+    with tempfile.TemporaryDirectory() as t:
+        video = str(Path(t) / "talk.mp4")
+        Path(video).write_bytes(b"x")
+        video_editor._story_jobs.pop(video, None)
+        try:
+            video_editor.story_plan_status(video)
+            raise AssertionError("a file never split returned a plan")
+        except HTTPException as exc:
+            assert exc.status_code == 404
+        Path(video + ".transcript.json").write_text(json.dumps([{"start": 1.0, "end": 9.0, "text": "เงิน"}]), encoding="utf-8")
+        Path(video + ".stories.json").write_text(json.dumps([{"title": "เงิน", "start": 1, "end": 9}]), encoding="utf-8")
+        job = video_editor.story_plan_status(video)
+        assert job["status"] == "done" and job["stories"][0]["title"] == "เงิน" and job["duration"] == 9.0, job
+        video_editor._story_jobs.pop(video)
+
+
 def name_check_works():
     import sync_team
     assert sync_team.names_in(("style from Ni" + "na 07").encode()), "a client name was not found"  # split: this file is synced too
