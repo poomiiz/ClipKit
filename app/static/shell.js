@@ -15,7 +15,7 @@
   const svg = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
   const NAV = [
     // starting or continuing a clip lives on the home tiles; the sidebar only moves between pages
-    ['', [['home', 'หน้าแรก', '/video-editor.html'], ['style', 'คลังสไตล์', '/styles.html']]],
+    ['', [['home', 'หน้าแรก', '/video-editor.html'], ['style', 'คลังสไตล์', '/styles.html'], ['drafts', 'ทีมตัดต่อ', '/team.html'], ['clip', 'ตรวจงานทีม', '/review.html']]],
   ];
   const here = location.pathname + location.hash;
   const isOn = href => href === here || (href === location.pathname && !location.hash && !href.includes('#'));
@@ -26,8 +26,46 @@
     '<button class="sb-fold" id="sbFold" title="ย่อ / ขยายแถบซ้าย"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>' +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}" title="${label}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
+    '<button type="button" class="sb-item" id="ckCreateProject" title="สร้างโปรเจกต์ใหม่">➕<span>สร้างโปรเจกต์</span></button>' +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
+  aside.querySelector('a[href="/styles.html"]').after(aside.querySelector('#ckCreateProject'));
   document.body.prepend(aside);
+  const openPicked = picked => {
+    if (typeof window.openPicked === 'function') window.openPicked(picked);
+    else location.href = '/video-editor.html?' + new URLSearchParams({[picked.kind === 'folder' ? 'folder' : 'raw']: picked.path});
+  };
+  document.getElementById('ckCreateProject').onclick = async () => {
+    if (typeof window.openPicker === 'function') { window.openPicker(); return; }
+    try {
+      const response = await fetch('/api/kit/pick', {method: 'POST'});
+      const picked = await response.json();
+      if (!response.ok) throw new Error(picked.detail || 'เลือกไฟล์ไม่ได้');
+      if (picked.path) openPicked(picked);
+    } catch (e) { alert(e.message); }
+  };
+  // One page-wide drop handler serves home, styles and team pages.
+  let innerDrag = false;
+  document.addEventListener('dragstart', () => { innerDrag = true; });
+  document.addEventListener('dragend', () => { innerDrag = false; });
+  document.addEventListener('dragover', e => {
+    if (innerDrag || ![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault(); document.body.classList.add('dropping');
+  });
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+  document.addEventListener('drop', async e => {
+    document.body.classList.remove('dropping');
+    if (innerDrag) { innerDrag = false; return; }
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    const item = e.dataTransfer.items?.[0], entry = item?.webkitGetAsEntry?.(), file = e.dataTransfer.files[0];
+    try {
+      const response = await fetch('/api/kit/locate', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: file.name, size: entry?.isDirectory ? -1 : file.size})});
+      const picked = await response.json();
+      if (!response.ok) throw new Error(picked.detail || 'หาไฟล์ที่วางไม่พบ');
+      openPicked(picked);
+    } catch (e) { alert(e.message); }
+  });
   // app-style icon bar, top right: report a bug, settings, restart, shut down
   const top = document.createElement('div');
   top.className = 'ck-top';

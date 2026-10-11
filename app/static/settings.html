@@ -49,6 +49,22 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <button data-go="machine">เครื่อง</button>
     <button data-go="folders">โฟลเดอร์</button>
     <button data-go="packs">แพ็ก preset</button>
+    <button data-go="team">ระบบทีม</button>
+  </div>
+
+  <div class="card" data-tab="team">
+    <h2>👥 ตั้งค่าบริการบัญชีและองค์กร</h2>
+    <p class="sub">สำหรับผู้ดูแลเครื่อง · ใช้ Supabase โครงการเดิม ผู้ใช้สมัครบัญชีและสร้างองค์กรจากหน้าทีมได้เอง</p>
+    <form id="teamSetup">
+      <div class="row"><label for="teamUrl">Supabase URL</label><input id="teamUrl" type="url" required autocomplete="off"></div>
+      <div class="row"><label for="teamKey">Publishable / anon key</label><input id="teamKey" required autocomplete="off"></div>
+      <div class="row"><label for="driveClient">Google Drive Client ID</label><input id="driveClient" autocomplete="off" placeholder="Desktop app OAuth Client ID"></div>
+      <div class="row"><label for="driveSecret">Google Client secret</label><input id="driveSecret" type="password" autocomplete="off" placeholder="เว้นว่างเพื่อเก็บค่าเดิม"></div>
+      <p class="sub">ใช้รหัสสาธารณะเท่านั้น ห้ามใส่ service role key · ผู้ดูแลต้องติดตั้งฐานข้อมูลองค์กรและเปิดการยืนยันอีเมลใน Supabase ก่อนใช้งาน</p>
+      <button>บันทึกระบบทีม</button> <span id="mTeam" class="msg" role="status"></span>
+    </form>
+    <p class="sub">บัญชี Drive ของแต่ละคนต้องอนุญาตสิทธิ์ก่อนรับส่งไฟล์ การใส่ Client ID อย่างเดียวยังไม่เปิดการซิงก์</p>
+    <a class="back" href="/team.html">เปิดหน้าสมัครบัญชีและจัดการองค์กร →</a>
   </div>
 
   <div class="card" data-tab="machine">
@@ -115,6 +131,8 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { histo
 showTab(location.hash.slice(1));
 const FOLDER_LABELS = {work_root:'วิดีโอดิบ (ไม่บังคับ · เปิดหาไฟล์ที่นี่ก่อน)', capcut_drafts:'โปรเจกต์ CapCut', stock_video:'ภาพประกอบจาก Envato', stock_music:'เพลงประกอบ', sfx:'เสียงเอฟเฟกต์ (ใส่ pop.mp3 / whoosh.mp3 หรือโฟลเดอร์ pop/ whoosh/ · ไม่มี = ใช้เสียงในตัว)', output_dir:'ไฟล์ที่ทำเสร็จ (ปก, ตัวหนังสือ)', models_dir:'โมเดลถอดเสียง (ราว 3 GB · ว่าง = ไดรฟ์ C)'};
 function renderTree(folders) {
+  FOLDER_LABELS.capcut_resources='คลังเอฟเฟกต์ CapCut ที่ใช้ในงาน';
+  FOLDER_LABELS.fonts_dir='ฟอนต์ที่ใช้ในงาน';
   $('wsTree').innerHTML = Object.keys(FOLDER_LABELS).map(k => {
     const v = folders[k] || '';
     return `<div class="chk" style="align-items:center"><i class="dot ${v ? 'OK' : 'WARN'}" style="margin-top:0"></i>
@@ -131,6 +149,18 @@ function renderTree(folders) {
   });
 }
 const $ = id => document.getElementById(id);
+async function teamSetupRequest(body) {
+  const response=await fetch('/api/team/setup',body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {});
+  const result=await response.json();
+  if (!response.ok) throw new Error(typeof result.detail==='string' ? result.detail : 'ค่าตั้งค่าไม่ถูกต้อง');
+  return result;
+}
+teamSetupRequest().then(cfg=>{$('teamUrl').value=cfg.supabase_url;$('teamKey').value=cfg.supabase_anon_key;$('driveClient').value=cfg.google_drive_client_id;$('driveSecret').placeholder=cfg.drive_secret_configured ? 'ตั้งค่าแล้ว · เว้นว่างเพื่อเก็บค่าเดิม' : 'Client secret จาก Desktop OAuth';}).catch(e=>say('mTeam',e.message,false));
+$('teamSetup').onsubmit=async event=>{
+  event.preventDefault();const button=$('teamSetup').querySelector('button');button.disabled=true;
+  try {const result=await teamSetupRequest({supabase_url:$('teamUrl').value,supabase_anon_key:$('teamKey').value,google_drive_client_id:$('driveClient').value,google_drive_client_secret:$('driveSecret').value});$('driveSecret').value='';say('mTeam',result.note,true);}
+  catch(e){say('mTeam',e.message,false);}finally{button.disabled=false;}
+};
 async function api(path, opt={}) {
   const r = await fetch('/api/kit/' + path, {method: opt.method || 'GET', headers:{'Content-Type':'application/json'},
                                             body: opt.body ? JSON.stringify(opt.body) : undefined});

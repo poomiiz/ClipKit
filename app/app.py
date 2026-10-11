@@ -42,6 +42,8 @@ if os.name == "nt":
 import kit_settings  # noqa: E402
 import style_lab_api  # noqa: E402
 import video_editor  # noqa: E402
+import team_hub  # noqa: E402
+import team_drive  # noqa: E402
 from window_lifecycle import window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
@@ -66,6 +68,8 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
 app.include_router(style_lab_api.router)
+app.include_router(team_hub.router)
+app.include_router(team_drive.router)
 app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested))
 
 
