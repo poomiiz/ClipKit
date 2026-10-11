@@ -5,12 +5,13 @@ const script = source.split('// Manual system controls:')[1].split('// End manua
 const code = script.slice(script.indexOf('\n'));
 
 function run({fallback = false, action = 'restart', fail = false, unchanged = false} = {}) {
-  let now = 0, calls = [], reloaded = false, checks = 0;
+  let now = 0, calls = [], reloaded = false, checks = 0, closed = false;
   const buttons = [{disabled:false}, {disabled:false}];
-  const status = {textContent:''};
+  const status = {textContent:''}, body = {innerHTML:''};
   const ids = {ckRestart:buttons[0], ckShutdown:buttons[1], ckSystemStatus:status, sbVer:{}};
   vm.runInNewContext(code, {
-    document: {createElement: () => ({querySelectorAll: () => buttons}), getElementById: id => ids[id]},
+    document: {createElement: () => ({querySelectorAll: () => buttons}), getElementById: id => ids[id], body},
+    window: {close: () => { closed = true; }},
     aside: {insertBefore(){}}, AbortSignal: {timeout: () => ({})}, crypto:{randomUUID: () => 'test-id'},
     location:{port:'8770',reload:()=>{reloaded=true}}, confirm:()=>true,
     Date:{now:()=>now}, setTimeout:(fn,ms)=>{now+=ms; fn()},
@@ -29,18 +30,18 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
       return {ok:true,json:async()=>({state:fail?'failed':'succeeded',error:fail?'foreign process refused':undefined})};
     }
   });
-  return {click:()=>ids[action==='restart'?'ckRestart':'ckShutdown'].onclick(), calls,status,
-    reloaded:()=>reloaded,buttons};
+  return {click:()=>ids[action==='restart'?'ckRestart':'ckShutdown'].onclick(), calls,status,body,
+    reloaded:()=>reloaded,closed:()=>closed,buttons};
 }
 (async()=>{
   let test=run(); await test.click(); assert(test.reloaded());
   test=run({unchanged:true}); await test.click(); assert(!test.reloaded()); assert.match(test.status.textContent,/ไม่สำเร็จ/);
-  test=run({action:'shutdown'}); await test.click(); assert.match(test.status.textContent,/ปิดระบบแล้ว/);
+  test=run({action:'shutdown'}); await test.click(); assert(test.closed()); assert.match(test.body.innerHTML,/ปิด ClipKit แล้ว/);
   assert(!test.calls.some(url=>url.includes('/start'))); assert(!test.reloaded());
   test=run({fallback:true}); await test.click(); assert(test.reloaded());
   assert(test.calls.includes('http://localhost:8765/bot/api/video-editor/control/test-id'));
   test=run({fallback:true,fail:true,action:'shutdown'}); await test.click();
-  assert.match(test.status.textContent,/foreign process refused/); assert(!test.reloaded());
+  assert.match(test.status.textContent,/foreign process refused/); assert(!test.reloaded()); assert(!test.closed());
   assert(test.buttons.every(b=>!b.disabled));
   assert(!source.includes('new EventSource('), 'closed pages must not control process lifetime');
   assert(source.includes('?control=v2'), 'stale pages must not issue a control action');
