@@ -22,7 +22,7 @@ create table public.projects (
  approved_by uuid references auth.users, approved_at timestamptz,
  foreign key(organization_id,footage_id) references public.footage(organization_id,id),
  foreign key(organization_id,owner_id) references public.clipkit_members(organization_id,user_id),
- check(export_name is null or (export_name ~ '^[^/\\]+[.]mp4$' and export_size>0))
+ check(export_name is null or (export_name ~* '^[^/\\]+[.]mp4$' and export_size>0))
 );
 alter table public.footage enable row level security;
 alter table public.projects enable row level security;
@@ -105,6 +105,7 @@ begin
  member_role:=public.clipkit_role(org);
  if member_role is null then raise exception 'Organization member only' using errcode='42501'; end if;
  select count(distinct id) into requested from unnest(project_ids) id;
+ if export_file is not null and (cardinality(project_ids)<>1 or next_status<>'awaiting_review' or export_bytes is null) then raise exception 'Export belongs to one owner submission'; end if;
  if requested=0 or cardinality(project_ids)>500 or array_position(project_ids,null) is not null then raise exception '1 to 500 projects required'; end if;
  if note is null or length(note)>5000 then raise exception 'Invalid note'; end if;
  for item in select * from public.projects where organization_id=org and id=any(project_ids) order by id for update loop
@@ -141,12 +142,12 @@ begin
  select user_id into admin_id from public.team_members where role='admin' order by created_at,user_id limit 1;
  if admin_id is null then
   if exists(select 1 from public.team_members) then raise exception 'Legacy team has no admin; assign one before migration'; end if;
-  return;
  end if;
  select organization_id into org from public.clipkit_members where user_id=admin_id;
- if org is null then
+ if org is null and admin_id is not null then
   insert into public.clipkit_organizations(name,created_by) values('ทีมเดิม',admin_id) returning id into org;
  end if;
+ if exists(select 1 from public.team_members t join public.clipkit_members m on t.user_id=m.user_id where m.organization_id<>org) then raise exception 'Legacy members already belong to different organizations; resolve before migrating'; end if;
  insert into public.clipkit_members(organization_id,user_id,role)
  select org,user_id,case when role='admin' then 'admin' else 'editor' end from public.team_members
  on conflict(user_id) do nothing;
@@ -154,6 +155,13 @@ begin
  update public.team_members t set organization_id=m.organization_id from public.clipkit_members m where t.user_id=m.user_id;
  alter table public.preset_packs add column organization_id uuid references public.clipkit_organizations;
  update public.preset_packs p set organization_id=m.organization_id from public.clipkit_members m where m.user_id=p.author_id;
+ alter table public.team_members alter column organization_id set not null;
+ drop policy "team sees team" on public.team_members;
+ drop policy "admin manages team" on public.team_members;
+ revoke insert,update,delete on public.team_members from authenticated;
+ create policy "org sees legacy members" on public.team_members for select to authenticated using(public.clipkit_role(organization_id) is not null);
+ alter table public.preset_packs drop constraint preset_packs_author_id_fkey;
+ alter table public.preset_packs add constraint preset_packs_author_id_fkey foreign key(author_id) references auth.users(id);
  alter table public.preset_packs alter column organization_id set not null;
  drop policy "team sees packs" on public.preset_packs;
  drop policy "member adds own packs" on public.preset_packs;

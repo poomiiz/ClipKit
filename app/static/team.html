@@ -1,24 +1,25 @@
 <!doctype html>
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ทีมตัดต่อ</title><link rel="stylesheet" href="/team.css"><link rel="stylesheet" href="/shell.css"></head>
 <body data-team-page="team"><main>
-<h1>👥 ทีมตัดต่อ</h1><p class="muted">ฟุตและโปรเจกต์ร่วมกันขององค์กร · สมัครด้วยอีเมลบัญชี Google ที่จะใช้รับส่งไฟล์</p>
+<h1>👥 ทีมตัดต่อ</h1><p class="muted">ฟุตและโปรเจกต์ร่วมกันขององค์กร · สถานะและเจ้าของอยู่ในระบบบัญชี · ซิงก์เฉพาะฟุตและ MP4</p>
 <div id="message" role="status" aria-live="polite"></div>
 <section id="auth" hidden>
 <form id="login"><h2>เข้าสู่ระบบ</h2><label>อีเมล<input name="email" type="email" required autocomplete="username"></label><label>รหัสผ่าน<input name="password" type="password" required autocomplete="current-password"></label><button class="primary">เข้าสู่ระบบ</button></form>
 <details><summary>สมัครบัญชีใหม่</summary><form id="signup"><label>ชื่อที่แสดง<input name="display_name" required maxlength="120" autocomplete="name"></label><label>อีเมล<input name="email" type="email" required autocomplete="username"></label><label>รหัสผ่านอย่างน้อย 8 ตัว<input name="password" type="password" required minlength="8" autocomplete="new-password"></label><button class="primary">สมัครบัญชี</button></form></details>
 </section>
 <section id="signedIn" hidden><div class="row"><span id="userName"></span><button id="logout">ออกจากระบบ</button></div>
-<div class="panel"><h2>☁️ บัญชี Google Drive ของคุณ</h2><p class="muted">เพื่อรับส่งไฟล์ในโฟลเดอร์องค์กร Google จะขออนุญาตเข้าถึง Drive บัญชีนี้ ระบบส่งและรับเฉพาะไฟล์ที่ผูกกับองค์กรที่คุณเลือก</p><button id="connectDrive">เชื่อม Google Drive</button> <button id="disconnectDrive" hidden>ตัดการเชื่อมต่อ</button><span id="connectionState" role="status"></span></div>
 <div class="panel"><label>องค์กร<select id="organization"><option value="">เลือกองค์กร</option></select></label><p class="muted" id="role"></p></div>
-<form id="createOrg"><h2>สร้างองค์กรของคุณ</h2><label>ชื่อองค์กร<input name="name" required maxlength="120"></label><button>สร้างองค์กร</button><span class="muted">ผู้สร้างเป็นเจ้าขององค์กรและมีสิทธิ์ตรวจงาน</span></form>
+<form id="createOrg"><h2>สร้างองค์กรของคุณ</h2><label>ชื่อองค์กร<input name="name" required maxlength="120"></label><button>สร้างองค์กร</button><span class="muted">ผู้สร้างเป็นผู้ดูแลองค์กรและมีสิทธิ์ตรวจงาน</span></form>
 <section id="organizationContent" hidden>
 <div id="ownerControls" hidden>
-<form id="addMember"><h2>เพิ่มสมาชิกที่สมัครแล้ว</h2><label>อีเมลสมาชิก<input name="email" type="email" required></label><label>สิทธิ์<select name="role"><option value="editor">✂️ คนตัด</option><option value="lead">🔎 หัวหน้าตรวจงาน</option></select></label><p class="muted">เมื่อมีโฟลเดอร์ Drive แล้ว สมาชิกใหม่จะได้สิทธิ์อ่านและส่งไฟล์ในโฟลเดอร์องค์กรด้วย</p><button>เพิ่ม / เปลี่ยนสิทธิ์สมาชิก</button></form>
-<form id="driveFolder"><h2>โฟลเดอร์ Google Drive ขององค์กร</h2><label>ลิงก์โฟลเดอร์หรือ Folder ID<input name="folder" required></label><p class="muted">ใช้โฟลเดอร์เฉพาะองค์กร เมื่อบันทึก ระบบจะให้สมาชิกทุกคนอ่านและส่งไฟล์ในโฟลเดอร์นี้</p><button>บันทึกโฟลเดอร์และให้สิทธิ์สมาชิก</button><span class="muted" id="driveState">เจ้าของต้องเชื่อม Drive และมีสิทธิ์แชร์โฟลเดอร์</span></form>
+<form id="addMember"><h2>เพิ่มสมาชิกที่สมัครแล้ว</h2><label>อีเมลสมาชิก<input name="email" type="email" required></label><label>สิทธิ์<select name="role"><option value="editor">✂️ คนตัด</option><option value="lead">🔎 หัวหน้าตรวจงาน</option></select></label><p class="muted">สมาชิกสมัครและยืนยันอีเมลก่อน ผู้ดูแลแชร์โฟลเดอร์ซิงก์ให้สมาชิกด้วยเครื่องมือที่องค์กรเลือก</p><button>เพิ่ม / เปลี่ยนสิทธิ์สมาชิก</button></form>
+
 </div>
 <div class="panel"><h2>สมาชิก</h2><div id="members"></div></div>
-<div class="panel"><h2>🎞️ ฟุตขององค์กร</h2><button id="addFootage">➕ เลือกฟุตส่งให้องค์กร</button><p class="muted">สมาชิกต้องมีสิทธิ์ในโฟลเดอร์ Drive ขององค์กร เลือกฟุตจากโฟลเดอร์งานของเครื่องนี้</p><div id="footage" class="assets"></div></div>
-<div class="panel"><h2>🎬 โปรเจกต์ขององค์กร</h2><form id="publishProject"><label>โปรเจกต์ในเครื่อง<select id="localProject" required><option value="">เลือกโปรเจกต์ CapCut</option></select></label><label>ฟุตหลักขององค์กร<select id="projectSource"><option value="">ไม่ระบุ</option></select></label><button>☁️ ส่งโปรเจกต์ให้องค์กร</button><span class="muted">ปิด CapCut ก่อนส่ง แพ็กจะรวมสื่อที่อ้างถึงและเก็บโปรเจกต์เดิมไว้</span></form><form id="submitProjects"><button class="primary">📤 ส่งโปรเจกต์ที่เลือกให้หัวหน้าตรวจ</button></form><div id="projects" class="assets"></div></div>
+<form id="workspace"><h2>โฟลเดอร์ทีมบนเครื่องนี้</h2><label>เครื่องมือซิงก์<select name="tool"><option value="syncthing">Syncthing</option><option value="drive_desktop">Google Drive for desktop</option></select></label><label>โฟลเดอร์ทีม<input name="path" required></label><button>บันทึกโฟลเดอร์ทีม</button><p class="muted">ตั้งค่าเครื่องมือซิงก์เฉพาะ footage/ และ exports/ · เก็บโปรเจกต์ CapCut แยกไว้บนเครื่องเจ้าของ</p></form>
+<div class="panel"><h2>🎞️ ฟุตขององค์กร</h2><form id="addFootage"><label>ไฟล์ที่ซิงก์ครบแล้ว<select name="name" id="footageFile" required></select></label><button>เพิ่มฟุต</button></form><div id="footage" class="assets"></div></div>
+<div class="panel"><h2>🎬 เรื่องจากฟุต</h2><form id="addStories"><label>ฟุต<select id="projectSource" name="footage_id" required></select></label><label>ชนิด<select name="project_type"><option value="capcut">CapCut</option><option value="hyperframes">HyperFrames</option><option value="clipkit">ClipKit</option></select></label><label>ชื่อเรื่อง บรรทัดละหนึ่งเรื่อง<textarea name="names" required></textarea></label><button>เพิ่มเรื่องที่ยังไม่มีเจ้าของ</button></form>
+<label>แสดง<select id="projectFilter"><option value="all">ทุกงาน</option><option value="mine">งานของฉัน</option><option value="unclaimed">ยังไม่มีคนรับ</option></select></label><form id="submitProjects"><button class="primary">👀 ส่งตรวจงานที่เลือก</button></form><div id="projects" class="assets"></div></div>
 <div class="panel"><h2>ประวัติการทำงาน</h2><div id="activity"></div></div>
 </section></section>
 </main><script src="/team.js"></script><script src="/shell.js"></script></body></html>
