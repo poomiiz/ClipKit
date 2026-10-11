@@ -111,7 +111,7 @@ async def no_cache_html(request, call_next):
                or request.headers.get("sec-fetch-site") == "cross-site")
     if foreign and not (widget_navigation or widget_health or widget_control):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
-    if request.method=='GET' and request.url.path=='/review.html':
+    if request.method=='GET' and os.path.normpath('/'+request.url.path.replace('\\','/').lstrip('/')).replace('\\','/').lower()=='/review.html':
         from fastapi import HTTPException
         from starlette.concurrency import run_in_threadpool
         try: await run_in_threadpool(team_workspace.require_review_access,request)
