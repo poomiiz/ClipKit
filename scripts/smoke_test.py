@@ -390,6 +390,12 @@ def web_ai_answers_are_checked():
         assert not (Path(t) / "ep.mov.stories.json").exists()
         ans = "here:\n```json\n" + json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 15}]}) + "\n```"
         assert web_ai.import_answer("stories", str(video), ans)["stories"][0]["end"] == 15
+        # an AI on this machine saves its answer next to the file instead: imported once, then gone
+        assert web_ai.import_answer("stories", str(video), "") == {"waiting": True}
+        saved = web_ai.answer_file("stories", str(video))
+        assert str(saved) in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        saved.write_text(json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 14}]}), encoding="utf-8")
+        assert web_ai.import_answer("stories", str(video), "")["stories"][0]["end"] == 14 and not saved.exists()
 
         proj = Path(t) / "proj"
         proj.mkdir()
