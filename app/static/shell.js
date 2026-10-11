@@ -26,7 +26,7 @@
     '<button class="sb-fold" id="sbFold" title="ย่อ / ขยายแถบซ้าย"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>' +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}" title="${label}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
-    '<div class="sb-group">ไฟล์ดิบ</div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
+    '<div class="sb-group sb-raw-top">ไฟล์ดิบ<button class="sb-view" id="sbView"></button></div><div class="sb-projects" id="sbProjects"><div class="sb-empty">กำลังอ่าน…</div></div>' +
     `<a class="sb-item" href="#" id="sbBug" title="แจ้งปัญหา"><svg viewBox="0 0 24 24"><path d="M8 8a4 4 0 018 0v6a4 4 0 01-8 0z"/><path d="M4 12h4M16 12h4M5 6l3 2M19 6l-3 2M5 19l3-2M19 19l-3-2"/></svg><span>แจ้งปัญหา</span></a>` +
     `<a class="sb-item${isOn('/settings.html') ? ' on' : ''}" href="/settings.html" title="ตั้งค่า">${svg('settings')}<span>ตั้งค่า</span></a>` +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
@@ -134,6 +134,22 @@
     try { localStorage.removeItem('ck_sb_w'); } catch {}
   };
   // raw files on the left, the projects cut from each one underneath (click a raw file = pick its stories again)
+  // grid = cards with a cover frame, name and path (like CapCut's media panel); list = the compact rows
+  let rawView = 'list';
+  try { rawView = localStorage.getItem('ck_sb_view') || 'list'; } catch {}
+  const viewBtn = document.getElementById('sbView');
+  const showView = () => {
+    document.getElementById('sbProjects').classList.toggle('grid', rawView === 'grid');
+    viewBtn.textContent = rawView === 'grid' ? '☰' : '▦';
+    viewBtn.title = rawView === 'grid' ? 'แสดงเป็นรายการ' : 'แสดงเป็นการ์ด';
+  };
+  showView();
+  viewBtn.onclick = () => {
+    rawView = rawView === 'grid' ? 'list' : 'grid';
+    try { localStorage.setItem('ck_sb_view', rawView); } catch {}
+    showView();
+    window.ckLoadProjects();
+  };
   window.ckLoadProjects = async () => {
     const box = document.getElementById('sbProjects');
     let open = {};
@@ -151,6 +167,23 @@
         rn.textContent = g.name;
         rn.title = g.raw ? (g.exists ? g.raw : g.raw + ' (ไม่พบไฟล์แล้ว)') : 'โปรเจกต์ที่ไม่รู้ว่าตัดจากไฟล์ไหน';
         if (!g.exists) rn.classList.add('gone');
+        if (rawView === 'grid') {
+          const th = document.createElement('div'), pth = document.createElement('div');
+          th.className = 'th';
+          pth.className = 'pth';
+          pth.title = g.raw;
+          pth.textContent = '\u200E' + (g.raw || '—');   // LRM: keeps a leading slash on the left in the rtl box
+          if (g.exists) {
+            const img = document.createElement('img');
+            img.loading = 'lazy';
+            img.src = '/api/kit/raw-thumb?path=' + encodeURIComponent(g.raw);
+            img.onerror = () => img.remove();
+            th.append(img);
+          }
+          th.onclick = () => rn.click();
+          wrap.querySelector('.sb-raw-h').before(th);
+          wrap.querySelector('.sb-raw-h').after(pth);
+        }
         rn.href = g.exists ? '/video-editor.html?raw=' + encodeURIComponent(g.raw) : '#';
         rn.onclick = e => {
           if (!g.exists) { e.preventDefault(); wrap.querySelector('.tw').click(); return; }

@@ -112,3 +112,13 @@ html.sb-mini .sb-projects + .sb-item { margin-top: auto; }
 .sb-raw-h .cnt { font-size: 11px; color: #6b7590; }
 .sb-raw-b { display: none; padding-left: 18px; }
 .sb-raw.open .sb-raw-b { display: block; }
+.sb-raw-top { display: flex; align-items: center; }
+.sb-view { margin-left: auto; background: none; border: 0; color: #6b7590; cursor: pointer; font-size: 14px; padding: 0 2px; }
+.sb-view:hover { color: #fff; }
+.sb-projects.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; grid-auto-rows: max-content; align-content: start; }
+.sb-projects.grid .sb-raw { border: 1px solid var(--sb-line); border-radius: 10px; overflow: hidden; min-width: 0; }
+.sb-projects.grid .sb-raw.open { grid-column: 1 / -1; }
+.sb-projects.grid .sb-empty { grid-column: 1 / -1; }
+.sb-raw .th { aspect-ratio: 16 / 9; background: #151a27; cursor: pointer; }
+.sb-raw .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sb-raw .pth { font-size: 10.5px; color: #6b7590; padding: 0 8px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
