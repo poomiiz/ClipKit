@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 KIT = Path(__file__).resolve().parents[1]
@@ -651,6 +651,7 @@ def locate(body: LocateRequest) -> dict[str, Any]:
     path, so look for an exact name (+ size) match under the workspace folders. Several matches or none = say so."""
     cfg = _read_config()
     roots = [Path(cfg[k]) for k in ("work_root", "output_dir", "workspace", "stock_video") if cfg.get(k)]
+    roots += [Path(item["path"]) / "footage" for item in cfg.get("team_workspaces", {}).values() if item.get("path")]
     roots = [r for r in dict.fromkeys(roots) if r.is_dir()]
     if not roots:
         raise HTTPException(400, "set the workspace folder in Settings first")
@@ -885,9 +886,11 @@ def _set_delivery_status(paths: list[str], status: DeliveryState) -> dict[str, A
 
 
 @router.get("/delivery-status")
-def delivery_statuses() -> dict[str, Any]:
+def delivery_statuses(request: Request) -> dict[str, Any]:
+    import team_workspace
     with _delivery_lock:
-        return {"statuses": _delivery_statuses()}
+        historical = _delivery_statuses()
+    return {"statuses": team_workspace.delivery_view(request, historical)}
 
 
 @router.post("/delivery-status")

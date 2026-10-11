@@ -18,6 +18,14 @@ def main():
   with patch.object(w.kit,'_read_config',return_value=cfg),patch.object(w.kit,'_project_roots',return_value={'capcut':local}),patch.object(w,'BINDINGS',root/'bindings.json'),patch.object(w.hub,'rpc',return_value=3) as rpc,patch.object(w.hub,'session',return_value={'user':{'id':owner}}),patch.object(w,'projects',return_value=[item]),TestClient(app) as client:
    w.writable(shared);(shared/'footage'/'take.mp4').write_bytes(b'footage');(shared/'exports'/'cut.mp4').write_bytes(b'mp4')
    assert w.workspace(org)==shared
+   with patch.object(w,'rows',return_value=[{'name':'take.mp4','size_bytes':7},{'name':'not-yet.mp4','size_bytes':100}]):
+    available,missing=w.footage(org,object())
+    assert available['synced'] and available['path']==str((shared/'footage'/'take.mp4').resolve())
+    assert not missing['synced'] and missing['path'] is None
+   with patch.object(w.kit.Path,'home',return_value=root/'no-user-search'):
+    located=w.kit.locate(w.kit.LocateRequest(name='take.mp4',size=7))
+    assert located['path']==str(shared/'footage'/'take.mp4')
+
    assert w.file_at(shared/'footage','take.mp4',7)
    assert not w.file_at(shared/'footage','take.mp4',8)
    try:w.file_at(shared/'footage','../secret',1)
@@ -56,6 +64,27 @@ def main():
    assert client.post(path+'/export',json={'expected_revision':2,'name':'cut.mp4','size_bytes':3}).status_code==200
    assert rpc.call_args.args[1]=='clipkit_project_action'
    assert client.post(path+'/export',json={'expected_revision':2,'name':'missing.mp4','size_bytes':3}).status_code==409
+   item.update(status='awaiting_review',updated_by=owner,updated_at='2026-10-11T00:00:00Z')
+   historical={str((local/'mine').resolve()).lower():{'status':'approved'},str((local/'unbound').resolve()).lower():{'status':'editing'}}
+   with patch.object(w,'projects',return_value=[item]) as get_projects:
+    statuses=w.delivery_view(request,historical)
+    team_record=statuses[str((local/'mine').resolve()).lower()]
+    assert team_record['source']=='team' and team_record['status']=='awaiting_review'
+    assert statuses[str((local/'unbound').resolve()).lower()]['source']=='historical'
+    get_projects.assert_called_once()
+   for code in (401,502):
+    with patch.object(w,'projects',side_effect=HTTPException(code,'provider unavailable')):
+     record=w.delivery_view(request,historical)[str((local/'mine').resolve()).lower()]
+     assert 'error' in record and 'status' not in record
+   with TestClient(full_app,base_url='http://127.0.0.1:8770') as original,patch.object(w.kit,'_delivery_statuses',return_value=historical):
+    response=original.get('/api/kit/delivery-status')
+    assert response.status_code==200 and response.json()['statuses'][str((local/'mine').resolve()).lower()]['source']=='team'
+    for role in ('editor','lead','admin'):
+     with patch.object(w.hub,'organizations',return_value=[{'clipkit_members':[{'user_id':owner,'role':role}]}]):
+      assert original.get('/review.html').status_code==(403 if role=='editor' else 200)
+    with patch.object(w.hub,'session',side_effect=HTTPException(401,'sign in')):
+     assert original.get('/review.html',follow_redirects=False).status_code==303
+
    with patch.object(w.kit,'KIT',shared/'footage'):
     try:w.workspace(org)
     except HTTPException as e:assert e.status_code==409

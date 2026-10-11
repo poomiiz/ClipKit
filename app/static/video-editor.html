@@ -2371,9 +2371,9 @@ function projCard(d) {
   const delivery = el.querySelector('.delivery');
   delivery.setAttribute('aria-label', 'สถานะส่งงาน ' + d.name);
   const labels = {editing:'✂️ กำลังทำ',awaiting_review:'👀 รอลูกค้าตรวจ',changes_requested:'🔁 ต้องแก้',approved:'✅ อนุมัติแล้ว'};
-  delivery.textContent = labels[d.delivery?.status] || 'ยังไม่ระบุสถานะ';
+  delivery.textContent = d.delivery?.error || labels[d.delivery?.status] || 'ยังไม่ระบุสถานะ';
   delivery.dataset.status = d.delivery?.status || '';
-  delivery.title = 'สถานะเดิมในเครื่อง · สถานะร่วมขององค์กรอยู่ในหน้าทีม';
+  delivery.title = d.delivery?.source === 'team' ? 'สถานะล่าสุดจากระบบทีม' : 'สถานะเดิมในเครื่อง · ยังไม่ย้ายเข้าระบบทีม';
   const open = async () => {
     if (d.kind === 'capcut') { openDraft(d.i); return; }
     const r = await kit('draft-open', d.path);

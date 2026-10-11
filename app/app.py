@@ -14,7 +14,7 @@ sys.path.insert(0, str(HERE))
 
 import uvicorn  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
-from fastapi.responses import JSONResponse, RedirectResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 
@@ -111,6 +111,14 @@ async def no_cache_html(request, call_next):
                or request.headers.get("sec-fetch-site") == "cross-site")
     if foreign and not (widget_navigation or widget_health or widget_control):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+    if request.method=='GET' and request.url.path=='/review.html':
+        from fastapi import HTTPException
+        from starlette.concurrency import run_in_threadpool
+        try: await run_in_threadpool(team_workspace.require_review_access,request)
+        except HTTPException as exc:
+            if exc.status_code==401:return RedirectResponse('/team.html',status_code=303)
+            if exc.status_code==403:return HTMLResponse('<!doctype html><html lang="th"><meta charset="utf-8"><link rel="stylesheet" href="/team.css"><main><h1>หน้านี้สำหรับหัวหน้าและผู้ดูแลองค์กร</h1><a href="/team.html">กลับหน้าทีมเพื่อส่งตรวจงาน</a></main></html>',status_code=403)
+            return JSONResponse({'detail':exc.detail},status_code=exc.status_code)
     if request.url.path.startswith('/api/') and not request.url.path.startswith('/api/team/'):
         from fastapi import HTTPException
         from starlette.concurrency import run_in_threadpool

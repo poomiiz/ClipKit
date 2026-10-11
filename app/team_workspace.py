@@ -75,7 +75,10 @@ def footage(org:UUID,request:Request):
  result=rows(request,org,'footage')
  try:root=workspace(org)/'footage'
  except HTTPException:root=None
- for item in result:item['synced']=bool(root and file_at(root,item['name'],item['size_bytes']))
+ for item in result:
+  path=file_at(root,item['name'],item['size_bytes']) if root else None
+  item['synced']=bool(path)
+  item['path']=str(path) if path else None
  return result
 
 class Footage(BaseModel):
@@ -200,3 +203,27 @@ class ProjectName(Version):
 @router.post('/organizations/{org}/projects/{project}/rename')
 def rename_project(org:UUID,project:UUID,body:ProjectName,request:Request):
  return {'revision':hub.rpc(request,'clipkit_rename_project',{'org':str(org),'project':str(project),'project_name':body.name.strip(),'expected_revision':body.expected_revision})}
+
+def delivery_view(request:Request,historical:dict) -> dict:
+ result={path:{**record,'source':'historical'} for path,record in historical.items()}
+ if not BINDINGS.exists():return result
+ with _binding_lock:bindings=json.loads(BINDINGS.read_text(encoding='utf-8'))
+ organizations={}
+ for project,binding in bindings.items():
+  org=binding['organization_id']
+  if org not in organizations:
+   try:organizations[org]={item['id']:item for item in projects(UUID(org),request)}
+   except HTTPException as exc:organizations[org]=exc
+  rows=organizations[org]
+  record={'source':'team','project_id':project}
+  if isinstance(rows,HTTPException):
+   record['error']='เข้าสู่ระบบทีมก่อนดูสถานะ' if rows.status_code==401 else 'อ่านสถานะทีมไม่ได้: '+str(rows.detail)
+  elif project not in rows:record['error']='ไม่พบงานในองค์กรของบัญชีนี้'
+  else:record.update({key:rows[project][key] for key in ('status','revision','owner_id','updated_by','updated_at')})
+  result[str(Path(binding['path']).resolve()).lower()]=record
+ return result
+
+def require_review_access(request:Request) -> None:
+ user=hub.session(request)['user']['id']
+ if not any(member['user_id']==user and member['role'] in ('admin','lead') for org in hub.organizations(request) for member in org['clipkit_members']):
+  raise HTTPException(403,'หน้าตรวจงานสำหรับหัวหน้าและผู้ดูแลองค์กร')
