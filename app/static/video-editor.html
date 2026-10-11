@@ -63,6 +63,7 @@
   /* Screens */
   .screen { display: none; padding: 18px; gap: 16px; flex-direction: column; }
   .screen.on { display: flex; }
+  .app:has(#s-home.on) { max-width: none; }
   #s-clip.on { max-width: 1200px; width: 100%; margin: 0 auto; }
   #s-stock.on, #s-style.on { max-width: 760px; width: 100%; margin: 0 auto; }
 
@@ -2458,7 +2459,7 @@ async function delSelected() {
   const area = document.getElementById('homeDrafts');
   let start = null, box = null, base = null, eatClick = false;
   area.parentElement.addEventListener('mousedown', e => {
-    if (e.button !== 0 || e.target.closest('button, input, a, .proj-head')) return;
+    if (e.button !== 0 || e.target.closest('button, input, select, a, .proj-head')) return;
     const card = e.target.closest('#homeDrafts .proj');
     if (card && (e.ctrlKey || e.metaKey)) { selSet.has(card) ? selSet.delete(card) : selSet.add(card); showSel(); eatClick = true; return; }
     start = {x: e.clientX, y: e.clientY};
