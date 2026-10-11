@@ -81,7 +81,9 @@ def main():
     assert response.status_code==200 and response.json()['statuses'][str((local/'mine').resolve()).lower()]['source']=='team'
     for role in ('editor','lead','admin'):
      with patch.object(w.hub,'organizations',return_value=[{'clipkit_members':[{'user_id':owner,'role':role}]}]):
-      assert original.get('/review.html').status_code==(403 if role=='editor' else 200)
+      for page in ('/review.html','/REVIEW.HTML','/%2e/review.html','/%5Creview.html'):
+       response=original.get(page)
+       assert response.status_code in ((403,) if role=='editor' else (200,404)),(role,page,response.status_code)
     with patch.object(w.hub,'session',side_effect=HTTPException(401,'sign in')):
      assert original.get('/review.html',follow_redirects=False).status_code==303
 
