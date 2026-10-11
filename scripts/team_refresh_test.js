@@ -17,3 +17,9 @@ busy=false;callback();assert.equal(calls,2,'Refresh must resume after editing');
 assert(selectors.some(s=>s.includes('select[data-pending="true"]')));
 assert(selectors.some(s=>s.includes('form[data-dirty="true"]')));
 console.log('PASS idle team refresh and preservation of pending edits');
+const activity=source.slice(source.indexOf('d.textContent=(projects.find'),source.indexOf('return d;}',source.indexOf('d.textContent=(projects.find')));
+const rendered=vm.runInNewContext('const d={};'+activity+'d.textContent',{
+ projects:[{id:'story',name:'เรื่องทดสอบ'}],a:{asset_id:'story',actor_id:'lead',action:'delivery_changed',detail:{from:'awaiting_review',to:'changes_requested',note:'แก้เสียง'},created_at:'2026-10-11T00:00:00Z'},
+ person:id=>id,LABELS:{awaiting_review:'รอตรวจ',changes_requested:'ต้องแก้'}
+});
+assert(rendered.includes('เรื่องทดสอบ · lead · รอตรวจ → ต้องแก้ · แก้เสียง'));
