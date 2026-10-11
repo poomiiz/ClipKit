@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 if sys.stdout:  # a Thai project name in a log line would stop the Autosave thread on a cp874/cp1252 console
     sys.stdout.reconfigure(encoding="utf-8")
@@ -15,6 +16,7 @@ import uvicorn  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.responses import JSONResponse, RedirectResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 
 # first run on a new machine: create config.json from the example (same as setup.ps1) so the app can open
 # and the Settings page can show what is still missing; the folders stay unset until the person picks them
@@ -40,13 +42,31 @@ if os.name == "nt":
 import kit_settings  # noqa: E402
 import style_lab_api  # noqa: E402
 import video_editor  # noqa: E402
+from window_lifecycle import window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
+WIDGET_ORIGINS = ("http://localhost:8765", "http://127.0.0.1:8765")
+
+
+def jobs_running() -> bool:
+    if any(job.get("status") == "running" for job in list(kit_settings._jobs.values())):
+        return True
+    if any(proc.poll() is None for proc in list(video_editor._transcribe_jobs.values())):
+        return True
+    return any(job.get("status") == "running" for job in list(video_editor._story_jobs.values()))
+
+
+def exit_server():
+    app.state.exit_requested = True
+    app.state.server.should_exit = True
 
 app = FastAPI(title="Video to CapCut", version="1.0.0")
+app.state.exit_requested = False
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False)
 app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
 app.include_router(style_lab_api.router)
+app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested))
 
 
 @app.exception_handler(Exception)
@@ -66,9 +86,37 @@ async def report_crash(request, exc: Exception) -> JSONResponse:
 
 @app.middleware("http")
 async def no_cache_html(request, call_next):
+    # The local dashboard may embed pages, read readiness and use explicit host controls.
+    origin = request.headers.get("origin")
+    try:
+        referrer = urlsplit(request.headers.get("referer", ""))
+    except ValueError:
+        return JSONResponse({"detail": "Invalid referrer"}, status_code=400)
+    referrer_origin = f"{referrer.scheme}://{referrer.netloc}"
+    is_page = request.url.path.endswith(".html") or request.url.path == "/"
+    widget_navigation = (request.method == "GET" and is_page
+                         and request.headers.get("sec-fetch-dest") == "iframe"
+                         and request.headers.get("sec-fetch-mode") == "navigate"
+                         and referrer_origin in WIDGET_ORIGINS
+                         and (origin is None or origin in WIDGET_ORIGINS))
+    widget_health = (request.method == "GET" and request.url.path == "/api/window/health"
+                     and origin in WIDGET_ORIGINS)
+    widget_control = (request.method == "POST" and request.url.path in
+                      {"/api/window/restart", "/api/window/shutdown"} and origin in WIDGET_ORIGINS)
+    foreign = ((origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}")
+               or request.headers.get("sec-fetch-site") == "cross-site")
+    if foreign and not (widget_navigation or widget_health or widget_control):
+        return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
     response = await call_next(request)
-    if request.url.path.endswith(".html") or request.url.path == "/":
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page else "")
+    if widget_health or widget_control:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    if is_page:
         response.headers["Cache-Control"] = "no-store, must-revalidate"
+    else:
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
     return response
 
 
@@ -109,5 +157,8 @@ if __name__ == "__main__":
     _watch_drafts()
     if sys.stdout:  # pythonw (autostart) has no console
         print(f"Video -> CapCut: http://127.0.0.1:{PORT}/video-editor.html")
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info",
-                log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="info",
+                           log_config=None if sys.stderr is None else uvicorn.config.LOGGING_CONFIG,
+                           timeout_graceful_shutdown=10))
+    app.state.server = server
+    server.run()
