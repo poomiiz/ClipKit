@@ -16,7 +16,7 @@ def main():
     from app import app
     app.state.server = SimpleNamespace(should_exit=False)
     app.state.exit_requested = False
-    with patch("window_lifecycle.launch_control") as launch, TestClient(app, base_url="http://127.0.0.1:8770") as client:
+    with patch("window_lifecycle.launch_control") as launch, patch("window_lifecycle.threading.Timer") as timer, TestClient(app, base_url="http://127.0.0.1:8770") as client:
         assert client.get("/api/window/status").json() == {"managed": False, "windows": 0}
         assert '"managed": false' in client.get("/api/window/watch?session_id=old").text
         assert not app.state.server.should_exit
@@ -26,13 +26,23 @@ def main():
             assert health.status_code == 200 and health.json()["managed"] is False
             assert health.json()["instance"] == os.getpid()
             for action in ("restart", "shutdown"):
+                calls=launch.call_count
                 result = client.post("/api/window/" + action + "?control=v2", headers=headers)
                 assert result.status_code == 202 and result.json()["instance"] == os.getpid()
-                launch.assert_called_with(action, 8770)
+                if action=="restart":launch.assert_called_with(action,8770)
+                else:
+                    assert result.json()["scheduled_in"]==60 and launch.call_count==calls
+                    assert timer.call_args.args[0]==60
+                    timer.return_value.start.assert_called()
                 if origin.endswith(":8765"):
                     assert result.headers["access-control-allow-origin"] == origin
                     assert client.post("/api/window/exit?instance=" + str(os.getpid()), headers=headers).status_code == 403
                     assert client.post("/api/kit/setup", headers=headers).status_code == 403
+        callback=timer.call_args.args[1];callback(*timer.call_args.kwargs["args"])
+        launch.assert_called_with("shutdown",8770)
+        assert client.post("/api/window/shutdown?control=v2").status_code==202
+        assert client.post("/api/window/cancel-shutdown?control=v2").json()["cancelled"]
+        timer.return_value.cancel.assert_called()
         launch.reset_mock()
         for origin in ("null", "https://untrusted.example", "http://localhost:8766"):
             for action in ("restart", "shutdown"):
