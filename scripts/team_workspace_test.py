@@ -27,11 +27,16 @@ def main():
    with patch.object(w.kit,'_project',return_value=('capcut',local/'mine')):
     assert client.post(path+'/bind',json={'path':str(local/'mine')}).status_code==200
    assert not list(shared.rglob('*bindings*')) and set(p.name for p in shared.iterdir())=={'footage','exports'}
-   request=object();w.guard_paths({'path':str(local/'mine')},request)
+   from types import SimpleNamespace
+   request=SimpleNamespace(url=SimpleNamespace(path='/api/kit/draft-open'));w.guard_paths({'path':str(local/'mine')},request)
    item['owner_id']='00000000-0000-0000-0000-000000000002'
    try:w.guard_paths({'body':{'path':str(local/'mine'/'draft_content.json')}},request)
    except HTTPException as e:assert e.status_code==403
    else:raise AssertionError('old owner bypassed API guard')
+   import os
+   try:w.guard_paths({'path':os.path.relpath(local/'mine')},request)
+   except HTTPException as e:assert e.status_code==403
+   else:raise AssertionError('relative path bypassed owner guard')
    assert client.post(path+'/open',json={'expected_revision':2}).status_code==403
    from app import app as full_app
    import base64
@@ -39,7 +44,13 @@ def main():
    with TestClient(full_app,base_url='http://127.0.0.1:8770') as original:
     assert original.post('/api/kit/draft-open',json={'path':str(local/'mine')}).status_code==403
     assert original.get('/api/video/hfp/'+key+'/index.html').status_code==403
-   item['owner_id']=owner;item['status']='approved'
+   item['owner_id']=owner
+   try:w.guard_paths({'path':str(local/'mine')},SimpleNamespace(url=SimpleNamespace(path='/api/kit/draft-rename')))
+   except HTTPException as e:assert e.status_code==409
+   else:raise AssertionError('folder rename would orphan team permissions')
+   assert client.post(path+'/rename',json={'name':'Short name','expected_revision':2}).status_code==200
+   assert rpc.call_args.args[1]=='clipkit_rename_project'
+   item['status']='approved'
    assert client.post(path+'/open',json={'expected_revision':2}).status_code==409
    item['status']='editing'
    assert client.post(path+'/export',json={'expected_revision':2,'name':'cut.mp4','size_bytes':3}).status_code==200
