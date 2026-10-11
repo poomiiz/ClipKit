@@ -119,7 +119,7 @@ begin
     values (org,auth.uid(),'drive_folder_changed',jsonb_build_object('folder_id',folder_id));
 end $$;
 
-create function public.clipkit_review_assets(org uuid, asset_ids uuid[], next_status text, expected_revisions jsonb, note text default '') returns integer
+create function public.clipkit_review_assets(org uuid, asset_ids uuid[], next_status text, expected_revisions jsonb, note text default '',import_existing boolean default false) returns integer
 language plpgsql security definer set search_path = '' as $$
 declare member_role text; item public.clipkit_assets; found integer := 0; total integer;
 begin
@@ -129,6 +129,8 @@ begin
   if total = 0 or cardinality(asset_ids) > 500 or exists(select 1 from unnest(asset_ids) as x where x is null) then raise exception 'Select 1 to 500 projects'; end if;
   if next_status is null or next_status not in ('editing','awaiting_lead','awaiting_review','changes_requested','approved') then raise exception 'Invalid status'; end if;
   if note is null or length(note)>5000 then raise exception 'Invalid review note'; end if;
+  if import_existing is null then raise exception 'Historical delivery flag required'; end if;
+  if import_existing and (member_role not in ('owner','lead') or next_status<>'awaiting_review' or length(btrim(note))=0) then raise exception 'A lead must confirm historical delivery status' using errcode='42501'; end if;
   if next_status in ('awaiting_review','changes_requested','approved') and member_role not in ('owner','lead') then
     raise exception 'Review decisions require a lead' using errcode = '42501';
   end if;
@@ -136,8 +138,10 @@ begin
   for item in select * from public.clipkit_assets where organization_id=org and id=any(asset_ids) order by id for update loop
     found := found + 1;
     if item.kind <> 'project' then raise exception 'Only projects have delivery status'; end if;
+    if item.drive_file_id is null then raise exception 'Send the project file before submitting for review'; end if;
     if (expected_revisions->>item.id::text)::integer is distinct from item.revision then raise exception 'Project changed; refresh before deciding' using errcode='40001'; end if;
-    if not ((item.status in ('editing','changes_requested') and next_status='awaiting_lead')
+    if not ((import_existing and item.status='editing' and next_status='awaiting_review')
+      or (item.status in ('editing','changes_requested') and next_status='awaiting_lead')
       or (item.status='changes_requested' and next_status='editing')
       or (member_role in ('owner','lead') and (
         (item.status='awaiting_lead' and next_status in ('awaiting_review','changes_requested'))
@@ -147,14 +151,14 @@ begin
     end if;
     update public.clipkit_assets set status=next_status,revision=revision+1,updated_by=auth.uid(),updated_at=now() where id=item.id;
     insert into public.clipkit_activity(organization_id,actor_id,asset_id,action,detail)
-      values (org,auth.uid(),item.id,'delivery_changed',jsonb_build_object('from',item.status,'to',next_status,'note',note,'revision',item.revision+1));
+      values (org,auth.uid(),item.id,'delivery_changed',jsonb_build_object('from',item.status,'to',next_status,'note',note,'import_existing',import_existing,'revision',item.revision+1));
   end loop;
   if found <> total then raise exception 'A selected project is missing or belongs to another organization'; end if;
   return found;
 end $$;
 
-revoke execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text) from public, anon;
-grant execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text) to authenticated;
+revoke execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text,boolean) from public, anon;
+grant execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text,boolean) to authenticated;
 revoke execute on function public.clipkit_member_directory(uuid),public.clipkit_set_drive_folder(uuid,text) from public,anon;
 grant execute on function public.clipkit_member_directory(uuid),public.clipkit_set_drive_folder(uuid,text) to authenticated;
 

@@ -263,10 +263,11 @@ class Review(BaseModel):
     status: Literal["editing", "awaiting_lead", "awaiting_review", "changes_requested", "approved"]
     expected_revisions: dict[UUID, int]
     note: str = Field(default="", max_length=5000)
+    import_existing: bool = False
 
 
 @router.post("/organizations/{org}/review")
 def review(org: UUID, body: Review, request: Request) -> dict:
     changed = rpc(request, "clipkit_review_assets", {"org": str(org), "asset_ids": [str(x) for x in body.asset_ids],
-                  "next_status": body.status, "expected_revisions": {str(k): v for k, v in body.expected_revisions.items()}, "note": body.note})
+                  "next_status": body.status, "expected_revisions": {str(k): v for k, v in body.expected_revisions.items()}, "note": body.note,"import_existing":body.import_existing})
     return {"updated": changed}
