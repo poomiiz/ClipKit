@@ -3,10 +3,14 @@ import json
 import sys
 import tempfile
 import zipfile
+import types
+from uuid import uuid4
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"app"))
 import team_packet as packet
+import team_drive as drive
 from fastapi import HTTPException
 
 
@@ -32,6 +36,19 @@ def main():
         assert json.loads(imported["content"])["path"]==path.as_posix()
         assert (target/"draft_content.json.bak_sync").is_file()
         assert json.loads((target/"draft_meta_info.json").read_text())["draft_id"]==imported["id"]
+        org,asset=str(uuid4()),str(uuid4());packet.pack(project,archive,org,asset,[first])
+        registry=second/"root_meta_info.json";registry.write_text(json.dumps({"all_draft_store":[],"draft_ids":0}))
+        body=drive.Receive(organization_id=org,asset_id=asset,expected_revision=2)
+        info={"id":asset,"kind":"project","name":"Team clip","checksum":packet.digest(archive),"revision":2}
+        with patch.object(drive.kit_settings,"_capcut_running",return_value=False),patch.dict(sys.modules,{"kitconfig":types.SimpleNamespace(ROOT_META=str(registry))}):
+            received=drive.import_project(archive,info,body,{"capcut_drafts":str(second)})
+            added=json.loads(registry.read_text())["all_draft_store"][0]
+            assert added["draft_fold_path"]==Path(received["path"]).as_posix()
+            assert added["draft_id"]==json.loads((Path(received["path"])/"draft_content.json").read_text())["id"]
+            assert list(second.glob("root_meta_info.json.bak_team_*"))
+            try:drive.import_project(archive,info,body,{"capcut_drafts":str(second)})
+            except HTTPException as error:assert error.status_code==409
+            else:raise AssertionError("Existing project overwritten")
         for name in ("../outside","project/../../outside","project/C:/outside","project/CON.txt","project/draft_content.json.","project\\outside"):
             try:packet.safe_member(name)
             except HTTPException:pass

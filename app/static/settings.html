@@ -131,6 +131,8 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { histo
 showTab(location.hash.slice(1));
 const FOLDER_LABELS = {work_root:'วิดีโอดิบ (ไม่บังคับ · เปิดหาไฟล์ที่นี่ก่อน)', capcut_drafts:'โปรเจกต์ CapCut', stock_video:'ภาพประกอบจาก Envato', stock_music:'เพลงประกอบ', sfx:'เสียงเอฟเฟกต์ (ใส่ pop.mp3 / whoosh.mp3 หรือโฟลเดอร์ pop/ whoosh/ · ไม่มี = ใช้เสียงในตัว)', output_dir:'ไฟล์ที่ทำเสร็จ (ปก, ตัวหนังสือ)', models_dir:'โมเดลถอดเสียง (ราว 3 GB · ว่าง = ไดรฟ์ C)'};
 function renderTree(folders) {
+  FOLDER_LABELS.capcut_resources='คลังเอฟเฟกต์ CapCut ที่ใช้ในงาน';
+  FOLDER_LABELS.fonts_dir='ฟอนต์ที่ใช้ในงาน';
   $('wsTree').innerHTML = Object.keys(FOLDER_LABELS).map(k => {
     const v = folders[k] || '';
     return `<div class="chk" style="align-items:center"><i class="dot ${v ? 'OK' : 'WARN'}" style="margin-top:0"></i>

@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import stat
+import urllib.parse
 import zipfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from uuid import uuid4
@@ -57,6 +58,13 @@ def pack(project: Path, destination: Path, org: str, asset: str, roots: list[Pat
         else:raise HTTPException(400,"โปรเจกต์มีสื่อที่หาไม่เจอ: "+path.name)
 
     def portable(value: str,key: str):
+        if value.startswith("file://"):
+            value=urllib.parse.unquote(urllib.parse.urlsplit(value).path)
+            if len(value)>3 and value[0]=="/" and value[2]==":":value=value[1:]
+        if value and not "://" in value and not (Path(value).is_absolute() or PureWindowsPath(value).is_absolute()) and (key=="path" or key.endswith("_path")):
+            candidate=project/value
+            if not candidate.exists():raise HTTPException(400,"โปรเจกต์อ้างถึงสื่อที่หาไม่เจอ: "+value)
+            value=str(candidate.resolve())
         if not value or not (Path(value).is_absolute() or PureWindowsPath(value).is_absolute()):return value
         path=Path(value).resolve()
         if key=="draft_root_path" and path==project.parent:return PREFIX+"parent"
@@ -87,7 +95,7 @@ def pack(project: Path, destination: Path, org: str, asset: str, roots: list[Pat
             if parsed is not None:payloads[member]=json.dumps(walk(parsed,portable),ensure_ascii=False).encode()
             if (before.st_size,before.st_mtime_ns)!=(path.stat().st_size,path.stat().st_mtime_ns):raise HTTPException(409,"ไฟล์เปลี่ยนระหว่างแพ็ก ปิด CapCut แล้วส่งใหม่")
             processed.add(member)
-    if "project/draft_content.json" not in payloads:raise HTTPException(400,"ไม่ใช่โปรเจกต์ CapCut")
+    if not {"project/draft_content.json","project/draft_meta_info.json"}<=payloads.keys():raise HTTPException(400,"โปรเจกต์ CapCut มีข้อมูลไม่ครบ")
     manifest={"version":1,"organization_id":org,"asset_id":asset,"format":"capcut","files":{member:hashlib.sha256(payloads[member]).hexdigest() if member in payloads else digest(path) for member,path in files.items()}}
     with zipfile.ZipFile(destination,"w",zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json",json.dumps(manifest))
@@ -100,7 +108,7 @@ def pack(project: Path, destination: Path, org: str, asset: str, roots: list[Pat
 
 def safe_member(name: str) -> PurePosixPath:
     path=PurePosixPath(name)
-    if not name or "\\" in name or ":" in name or "\0" in name or path.is_absolute() or any(x in (".","..","") for x in name.rstrip("/").split("/")):
+    if not name or any(x in name for x in '\\:<>"|?*') or any(ord(x)<32 for x in name) or path.is_absolute() or any(x in (".","..","") for x in name.rstrip("/").split("/")):
         raise HTTPException(400,"แพ็กมีตำแหน่งไฟล์ที่ไม่ปลอดภัย")
     reserved={"con","prn","aux","nul",*[f"com{i}" for i in range(1,10)],*[f"lpt{i}" for i in range(1,10)]}
     if any(part.endswith(("."," ")) or part.split(".")[0].lower() in reserved for part in path.parts):raise HTTPException(400,"แพ็กมีชื่อไฟล์ที่ใช้บน Windows ไม่ได้")
@@ -118,11 +126,13 @@ def unpack(packet: Path, staging: Path, final: Path, org: str, asset: str, name:
             if folded in seen or stat.S_ISLNK(entry.external_attr>>16):raise HTTPException(400,"แพ็กมีชื่อซ้ำหรือลิงก์ไฟล์")
             seen.add(folded)
         if sum(e.file_size for e in entries)>shutil.disk_usage(staging.parent).free:raise HTTPException(400,"พื้นที่ไม่พอรับโปรเจกต์")
+        if archive.getinfo("manifest.json").file_size>16*1024*1024:raise HTTPException(400,"ข้อมูลแพ็กใหญ่เกินไป")
         manifest=json.loads(archive.read("manifest.json"))
+        if not isinstance(manifest,dict):raise HTTPException(400,"ข้อมูลแพ็กไม่ถูกต้อง")
         if (manifest.get("version"),manifest.get("format"),manifest.get("organization_id"),manifest.get("asset_id"))!=(1,"capcut",org,asset):raise HTTPException(400,"แพ็กไม่ตรงกับโปรเจกต์ขององค์กร")
         expected=manifest.get("files",{})
         actual={e.filename for e in entries if not e.is_dir() and e.filename!="manifest.json"}
-        if not isinstance(expected,dict) or actual!=set(expected) or "project/draft_content.json" not in actual:raise HTTPException(400,"แพ็กมีข้อมูลไม่ครบ")
+        if not isinstance(expected,dict) or actual!=set(expected) or not {"project/draft_content.json","project/draft_meta_info.json"}<=actual:raise HTTPException(400,"แพ็กมีข้อมูลไม่ครบ")
         for entry in entries:
             if entry.filename=="manifest.json":continue
             destination=staging/Path(*safe_member(entry.filename).parts)
@@ -134,10 +144,15 @@ def unpack(packet: Path, staging: Path, final: Path, org: str, asset: str, name:
             if result.hexdigest()!=expected[entry.filename]:raise HTTPException(409,"ไฟล์ในแพ็กไม่ตรงกับต้นทาง")
 
     def local(value: str,key: str):
-        if not value.startswith(PREFIX):return value
+        if not value.startswith(PREFIX):
+            if value.startswith("file://") or Path(value).is_absolute() or PureWindowsPath(value).is_absolute():raise HTTPException(400,"แพ็กยังอ้างถึงตำแหน่งจากเครื่องอื่น")
+            return value
         member=value[len(PREFIX):]
-        if member=="parent":return final.parent.as_posix()
+        if member=="parent":
+            if key!="draft_root_path":raise HTTPException(400,"แพ็กอ้างถึงโฟลเดอร์ภายนอกโปรเจกต์")
+            return final.parent.as_posix()
         relative=safe_member(member)
+        if not (staging/Path(*relative.parts)).exists():raise HTTPException(400,"แพ็กมีสื่อที่หาไม่เจอ")
         if relative.parts[0]=="project":relative=PurePosixPath(*relative.parts[1:])
         else:relative=PurePosixPath("_team_resources",*relative.parts[1:])
         return (final/Path(*relative.parts)).as_posix()
