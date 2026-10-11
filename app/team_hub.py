@@ -60,6 +60,8 @@ def _provider(path: str, method: str = "GET", body: dict | None = None, token: s
             data = json.loads(exc.read())
         except ValueError:
             data = {}
+        if data.get("code") in ("PGRST202","PGRST205"):
+            raise HTTPException(503,"ยังไม่ได้ติดตั้งฐานข้อมูลองค์กรใน Supabase ให้ผู้ดูแลติดตั้งก่อนเปิดระบบทีม") from exc
         raise HTTPException(exc.code, data.get("msg") or data.get("message") or data.get("error_description") or "ระบบทีมปฏิเสธคำขอ") from exc
     except (OSError, ValueError) as exc:
         raise HTTPException(502, "ติดต่อระบบบัญชีผู้ใช้และองค์กรไม่ได้") from exc

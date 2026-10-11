@@ -28,6 +28,7 @@
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}" title="${label}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
     '<button type="button" class="sb-item" id="ckCreateProject" title="สร้างโปรเจกต์ใหม่">➕<span>สร้างโปรเจกต์</span></button>' +
     '<div class="sb-foot" id="sbVer">ClipKit</div>';
+  aside.querySelector('a[href="/styles.html"]').after(aside.querySelector('#ckCreateProject'));
   document.body.prepend(aside);
   const openPicked = picked => {
     if (typeof window.openPicked === 'function') window.openPicked(picked);
