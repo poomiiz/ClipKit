@@ -395,16 +395,6 @@
     border-top-color: transparent; border-radius: 50%; animation: sp .8s linear infinite; vertical-align: -2px;
   }
   @keyframes sp { to { transform: rotate(360deg); } }
-  body.dropping::after { content: 'วางไฟล์วิดีโอหรือโฟลเดอร์ที่นี่'; position: fixed; inset: 12px; z-index: 98;
-    border: 3px dashed #7c5cff; border-radius: 18px; background: rgba(12,15,23,.82); color: #fff; font-size: 22px;
-    display: grid; place-items: center; pointer-events: none; }
-  .new-zone { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 2px dashed #3b3f63;
-    border-radius: 16px; background: linear-gradient(120deg, #1d1a3d, #15203a); cursor: pointer; transition: border-color .15s; }
-  .new-zone:hover { border-color: #7c5cff; }
-  .new-zone b { display: block; font-size: 16px; }
-  .new-zone span { color: #b9bedd; font-size: 13px; }
-  .nz-plus { width: 38px; height: 38px; border-radius: 10px; background: #7c5cff; display: grid; place-items: center;
-    font-size: 24px; font-weight: 300; flex: none; }
   .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 8px; }
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
   .foot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; align-items: start; }
@@ -556,14 +546,10 @@
 
   <!-- Screen 1: Home -->
   <div class="screen on" id="s-home">
-    <div class="new-zone" onclick="openPicker()">
-      <div class="nz-plus">+</div>
-      <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
-    </div>
+    <span class="hint">ลากไฟล์วิดีโอหรือโฟลเดอร์วางได้ทั้งหน้า · หรือกด ➕ สร้างโปรเจกต์</span>
     <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
-        <select id="selDelivery" aria-label="สถานะส่งงานของโปรเจกต์ที่เลือก"><option value="awaiting_review">รอลูกค้าตรวจ</option><option value="editing">กำลังทำ</option><option value="changes_requested">ต้องแก้</option><option value="approved">อนุมัติแล้ว</option></select>
-        <button class="small primary" id="selDeliveryApply" onclick="setSelectedDelivery()">เปลี่ยนสถานะที่เลือก</button>
+        <a href="/review.html">🔎 ตรวจงานทีม</a>
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
       <span class="hint" id="selHint">ลากคลุมเพื่อเลือกหลายโปรเจกต์ · Ctrl+คลิก เลือกทีละอัน</span></div>
@@ -1110,29 +1096,6 @@ function openPicked(r) {
     scanFolder(r.path.slice(0, i), r.path.slice(i + 1));
   } else scanFolder(r.path);
 }
-// drag a video or folder from Explorer onto the page: the browser gives only its name and size,
-// so the server finds it inside the workspace folders
-// dragging a thumbnail inside the page is not a drop from Explorer
-let innerDrag = false;
-document.addEventListener('dragstart', () => { innerDrag = true; });
-document.addEventListener('dragend', () => { innerDrag = false; });
-document.addEventListener('dragover', e => { if (innerDrag) return; e.preventDefault(); document.body.classList.add('dropping'); });
-document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
-document.addEventListener('drop', async e => {
-  e.preventDefault(); document.body.classList.remove('dropping');
-  if (innerDrag) { innerDrag = false; return; }
-  const item = e.dataTransfer.items && e.dataTransfer.items[0];
-  const entry = item && item.webkitGetAsEntry && item.webkitGetAsEntry();
-  const file = e.dataTransfer.files[0];
-  if (!file) return;
-  try {
-    const r = await fetch('/api/kit/locate', {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name: file.name, size: entry && entry.isDirectory ? -1 : file.size})});
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || r.statusText);
-    openPicked(j);
-  } catch (err) { toast('❌ ' + err.message); }
-});
 function closePicker() { document.getElementById('sheet').classList.remove('on'); }
 
 async function loadPicker(path) {
@@ -2335,10 +2298,11 @@ async function loadHomeDrafts() {
     groups.forEach(g => g.ps.forEach(d => left.delete(d.path)));
     if (left.size) groups.push({raw: '', name: 'ไม่ทราบไฟล์ดิบ', exists: false, ps: [...left.values()]});   // listed after raw-groups was read
     groups.filter(g => g.ps.length).forEach(g => box.appendChild(footCard(g)));
-    const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw'), tools = q.get('tools');
-    if (want || raw || tools) history.replaceState(null, '', location.pathname);
+    const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw'), folder = q.get('folder'), tools = q.get('tools');
+    if (want || raw || folder || tools) history.replaceState(null, '', location.pathname);
     if (want) ckOpenProject(want);
     if (raw) ckOpenRaw(raw);
+    if (folder) openPicked({kind: 'folder', path: folder});
   } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
 }
 // sidebar click / ?open=<path>: open that project here (CapCut = workbench, HyperFrames = Studio)
@@ -2399,30 +2363,17 @@ function projCard(d) {
   const el = document.createElement('div');
   el.className = 'proj';
   const badge = `<span class="badge ${d.sys}">${{clipkit: 'CK', capcut: 'CC', hyperframes: 'HF'}[d.sys]}</span>`;
-  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open"></span><select class="delivery"><option value="">ยังไม่ระบุสถานะ</option><option value="editing">กำลังทำ</option><option value="awaiting_review">รอลูกค้าตรวจ</option><option value="changes_requested">ต้องแก้</option><option value="approved">อนุมัติแล้ว</option></select></div>' +
+  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open"></span><span class="delivery"></span></div>' +
     '<div class="acts"><button data-a="ren" title="เปลี่ยนชื่อ">✎</button><button data-a="del" class="del" title="ลบ">🗑️</button></div>';
   el.querySelector('.nm').textContent = d.name;
   el.querySelector('.nm').title = d.name + ' · คลิกเพื่อเปิด';
   el._d = d;
   const delivery = el.querySelector('.delivery');
   delivery.setAttribute('aria-label', 'สถานะส่งงาน ' + d.name);
-  delivery.querySelector('option[value=""]').disabled = true;
-  const show = () => {
-    delivery.value = d.delivery?.status || '';
-    delivery.dataset.status = delivery.value;
-    delivery.title = 'สถานะที่ยืนยันเอง' + (d.delivery?.updated_at ? ' · บันทึก ' + new Date(d.delivery.updated_at).toLocaleString('th-TH') : '');
-  };
-  show();
-  el._showDelivery = show;
-  delivery.onchange = async () => {
-    delivery.disabled = true;
-    try {
-      const r = await fetch('/api/kit/delivery-status', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: d.path, status: delivery.value})});
-      if (!r.ok) throw new Error((await r.json()).detail || r.status);
-      d.delivery = await r.json();
-    } catch (e) { toast('❌ บันทึกสถานะไม่ได้: ' + e.message); }
-    finally { show(); delivery.disabled = false; }
-  };
+  const labels = {editing:'✂️ กำลังตัด',awaiting_lead:'📤 รอหัวหน้าตรวจ',awaiting_review:'⏳ รอลูกค้าตรวจ',changes_requested:'🛠️ ส่งกลับแก้',approved:'✅ ลูกค้าอนุมัติ'};
+  delivery.textContent = labels[d.delivery?.status] || 'ยังไม่ระบุสถานะ';
+  delivery.dataset.status = d.delivery?.status || '';
+  delivery.title = 'สถานะเดิมในเครื่อง · สถานะร่วมขององค์กรอยู่ในหน้าทีม';
   const open = async () => {
     if (d.kind === 'capcut') { openDraft(d.i); return; }
     const r = await kit('draft-open', d.path);
@@ -2450,31 +2401,6 @@ function showSel() {
   document.getElementById('selHint').style.display = selSet.size ? 'none' : '';
 }
 function clearSel() { selSet.clear(); showSel(); }
-async function setSelectedDelivery() {
-  const selected = [...selSet];
-  if (!selected.length) return;
-  if (selected.some(el => el.querySelector('.delivery').disabled)) { toast('รอการบันทึกสถานะก่อนหน้าให้เสร็จก่อน'); return; }
-  const status = document.getElementById('selDelivery').value;
-  const controls = [...document.querySelectorAll('#selBar button, #selBar select'), ...selected.flatMap(el => [...el.querySelectorAll('button, select')])];
-  const disabled = controls.map(el => el.disabled);
-  controls.forEach(el => { el.disabled = true; });
-  const apply = document.getElementById('selDeliveryApply');
-  apply.textContent = 'กำลังบันทึก…';
-  try {
-    const r = await fetch('/api/kit/delivery-status/bulk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({paths: selected.map(el => el._d.path), status})});
-    const result = await r.json();
-    if (!r.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'บันทึกสถานะไม่ได้');
-    selected.forEach(el => {
-      el._d.delivery = result.statuses[el._d.path.replaceAll('/', '\\').toLowerCase()];
-      el._showDelivery();
-    });
-    toast('เปลี่ยนสถานะแล้ว ' + result.updated + ' โปรเจกต์');
-  } catch (e) { toast('❌ ' + e.message); }
-  finally {
-    controls.forEach((el, i) => { el.disabled = disabled[i]; });
-    apply.textContent = 'เปลี่ยนสถานะที่เลือก';
-  }
-}
 async function delSelected() {
   const list = [...selSet].map(el => el._d);
   if (!list.length || !confirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)\n\n' + list.map(d => '• ' + d.name).join('\n'))) return;
