@@ -33,6 +33,12 @@ def main():
    except HTTPException as e:assert e.status_code==403
    else:raise AssertionError('old owner bypassed API guard')
    assert client.post(path+'/open',json={'expected_revision':2}).status_code==403
+   from app import app as full_app
+   import base64
+   key=base64.urlsafe_b64encode(str(local/'mine').encode()).decode().rstrip('=')
+   with TestClient(full_app,base_url='http://127.0.0.1:8770') as original:
+    assert original.post('/api/kit/draft-open',json={'path':str(local/'mine')}).status_code==403
+    assert original.get('/api/video/hfp/'+key+'/index.html').status_code==403
    item['owner_id']=owner;item['status']='approved'
    assert client.post(path+'/open',json={'expected_revision':2}).status_code==409
    item['status']='editing'
