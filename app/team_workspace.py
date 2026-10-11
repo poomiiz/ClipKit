@@ -187,10 +187,16 @@ def guard_paths(values,request):
    for item in value:yield from strings(item)
  paths=[]
  for value in strings(values):
-  if not Path(value).is_absolute():continue
   try:paths.append(Path(value).resolve())
   except (OSError,ValueError):continue
  for project,binding in bindings.items():
   root=Path(binding['path']).resolve()
   if any(path==root or root in path.parents for path in paths):
    owned(UUID(binding['organization_id']),UUID(project),request)
+   if request.url.path=='/api/kit/draft-rename':raise HTTPException(409,'โปรเจกต์ทีมให้เปลี่ยนชื่อเรื่องจากหน้าทีม เพื่อเก็บสิทธิ์ของไฟล์เดิม')
+
+class ProjectName(Version):
+ name:str=Field(min_length=1,max_length=500)
+@router.post('/organizations/{org}/projects/{project}/rename')
+def rename_project(org:UUID,project:UUID,body:ProjectName,request:Request):
+ return {'revision':hub.rpc(request,'clipkit_rename_project',{'org':str(org),'project':str(project),'project_name':body.name.strip(),'expected_revision':body.expected_revision})}
