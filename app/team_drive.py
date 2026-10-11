@@ -10,6 +10,7 @@ import threading
 import tempfile
 import shutil
 import sys
+import zipfile
 import time
 import urllib.error
 import urllib.parse
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/api/team/drive", tags=["team-drive"])
 SCOPE = "https://www.googleapis.com/auth/drive"
 API = "https://www.googleapis.com/drive/v3/"
 CHUNK = 8 * 1024 * 1024
+_import_lock=threading.Lock()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -46,6 +48,7 @@ def google(request: urllib.request.Request):
     except urllib.error.HTTPError as exc:
         if exc.code == 308:
             return exc  # Drive resumable upload acknowledges an incomplete chunk with 308.
+        if exc.code in (400,401,403):raise HTTPException(exc.code,"Google Drive ปฏิเสธสิทธิ์หรือข้อมูลคำขอ กรุณาตรวจบัญชีและโฟลเดอร์") from exc
         raise HTTPException(502, f"Google Drive ปฏิเสธคำขอ ({exc.code})") from exc
     except OSError as exc:
         raise HTTPException(502, "ติดต่อ Google Drive ไม่ได้") from exc
@@ -75,7 +78,12 @@ def drive_session(request: Request) -> dict:
         if not token:
             raise HTTPException(401, "เชื่อมบัญชี Google Drive ก่อน")
         if token["expires_at"] <= time.time() + 60:
-            refreshed = oauth_token({**client_config(), "grant_type": "refresh_token", "refresh_token": token["refresh_token"]})
+            try:refreshed = oauth_token({**client_config(), "grant_type": "refresh_token", "refresh_token": token["refresh_token"]})
+            except HTTPException as exc:
+                if exc.status_code in (400,401):
+                    data.pop("drive",None)
+                    raise HTTPException(401,"สิทธิ์ Google Drive หมดอายุ กรุณาเชื่อมบัญชีใหม่") from exc
+                raise
             token.update(refreshed)
         return token.copy()
 
@@ -364,6 +372,10 @@ def download(body: Receive, request: Request) -> dict:
 
 
 def import_project(packet: Path,asset: dict,body: Receive,cfg: dict) -> dict:
+    with _import_lock:return _import_project(packet,asset,body,cfg)
+
+
+def _import_project(packet: Path,asset: dict,body: Receive,cfg: dict) -> dict:
     if kit_settings._capcut_running():raise HTTPException(409,"รับแพ็กแล้ว ปิด CapCut ก่อนนำโปรเจกต์เข้า")
     root=Path(cfg.get("capcut_drafts") or "")
     if not root.is_dir() or str(root)==".":raise HTTPException(400,"ตั้งโฟลเดอร์โปรเจกต์ CapCut ก่อนรับงาน")
@@ -375,23 +387,31 @@ def import_project(packet: Path,asset: dict,body: Receive,cfg: dict) -> dict:
     import kitconfig
     registry=Path(kitconfig.ROOT_META)
     if not registry.is_file():raise HTTPException(400,"ไม่พบรายชื่อโปรเจกต์ CapCut เปิด CapCut ครั้งแรกและตั้งโฟลเดอร์ให้ถูกต้องก่อน")
-    existing=json.loads(registry.read_text(encoding="utf-8-sig"))
+    original_registry=registry.read_bytes()
+    existing=json.loads(original_registry.decode("utf-8-sig"))
     if not isinstance(existing.get("all_draft_store"),list):raise HTTPException(400,"รายชื่อโปรเจกต์ CapCut อ่านไม่ได้")
-    with tempfile.TemporaryDirectory(dir=root,prefix="clipkit-import-") as directory:
-        staging=Path(directory)
-        if not staging.resolve().is_relative_to(root):raise HTTPException(400,"โฟลเดอร์รับโปรเจกต์ไม่ถูกต้อง")
-        team_packet.unpack(packet,staging,final,str(body.organization_id),str(body.asset_id),asset["name"])
-    metadata=final/"draft_meta_info.json"
-    if not metadata.is_file():raise HTTPException(400,"รับโปรเจกต์แล้ว แต่แพ็กไม่มีข้อมูลรายชื่อ CapCut: "+str(final))
-    entry=json.loads(metadata.read_text(encoding="utf-8"))
-    entry["draft_cover"]=(final/"draft_cover.jpg").as_posix()
-    existing["all_draft_store"].insert(0,entry)
-    backup=registry.with_name(registry.name+".bak_team_"+secrets.token_hex(6))
-    shutil.copy2(registry,backup)
-    temporary=registry.with_name(registry.name+".tmp_"+secrets.token_hex(6))
     try:
-        temporary.write_text(json.dumps(existing,ensure_ascii=False),encoding="utf-8")
-        temporary.replace(registry)
-    finally:
-        temporary.unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory(dir=root,prefix="clipkit-import-") as directory:
+            staging=Path(directory)
+            if not staging.resolve().is_relative_to(root):raise HTTPException(400,"โฟลเดอร์รับโปรเจกต์ไม่ถูกต้อง")
+            prepared=team_packet.unpack(packet,staging,final,str(body.organization_id),str(body.asset_id),asset["name"])
+            entry=json.loads((prepared/"draft_meta_info.json").read_text(encoding="utf-8"))
+            entry["draft_cover"]=(final/"draft_cover.jpg").as_posix()
+            existing["all_draft_store"].insert(0,entry)
+            backup=registry.with_name(registry.name+".bak_team_"+secrets.token_hex(6))
+            shutil.copy2(registry,backup)
+            temporary=registry.with_name(registry.name+".tmp_"+secrets.token_hex(6))
+            try:
+                temporary.write_text(json.dumps(existing,ensure_ascii=False),encoding="utf-8")
+                if kit_settings._capcut_running():raise HTTPException(409,"CapCut เปิดขึ้นระหว่างรับงาน กรุณาปิดก่อนรับอีกครั้ง")
+                if registry.read_bytes()!=original_registry:raise HTTPException(409,"รายชื่อ CapCut เปลี่ยนระหว่างรับงาน กรุณารับใหม่")
+                prepared.rename(final)
+                try:temporary.replace(registry)
+                except OSError:
+                    if final.resolve().parent!=root or not prepared.parent.resolve().is_relative_to(root):raise HTTPException(400,"ตำแหน่งคืนโปรเจกต์ไม่ถูกต้อง")
+                    final.rename(prepared)
+                    raise
+            finally:temporary.unlink(missing_ok=True)
+    except (zipfile.BadZipFile,KeyError,ValueError) as exc:raise HTTPException(400,"แพ็กโปรเจกต์ไม่ถูกต้อง ยังไม่นำเข้า CapCut") from exc
+    except OSError as exc:raise HTTPException(409,"นำเข้าโปรเจกต์ไม่ได้ ตรวจพื้นที่และสิทธิ์ไฟล์แล้วรับใหม่") from exc
     return {"path":str(final),"revision":asset["revision"],"kind":"capcut"}

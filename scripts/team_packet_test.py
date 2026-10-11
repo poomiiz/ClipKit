@@ -27,7 +27,7 @@ def main():
         with zipfile.ZipFile(archive) as z:
             assert str(first).encode() not in z.read("project/draft_content.json")
         staging=second/"staging";staging.mkdir();target=second/"shared-project"
-        packet.unpack(archive,staging,target,"org","asset","Shared clip")
+        packet.unpack(archive,staging,target,"org","asset","Shared clip").rename(target)
         imported=json.loads((target/"draft_content.json").read_text())
         assert imported["id"]!="original"
         path=Path(imported["materials"]["videos"][0]["path"])
@@ -49,6 +49,18 @@ def main():
             try:drive.import_project(archive,info,body,{"capcut_drafts":str(second)})
             except HTTPException as error:assert error.status_code==409
             else:raise AssertionError("Existing project overwritten")
+            another=str(uuid4());packet.pack(project,archive,org,another,[first])
+            second_body=drive.Receive(organization_id=org,asset_id=another,expected_revision=2)
+            second_info={**info,"id":another,"checksum":packet.digest(archive)}
+            before=registry.read_bytes();replace=Path.replace
+            def locked(path,target):
+                if Path(target)==registry:raise PermissionError("registry locked")
+                return replace(path,target)
+            with patch.object(Path,"replace",new=locked):
+                try:drive.import_project(archive,second_info,second_body,{"capcut_drafts":str(second)})
+                except HTTPException as error:assert error.status_code==409
+                else:raise AssertionError("Locked registry ignored")
+            assert registry.read_bytes()==before and not list(second.glob("CK-"+another+"-*"))
         for name in ("../outside","project/../../outside","project/C:/outside","project/CON.txt","project/draft_content.json.","project\\outside"):
             try:packet.safe_member(name)
             except HTTPException:pass
