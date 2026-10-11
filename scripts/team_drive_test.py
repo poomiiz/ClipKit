@@ -85,7 +85,7 @@ def main():
             with patch.object(drive,"google",return_value=Response(b"wrong content")):
                 assert client.post("/api/team/drive/download",json=body).status_code==409
             assert not path.exists() and not list(path.parent.glob("*.partial"))
-        hub._sessions["test-session"]={"ends_at":time.time()+600,"expires_at":time.time()+600,"user":{"id":"user"}}
+        hub._sessions["test-session"]={"ends_at":time.time()+600,"expires_at":time.time()+600,"user":{"id":"user","email":"editor@example.test"}}
         with TestClient(app) as client,patch.object(drive,"client_config",return_value={"client_id":"desktop","client_secret":"secret"}),patch.object(drive,"webbrowser") as browser:
             client.cookies.set(hub.COOKIE,"test-session")
             assert client.post("/api/team/drive/connect",headers={"Origin":"https://other.example.test"}).status_code==403
@@ -99,7 +99,7 @@ def main():
             except urllib.error.HTTPError as error:assert error.code==400
             else:raise AssertionError("Invalid OAuth state accepted")
             token={"access_token":"never-send-to-browser","refresh_token":"refresh-private","scope":drive.SCOPE,"expires_at":time.time()+3600}
-            with patch.object(drive,"oauth_token",return_value=token) as exchange:
+            with patch.object(drive,"oauth_token",return_value=token) as exchange,patch.object(drive,"drive_json",return_value={"user":{"emailAddress":"editor@example.test"}}):
                 with urllib.request.urlopen(redirect+"?"+urllib.parse.urlencode({"state":params["state"][0],"code":"test-code"}),timeout=2) as callback:
                     assert "Connected" in callback.read().decode()
                 verifier=exchange.call_args.args[0]["code_verifier"]
@@ -107,6 +107,12 @@ def main():
                 assert params["code_challenge"][0]==base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
             result=client.get("/api/team/drive/connection")
             assert result.json()["connected"] and "never-send-to-browser" not in result.text
+        with patch.object(drive,"drive_json",return_value={"permissions":[{"id":"owner-id","type":"user","emailAddress":"owner@example.test","role":"owner"}]}),patch.object(drive,"google",return_value=Response()) as remote:
+            drive.share_members({"access_token":"private"},"organizationFolder123",[{"email":"owner@example.test"},{"email":"editor@example.test"}])
+            assert remote.call_count==1
+            request=remote.call_args.args[0]
+            assert request.get_method()=="POST" and "sendNotificationEmail=false" in request.full_url
+            assert json.loads(request.data)=={"role":"writer","type":"user","emailAddress":"editor@example.test"}
         hub._sessions.clear()
     print("Drive immutable upload, URL checks, checksum, local edit protection and origin checks passed (mock provider)")
 

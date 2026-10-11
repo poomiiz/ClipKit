@@ -205,6 +205,13 @@ def organizations(request: Request) -> Any:
     return _provider("/rest/v1/clipkit_organizations?select=*,clipkit_members(*)&order=created_at", token=session(request)["access_token"])
 
 
+def owner_organization(org: UUID,request: Request) -> dict:
+    user=session(request)["user"]["id"]
+    found=next((row for row in organizations(request) if row["id"]==str(org)),None)
+    if not found or not any(member["user_id"]==user and member["role"]=="owner" for member in found["clipkit_members"]):raise HTTPException(403,"เจ้าขององค์กรเท่านั้น")
+    return found
+
+
 class Organization(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
@@ -221,7 +228,16 @@ class Member(BaseModel):
 
 @router.post("/organizations/{org}/members")
 def add_member(org: UUID, body: Member, request: Request) -> dict:
+    _same_origin(request)
+    organization=owner_organization(org,request)
+    if organization.get("drive_folder_id"):
+        import team_drive
+        token=team_drive.drive_session(request)
+        team_drive.folder_access(token,organization["drive_folder_id"],sharing=True)
     rpc(request, "clipkit_add_member", {"org": str(org), "member_email": body.email.strip(), "member_role": body.role})
+    if organization.get("drive_folder_id"):
+        try:team_drive.share_members(token,organization["drive_folder_id"],member_directory(org,request))
+        except HTTPException as exc:raise HTTPException(409,"สมาชิกบันทึกแล้ว แต่ให้สิทธิ์ Drive ไม่ครบ กรุณาตรวจบัญชี Google แล้วเพิ่มสมาชิกอีกครั้ง: "+str(exc.detail)) from exc
     return {"saved": True}
 
 
@@ -236,6 +252,12 @@ class DriveFolder(BaseModel):
 
 @router.post("/organizations/{org}/drive-folder")
 def set_drive_folder(org: UUID, body: DriveFolder, request: Request) -> dict:
+    _same_origin(request)
+    owner_organization(org,request)
+    import team_drive
+    token=team_drive.drive_session(request)
+    team_drive.folder_access(token,body.folder_id,sharing=True)
+    team_drive.share_members(token,body.folder_id,member_directory(org,request))
     rpc(request, "clipkit_set_drive_folder", {"org": str(org), "folder_id": body.folder_id})
     return {"saved": True}
 
