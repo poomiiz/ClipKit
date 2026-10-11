@@ -406,7 +406,7 @@
     font-size: 24px; font-weight: 300; flex: none; }
   .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 8px; }
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
-  .foot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+  .foot-grid { display: grid; grid-template-columns: 1fr; gap: 8px; align-items: start; }
   .foot { background: #141824; border: 1px solid #262d40; border-radius: 12px; overflow: hidden; min-width: 0; }
   .foot .ft-th { aspect-ratio: 16/9; background: #1b2030; display: grid; place-items: center; font-size: 28px; cursor: pointer; }
   .foot .ft-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -415,17 +415,17 @@
   .foot .ft-nm span { color: #828ca4; font-weight: 400; font-size: 12.5px; margin-left: 6px; }
   .foot .ft-path { font-size: 11.5px; color: #6b7590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
   .foot .ft-ps { padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-  /* list = a tree: one short line per footage, its projects indented underneath (click the line to fold) */
+  /* One compact row per source: thumbnail left, source and its projects on the right. */
   .foot-grid.list { grid-template-columns: 1fr; gap: 4px; }
-  .foot-grid.list .foot { display: grid; grid-template-columns: 64px 1fr; background: none; border: 0; border-radius: 8px; }
-  .foot-grid.list .ft-th { aspect-ratio: 16/9; border-radius: 5px; overflow: hidden; margin: 6px 0 6px 6px; font-size: 16px; }
-  .foot-grid.list .ft-info { padding: 6px 10px; align-self: center; cursor: pointer; }
+  .foot-grid.list .foot { display: grid; grid-template-columns: 128px minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 12px; background: #141824; border-radius: 10px; }
+  .foot-grid.list .ft-th { grid-column: 1; grid-row: 1 / 3; aspect-ratio: 16/9; border-radius: 7px; overflow: hidden; margin: 8px 0 8px 8px; font-size: 20px; }
+  .foot-grid.list .ft-info { grid-column: 2; grid-row: 1; padding: 8px 10px 2px; align-self: center; cursor: pointer; }
   .foot-grid.list .ft-info:hover { background: #141824; border-radius: 6px; }
   .foot-grid.list .ft-nm { font-size: 14px; }
-  .foot-grid.list .ft-nm::before { content: '▾ '; color: #6b7590; }
-  .foot-grid.list .foot.closed .ft-nm::before { content: '▸ '; }
+  .foot-grid.list .ft-nm::before { content: ''; }
+  .foot-grid.list .foot.closed .ft-nm::before { content: ''; }
   .foot-grid.list .foot.closed .ft-ps { display: none; }
-  .foot-grid.list .ft-ps { grid-column: 1 / -1; margin-left: 38px; padding: 0 0 6px 10px; border-left: 1px solid #262d40; gap: 0; }
+  .foot-grid.list .ft-ps { grid-column: 2; grid-row: 2; margin: 0 8px 6px 0; padding: 0 0 0 4px; gap: 0; }
   .proj { display: flex; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; }
   .proj:hover { background: #1b2030; }
   .proj .pr-top { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
@@ -435,7 +435,7 @@
   .proj .pbar { width: 48px; flex: none; height: 4px; border-radius: 99px; background: #262d40; overflow: hidden; }
   .proj .pbar i { display: block; height: 100%; background: #7c5cff; border-radius: 99px; }
   .proj.full .pbar i { background: #10b981; }
-  .proj .acts { display: flex; gap: 2px; opacity: .35; }
+  .proj .acts { display: flex; gap: 2px; opacity: 1; }
   .proj:hover .acts, .proj.sel .acts { opacity: 1; }
   .proj .acts button { min-height: 0; height: auto; padding: 2px 6px; font-size: 13px; border-radius: 6px; cursor: pointer;
     background: none; color: #c5cde0; border: 1px solid transparent; }
@@ -2343,8 +2343,8 @@ window.ckOpenProject = async path => {
 // grid = footage cards in columns, list = one footage per row (remembered on this machine)
 function setHomeView(flip = true) {
   let v = 'grid';
-  try { v = localStorage.getItem('ck_home_view') || 'grid'; } catch {}
-  if (flip) { v = v === 'grid' ? 'list' : 'grid'; try { localStorage.setItem('ck_home_view', v); } catch {} }
+  try { v = localStorage.getItem('ck_home_view_v2') || 'list'; } catch {}
+  if (flip) { v = v === 'grid' ? 'list' : 'grid'; try { localStorage.setItem('ck_home_view_v2', v); } catch {} }
   document.getElementById('homeDrafts').classList.toggle('list', v === 'list');
   const b = document.getElementById('homeView');
   b.textContent = v === 'grid' ? '☰ รายการ' : '▦ การ์ด';
