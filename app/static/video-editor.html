@@ -2354,6 +2354,15 @@ function footCard(g) {
     th.firstChild.src = '/api/kit/raw-thumb?path=' + encodeURIComponent(g.raw);
     th.title = 'เลือกเรื่องจากไฟล์นี้อีกครั้ง';
     th.onclick = () => ckOpenRaw(g.raw);
+    nm.title = 'ดับเบิลคลิกเพื่อตั้งชื่อที่แสดง (ไฟล์จริงไม่ถูกเปลี่ยนชื่อ)';
+    nm.ondblclick = async () => {
+      const name = prompt('ชื่อที่แสดงของฟุตนี้ · ไฟล์จริงไม่ถูกเปลี่ยนชื่อ · เว้นว่าง = ใช้ชื่อไฟล์', g.name);
+      if (name === null) return;
+      const r = await fetch('/api/kit/footage-name', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: g.raw, name})});
+      if (!r.ok) { toast('❌ ตั้งชื่อไม่ได้: ' + ((await r.json()).detail || r.status)); return; }
+      loadHomeDrafts();
+    };
   }
   g.ps.forEach(d => el.querySelector('.ft-ps').appendChild(projCard(d)));
   return el;

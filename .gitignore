@@ -13,6 +13,7 @@ presets/my-*.json
 presets/previews/
 presets/parts/
 corrections.json
+footage_names.json
 
 # personal / client data, never in the public repo
 *.sqlite
