@@ -111,6 +111,15 @@ async def no_cache_html(request, call_next):
                or request.headers.get("sec-fetch-site") == "cross-site")
     if foreign and not (widget_navigation or widget_health or widget_control):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+    if request.url.path.startswith('/api/') and not request.url.path.startswith('/api/team/'):
+        from fastapi import HTTPException
+        from starlette.concurrency import run_in_threadpool
+        values = dict(request.query_params)
+        if request.headers.get('content-type', '').startswith('application/json'):
+            try: values['body'] = await request.json()
+            except ValueError: return JSONResponse({'detail':'Invalid JSON'},status_code=400)
+        try: await run_in_threadpool(team_workspace.guard_paths, values, request)
+        except HTTPException as exc: return JSONResponse({'detail':exc.detail},status_code=exc.status_code)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page else "")

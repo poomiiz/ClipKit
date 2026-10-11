@@ -14,3 +14,5 @@ form{display:grid;gap:12px;max-width:500px}.row{display:flex;gap:8px;align-items
 :focus-visible{outline:2px solid #b9a8ff;outline-offset:3px}
 
 .group-title{grid-column:1/-1;margin:16px 0 0;font-size:16px}
+
+summary{cursor:pointer;padding:8px 0;color:#c5cde0}.asset button{margin:4px 6px 4px 0;padding:6px 9px;font-size:13px}.asset .name{display:block;min-width:0;max-width:100%;flex:1}.asset p{font-size:13px;margin:8px 0}.asset select{font-size:13px}
