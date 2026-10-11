@@ -524,6 +524,32 @@ def media(path: str):
     return FileResponse(p, media_type=VIDEO_TYPES[p.suffix.lower()])
 
 
+_RAW_THUMB_DIR = Path(__import__("tempfile").gettempdir()) / "clipkit_raw_thumbs"
+
+
+@router.get("/raw-thumb")
+def raw_thumb(path: str):
+    """Small cover frame (1 s in) for a raw-file card in the sidebar, cached per file version."""
+    import hashlib
+    from fastapi.responses import FileResponse
+    p = Path(path)
+    if p.suffix.lower() not in VIDEO_TYPES or not p.is_file():
+        raise HTTPException(404, f"not a video file: {path}")
+    st = p.stat()
+    key = hashlib.sha1(f"{p.resolve()}|{st.st_mtime_ns}|{st.st_size}".encode()).hexdigest()
+    out = _RAW_THUMB_DIR / f"{key}.jpg"
+    if not out.is_file():
+        _RAW_THUMB_DIR.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run(["ffmpeg", "-v", "error", "-ss", "1", "-i", str(p), "-frames:v", "1", "-vf", "scale=320:-2",
+                            "-f", "image2", "-c:v", "mjpeg", "-q:v", "5", "pipe:1"], capture_output=True, timeout=60)
+        if r.returncode != 0 or not r.stdout:
+            raise HTTPException(500, "could not read a frame: " + r.stderr.decode(errors="replace")[-200:])
+        tmp = out.with_suffix(f".{threading.get_ident()}.tmp")
+        tmp.write_bytes(r.stdout)
+        tmp.replace(out)   # two cards asking at once never see half a file
+    return FileResponse(str(out), media_type="image/jpeg")
+
+
 @router.get("/cover-frame/{name}")
 def cover_frame(name: str):
     from fastapi.responses import FileResponse
@@ -768,16 +794,44 @@ def bug_report(body: BugReport) -> dict[str, Any]:
     return report_bug(body.text, body.page, body.errors, body.auto)
 
 
+# display names people give raw files on the home page; the files themselves are never renamed
+FOOTAGE_NAMES = KIT / "footage_names.json"
+
+
+def _footage_names() -> dict[str, str]:
+    return json.loads(FOOTAGE_NAMES.read_text(encoding="utf-8")) if FOOTAGE_NAMES.is_file() else {}
+
+
+class FootageName(BaseModel):
+    path: str
+    name: str   # empty = back to the file name
+
+
+@router.post("/footage-name")
+def footage_name(body: FootageName) -> dict[str, str]:
+    p = Path(body.path)
+    if not p.is_file():
+        raise HTTPException(404, f"file not found: {p}")
+    names, key, name = _footage_names(), str(p).lower(), body.name.strip()
+    if name:
+        names[key] = name
+    else:
+        names.pop(key, None)
+    FOOTAGE_NAMES.write_text(json.dumps(names, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"name": name or p.stem}
+
+
 @router.get("/raw-groups")
 def raw_groups() -> dict[str, Any]:
     """Every project grouped under the raw file it was cut from (newest group first)."""
     import capcut_edit
+    names = _footage_names()
     groups: dict[str, dict[str, Any]] = {}
     items = [("capcut", d) for d in capcut_edit.list_drafts()] + [("hyperframes", p) for p in hf_projects()["projects"]]
     for kind, d in items:
         raw = _raw_of(Path(d["path"]), d.get("sources") or [])
         key = str(Path(raw)).lower() if raw else ""
-        g = groups.setdefault(key, {"raw": raw, "name": Path(raw).stem if raw else "ไม่ทราบไฟล์ดิบ",
+        g = groups.setdefault(key, {"raw": raw, "name": names.get(key) or Path(raw).stem if raw else "ไม่ทราบไฟล์ดิบ",
                                     "exists": bool(raw) and Path(raw).is_file(), "modified": 0, "projects": []})
         g["projects"].append({"kind": kind, "name": d["name"], "path": d["path"], "modified": d.get("modified") or 0})
         g["modified"] = max(g["modified"], d.get("modified") or 0)

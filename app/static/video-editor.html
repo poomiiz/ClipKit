@@ -406,22 +406,31 @@
     font-size: 32px; font-weight: 300; flex: none; }
   .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 26px 0 12px; }
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
-  .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
-  .proj { cursor: pointer; }
-  .proj .th { position: relative; aspect-ratio: 1/1; border-radius: 12px; background: #1b2030 center/cover; border: 1px solid #262d40;
-    display: grid; place-items: center; font-size: 28px; overflow: hidden; transition: border-color .15s; }
-  .proj:hover .th { border-color: #7c5cff; }
-  .proj .th img { width: 100%; height: 100%; object-fit: cover; }
-  .proj .acts { display: flex; gap: 4px; margin-top: 6px; }
-  .proj .acts button { flex: 1; padding: 5px 2px; font-size: 12px; border-radius: 7px; cursor: pointer;
-    background: #1b2030; color: #c5cde0; border: 1px solid #262d40; }
+  .foot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+  .foot { background: #141824; border: 1px solid #262d40; border-radius: 12px; overflow: hidden; min-width: 0; }
+  .foot .ft-th { aspect-ratio: 16/9; background: #1b2030; display: grid; place-items: center; font-size: 28px; cursor: pointer; }
+  .foot .ft-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .foot .ft-info { padding: 10px 12px 4px; min-width: 0; }
+  .foot .ft-nm { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot .ft-nm span { color: #828ca4; font-weight: 400; font-size: 12.5px; margin-left: 6px; }
+  .foot .ft-path { font-size: 11.5px; color: #6b7590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+  .foot .ft-ps { padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .foot-grid.list { grid-template-columns: 1fr; }
+  .foot-grid.list .foot { display: grid; grid-template-columns: 220px 1fr; }
+  .foot-grid.list .ft-th { grid-row: span 2; aspect-ratio: auto; min-height: 124px; }
+  .proj { background: #1b2030; border: 1px solid #262d40; border-radius: 9px; padding: 7px 9px; }
+  .proj .pr-top { display: flex; gap: 6px; align-items: center; }
+  .proj .nm { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
+  .proj .pct { font-size: 11.5px; color: #828ca4; }
+  .proj .pbar { height: 5px; border-radius: 99px; background: #262d40; margin: 6px 0; overflow: hidden; }
+  .proj .pbar i { display: block; height: 100%; background: #7c5cff; border-radius: 99px; }
+  .proj.full .pbar i { background: #10b981; }
+  .proj .acts { display: flex; gap: 4px; }
+  .proj .acts button { flex: 1; padding: 4px 2px; font-size: 12px; border-radius: 7px; cursor: pointer;
+    background: #141824; color: #c5cde0; border: 1px solid #262d40; }
   .proj .acts button:hover { border-color: #7c5cff; color: #fff; }
   .proj .acts .del:hover { border-color: #ef4444; color: #ef4444; }
-  .proj .badge { position: absolute; left: 6px; top: 6px; font-size: 10.5px; padding: 2px 7px; border-radius: 99px;
-    background: #0f9d76; color: #fff; }
-  .proj .th { cursor: pointer; }
-  .proj .nm { margin-top: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .proj .mt { font-size: 12px; color: #828ca4; }
+  .proj .badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #0f9d76; color: #fff; }
   .clip-layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; max-width: 1200px; margin: 0 auto; align-items: start; }
   @media (max-width: 900px) { .clip-layout { grid-template-columns: 1fr; } }
   .clip-right #storyPlan .story .hint { display: none; }
@@ -472,7 +481,7 @@
   .story .st-done { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: rgba(16,185,129,.15); color: #10b981; white-space: nowrap; }
   #draftList .tile .body { min-width: 0; }
   #draftList .tile .t1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .proj.sel .th { outline: 3px solid #7c5cff; outline-offset: 2px; }
+  .proj.sel { outline: 2px solid #7c5cff; }
   .proj.sel .nm { color: #b9a8ff; }
   .marquee { position: fixed; z-index: 50; border: 1px solid #7c5cff; background: rgba(124,92,255,.15); pointer-events: none; border-radius: 4px; }
   #selBar { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
@@ -515,7 +524,7 @@
   body.simple .media { display: none !important; }
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
-<link rel="stylesheet" href="/shell.css?v=6">
+<link rel="stylesheet" href="/shell.css?v=7">
 </head>
 <body>
 <div class="app">
@@ -537,11 +546,12 @@
       <div><b>สร้างใหม่</b><span>ลากไฟล์วิดีโอหรือโฟลเดอร์มาวางที่นี่ หรือคลิกเพื่อเลือก</span></div>
     </div>
     <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
+      <button class="small" id="homeView" onclick="setHomeView()"></button>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
       <span class="hint" id="selHint">ลากคลุมเพื่อเลือกหลายโปรเจกต์ · Ctrl+คลิก เลือกทีละอัน</span></div>
-    <div id="homeDrafts" class="proj-grid"><div class="hint">กำลังอ่านโปรเจกต์…</div></div>
+    <div id="homeDrafts" class="foot-grid"><div class="hint">กำลังอ่านโปรเจกต์…</div></div>
     <div id="recentWrap" class="recent-list"></div>
   </div>
 
@@ -2027,7 +2037,7 @@ async function makeChosen(kind) {
   } catch (e) {
     document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
-  } finally { state.range = null; nameBox.value = base; markMade(); if (window.ckLoadProjects) window.ckLoadProjects(); }
+  } finally { state.range = null; nameBox.value = base; markMade(); loadHomeDrafts(); }
 }
 
 // Alternative to CapCut: open the raw file as a HyperFrames project (motion graphics, renders to MP4)
@@ -2284,7 +2294,8 @@ async function draftGrade() {
 async function loadHomeDrafts() {
   const box = document.getElementById('homeDrafts');
   try {
-    const [data, hf] = await Promise.all([api('drafts'), fetch('/api/kit/hf-projects').then(r => r.json()).catch(() => ({projects: []}))]);
+    const [data, hf, rg] = await Promise.all([api('drafts'), fetch('/api/kit/hf-projects').then(r => r.json()).catch(() => ({projects: []})),
+      fetch('/api/kit/raw-groups').then(r => { if (!r.ok) throw new Error('raw-groups ' + r.status); return r.json(); })]);
     drafts = data.drafts;
     const all = drafts.map((d, i) => ({...d, kind: 'capcut', i}))
       .concat((hf.projects || []).map(p => ({...p, kind: 'hyperframes'})))
@@ -2299,8 +2310,12 @@ async function loadHomeDrafts() {
     tabs.querySelectorAll('button').forEach(b => b.onclick = () => { loadHomeDrafts.sys = b.dataset.k; loadHomeDrafts(); });
     box.innerHTML = shown.length ? '' : '<div class="hint">ยังไม่มีโปรเจกต์ในหมวดนี้ — ลากไฟล์วิดีโอมาวางด้านบนเพื่อเริ่ม</div>';
     selSet.clear(); showSel();
-    shown.forEach(d => box.appendChild(projCard(d)));
-    if (window.ckLoadProjects) window.ckLoadProjects();
+    const left = new Map(shown.map(d => [d.path, d]));
+    const groups = rg.groups.map(g => ({...g, ps: g.projects.map(p => left.get(p.path)).filter(Boolean)}));
+    groups.forEach(g => g.ps.forEach(d => left.delete(d.path)));
+    if (left.size) groups.push({raw: '', name: 'ไม่ทราบไฟล์ดิบ', exists: false, ps: [...left.values()]});   // listed after raw-groups was read
+    groups.filter(g => g.ps.length).forEach(g => box.appendChild(footCard(g)));
+    setHomeView(false);
     const q = new URLSearchParams(location.search), want = q.get('open'), raw = q.get('raw'), tools = q.get('tools');
     if (want || raw || tools) history.replaceState(null, '', location.pathname);
     if (want) ckOpenProject(want);
@@ -2314,27 +2329,78 @@ window.ckOpenProject = async path => {
   if (!card) { toast('❌ ไม่พบโปรเจกต์นี้แล้ว: ' + path); return; }
   card.querySelector('[data-a=open]').click();
 };
+// grid = footage cards in columns, list = one footage per row (remembered on this machine)
+function setHomeView(flip = true) {
+  let v = 'grid';
+  try { v = localStorage.getItem('ck_home_view') || 'grid'; } catch {}
+  if (flip) { v = v === 'grid' ? 'list' : 'grid'; try { localStorage.setItem('ck_home_view', v); } catch {} }
+  document.getElementById('homeDrafts').classList.toggle('list', v === 'list');
+  const b = document.getElementById('homeView');
+  b.textContent = v === 'grid' ? '☰ รายการ' : '▦ การ์ด';
+  b.title = v === 'grid' ? 'แสดงฟุตเป็นรายการ' : 'แสดงฟุตเป็นการ์ด';
+}
+// one footage: cover frame, name, path, then a row for every project cut from it
+function footCard(g) {
+  const el = document.createElement('div');
+  el.className = 'foot';
+  el.innerHTML = '<div class="ft-th">🎞️</div><div class="ft-info"><div class="ft-nm"></div><div class="ft-path"></div></div><div class="ft-ps"></div>';
+  const th = el.querySelector('.ft-th'), nm = el.querySelector('.ft-nm'), pth = el.querySelector('.ft-path');
+  nm.textContent = g.name;
+  nm.insertAdjacentHTML('beforeend', `<span>${g.ps.length} โปรเจกต์</span>`);
+  pth.title = g.raw ? (g.exists ? g.raw : g.raw + ' (ไม่พบไฟล์แล้ว)') : '';
+  pth.textContent = '\u200E' + (g.raw || '—');   // LRM: keeps a leading slash on the left in the rtl box
+  if (g.exists) {
+    th.innerHTML = '<img loading="lazy" draggable="false" alt="">';
+    th.firstChild.src = '/api/kit/raw-thumb?path=' + encodeURIComponent(g.raw);
+    th.title = 'เลือกเรื่องจากไฟล์นี้อีกครั้ง';
+    th.onclick = () => ckOpenRaw(g.raw);
+    nm.title = 'ดับเบิลคลิกเพื่อตั้งชื่อที่แสดง (ไฟล์จริงไม่ถูกเปลี่ยนชื่อ)';
+    nm.ondblclick = async () => {
+      const name = prompt('ชื่อที่แสดงของฟุตนี้ · ไฟล์จริงไม่ถูกเปลี่ยนชื่อ · เว้นว่าง = ใช้ชื่อไฟล์', g.name);
+      if (name === null) return;
+      const r = await fetch('/api/kit/footage-name', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: g.raw, name})});
+      if (!r.ok) { toast('❌ ตั้งชื่อไม่ได้: ' + ((await r.json()).detail || r.status)); return; }
+      loadHomeDrafts();
+    };
+  }
+  g.ps.forEach(d => el.querySelector('.ft-ps').appendChild(projCard(d)));
+  return el;
+}
+// share of the workbench steps done (the same ticks the step bar shows)
+function guideShare(d) {
+  const t = guideDone(d);
+  return WZ.filter(w => t[w.key] || (w.key === 'subs' && d.subtitles > 0)).length / WZ.length;
+}
 function projCard(d) {
-  const src = (d.sources || [])[0];
   const el = document.createElement('div');
   el.className = 'proj';
-  const when = d.modified ? new Date(d.modified * 1000).toLocaleDateString('th-TH', {day: 'numeric', month: 'short'}) : '';
-  const badge = `<span class="badge ${d.sys}">${{clipkit: 'ClipKit', capcut: 'CapCut', hyperframes: 'HyperFrames'}[d.sys]}</span>`;
-  el.innerHTML = '<div class="th">' + badge + (src ? '<img loading="lazy" draggable="false" alt="" src="/api/video/frame?path=' +
-    encodeURIComponent(src) + '&t=1&width=240">' : (d.kind === 'hyperframes' ? '✨' : '🎞️')) + '</div>' +
-    '<div class="nm"></div><div class="mt">' + when + (d.duration ? ' · ' + Math.round(d.duration) + ' วิ' : '') + '</div>' +
-    '<div class="acts"><button data-a="open">เปิด</button><button data-a="rename">แก้ชื่อ</button><button data-a="del" class="del">ลบ</button></div>';
+  const badge = `<span class="badge ${d.sys}">${{clipkit: 'CK', capcut: 'CC', hyperframes: 'HF'}[d.sys]}</span>`;
+  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm"></span><span class="pct"></span></div><div class="pbar"><i></i></div>' +
+    '<div class="acts"><button data-a="done"></button><button data-a="open">✏️ แก้ไข</button><button data-a="del" class="del">🗑️ ลบ</button></div>';
   el.querySelector('.nm').textContent = d.name;
-  el.title = d.name;
+  el.querySelector('.nm').title = d.name + ' · ดับเบิลคลิกเพื่อแก้ชื่อ';
   el._d = d;
+  const show = () => {
+    const f = guideShare(d);
+    el.classList.toggle('full', f === 1);
+    el.querySelector('.pbar i').style.width = Math.round(f * 100) + '%';
+    el.querySelector('.pct').textContent = Math.round(f * 100) + '%';
+    el.querySelector('[data-a=done]').textContent = f === 1 ? '↩️ ยังไม่เสร็จ' : '✅ เสร็จ';
+  };
+  show();
+  el.querySelector('[data-a=done]').onclick = () => {
+    if (guideShare(d) === 1) { try { localStorage.removeItem(guideKey(d)); } catch {} }
+    else { try { localStorage.setItem(guideKey(d), JSON.stringify(Object.fromEntries(WZ.map(w => [w.key, true])))); } catch {} }
+    show();
+  };
   const open = async () => {
     if (d.kind === 'capcut') { openDraft(d.i); return; }
     const r = await kit('draft-open', d.path);
     if (r && r.url) window.open(r.url, '_blank');
   };
-  el.querySelector('.th').onclick = open;
   el.querySelector('[data-a=open]').onclick = open;
-  el.querySelector('[data-a=rename]').onclick = async () => {
+  el.querySelector('.nm').ondblclick = async () => {
     const name = prompt('ชื่อโปรเจกต์ใหม่', d.name);
     if (!name || name.trim() === d.name) return;
     const r = await kit('draft-rename', d.path, {name: name.trim()});
@@ -2840,7 +2906,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + e.message; }
 }
 </script>
-<script src="/shell.js?v=9"></script>
+<script src="/shell.js?v=10"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {
