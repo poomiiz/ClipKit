@@ -157,3 +157,35 @@ revoke execute on function public.clipkit_role(uuid), public.clipkit_create_orga
 grant execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text) to authenticated;
 revoke execute on function public.clipkit_member_directory(uuid),public.clipkit_set_drive_folder(uuid,text) from public,anon;
 grant execute on function public.clipkit_member_directory(uuid),public.clipkit_set_drive_folder(uuid,text) to authenticated;
+
+create function public.clipkit_commit_drive_file(org uuid,asset uuid,expected_revision integer,file_id text,sha256 text,expected_folder text) returns integer
+language plpgsql security definer set search_path='' as $$
+declare item public.clipkit_assets; current_folder text;
+begin
+  if public.clipkit_role(org) is null then raise exception 'Not an organization member' using errcode='42501'; end if;
+  select drive_folder_id into current_folder from public.clipkit_organizations where id=org for share;
+  if current_folder is null or current_folder is distinct from expected_folder then raise exception 'Organization folder changed' using errcode='40001'; end if;
+  if file_id is null or sha256 is null then raise exception 'File ID and checksum required'; end if;
+  select * into item from public.clipkit_assets where organization_id=org and id=asset for update;
+  if not found then raise exception 'Asset not in organization' using errcode='42501'; end if;
+  if item.revision is distinct from expected_revision then raise exception 'Asset changed; refresh before sending' using errcode='40001'; end if;
+  if item.kind='project' and item.status not in ('editing','changes_requested') then raise exception 'Reopen the project before changing files'; end if;
+  update public.clipkit_assets set drive_file_id=file_id,checksum=sha256,revision=revision+1,updated_by=auth.uid(),updated_at=now() where id=asset;
+  insert into public.clipkit_activity(organization_id,actor_id,asset_id,action,detail)
+    values (org,auth.uid(),asset,'file_sent',jsonb_build_object('file_id',file_id,'checksum',sha256,'revision',item.revision+1,'previous_file_id',item.drive_file_id));
+  return item.revision+1;
+end $$;
+revoke execute on function public.clipkit_commit_drive_file(uuid,uuid,integer,text,text,text) from public,anon;
+grant execute on function public.clipkit_commit_drive_file(uuid,uuid,integer,text,text,text) to authenticated;
+
+create function public.clipkit_record_received(org uuid,asset uuid,expected_revision integer) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+  if public.clipkit_role(org) is null then raise exception 'Not an organization member' using errcode='42501'; end if;
+  perform 1 from public.clipkit_assets where organization_id=org and id=asset and revision=expected_revision and drive_file_id is not null for share;
+  if not found then raise exception 'Asset changed; refresh before opening' using errcode='40001'; end if;
+  insert into public.clipkit_activity(organization_id,actor_id,asset_id,action,detail)
+    values (org,auth.uid(),asset,'file_received',jsonb_build_object('revision',expected_revision));
+end $$;
+revoke execute on function public.clipkit_record_received(uuid,uuid,integer) from public,anon;
+grant execute on function public.clipkit_record_received(uuid,uuid,integer) to authenticated;

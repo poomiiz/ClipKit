@@ -46,6 +46,15 @@ select pg_temp.must_fail(format('select public.clipkit_review_assets(%L,array[%L
 select public.clipkit_review_assets(:'org',array[:'clip']::uuid[],'approved',jsonb_build_object(:'clip',3),'Client confirmed version 3');
 select 1 / case when count(*)=1 then 1 else 0 end from public.clipkit_activity where asset_id=:'clip' and actor_id=auth.uid() and detail->>'to'='approved';
 
+select pg_temp.as_user('00000000-0000-0000-0000-000000000002');
+select public.clipkit_commit_drive_file(:'org',:'footage',1,'driveSnapshot123',repeat('a',64),'sampleDriveFolder123');
+select pg_temp.must_fail(format('select public.clipkit_commit_drive_file(%L,%L,1,%L,%L,%L)',:'org',:'footage','driveSnapshot999',repeat('b',64),'sampleDriveFolder123'));
+select pg_temp.must_fail(format('select public.clipkit_commit_drive_file(%L,%L,2,%L,%L,%L)',:'org',:'footage','driveSnapshot999',repeat('b',64),'wrongDriveFolder123'));
+select pg_temp.must_fail(format('select public.clipkit_commit_drive_file(%L,%L,4,%L,%L,%L)',:'org',:'clip','approvedClipSnapshot',repeat('b',64),'sampleDriveFolder123'));
+select public.clipkit_record_received(:'org',:'footage',2);
+select 1 / case when count(*)=1 then 1 else 0 end from public.clipkit_assets where id=:'footage' and revision=2 and drive_file_id='driveSnapshot123';
+select 1 / case when count(*)=2 then 1 else 0 end from public.clipkit_activity where asset_id=:'footage' and actor_id=auth.uid() and action in ('file_sent','file_received');
+
 select pg_temp.as_user('00000000-0000-0000-0000-000000000004');
 select 1 / case when count(*)=0 then 1 else 0 end from public.clipkit_assets;
 select 1 / case when count(*)=0 then 1 else 0 end from public.clipkit_members;
