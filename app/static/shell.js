@@ -48,6 +48,15 @@
   const health = () => fetch('/api/window/health', {cache: 'no-store', signal: AbortSignal.timeout(2000)})
     .then(async r => r.ok ? r.json() : null).catch(() => null);
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  // the server is gone: close the window (the ClipKit icon opens a fresh one); a window the browser
+  // will not let a script close shows one plain line instead of a page whose lists and covers fail
+  const stopped = () => {
+    window.ckLoadProjects = () => {};
+    window.close();
+    document.body.innerHTML = '<div style="position:fixed;inset:0;display:grid;place-items:center;background:#0b0e16;' +
+      'color:#c5cde0;font-size:16px;text-align:center;padding:24px">ปิด ClipKit แล้ว<br>' +
+      '<span style="color:#828ca4;font-size:14px">เปิดอีกครั้งจากไอคอน ClipKit หรือ widget MoonRacle</span></div>';
+  };
   async function systemControl(action) {
     if ([...systemButtons].some(b => b.disabled)) return;
     systemButtons.forEach(b => b.disabled = true);
@@ -82,13 +91,10 @@
           const result = await response.json();
           if (result.state === 'failed' || result.state === 'superseded') throw new Error(result.error || 'คำสั่งไม่สำเร็จ');
           if (result.state !== 'succeeded') continue;
-          if (action === 'shutdown') { systemStatus.textContent = 'ปิดระบบแล้ว · เปิดอีกครั้งจากไอคอน ClipKit'; return; }
+          if (action === 'shutdown') { stopped(); return; }
         }
         const current = await health();
-        if (action === 'shutdown' && !current) {
-          systemStatus.textContent = 'ปิดระบบแล้ว · เปิดอีกครั้งจากไอคอน ClipKit';
-          return;
-        }
+        if (action === 'shutdown' && !current) { stopped(); return; }
         if (action === 'restart' && current?.ready && current.instance !== (accepted?.instance ?? before?.instance)) {
           location.reload();
           return;
