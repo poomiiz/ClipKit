@@ -945,8 +945,8 @@ def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[s
     return out
 
 
-STORY_MAX_S = 150     # a short clip above this is split
-STORY_AIM_S = 95
+STORY_MAX_S = 300     # a story above this is split (length is trimmed later, in the clip step)
+STORY_AIM_S = 150
 
 
 def _split_long(first: int, last: int, phrases: list[dict[str, Any]], title: str, summary: str) -> list[dict[str, Any]]:

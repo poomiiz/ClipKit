@@ -570,7 +570,6 @@
         <div class="card">
           <h2>ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
           <button class="ghost" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเสียงและแบ่งเรื่อง</button>
-          <div class="hint" style="margin-top:8px">เรื่องละไม่เกิน <input id="storyMax" type="number" min="0.5" step="0.5" style="width:72px;display:inline-block" oninput="storyWarn()"> นาที (ว่าง = ไม่จำกัด · ใส่ก่อนกดเอาไฟล์ไปให้ AI)</div>
           <div id="storyPlan" style="margin-top:10px"></div>
         </div>
       </div>
@@ -1900,16 +1899,6 @@ async function makeDraft(open = true) {
 // Before choosing CapCut or HyperFrames: transcribe the whole file and split it into stories.
 const mmss = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0');
 let storyList = [];
-const storyMax = () => { const v = +document.getElementById('storyMax').value; return v > 0 ? v : null; };  // minutes; empty = no cap
-// stories longer than the cap get a warning; typing a new cap re-checks the list already shown
-function storyWarn() {
-  const max = storyMax();
-  document.querySelectorAll('#storyPlan .story').forEach((row, i) => {
-    const st = storyList[i], w = row.querySelector('.st-warn'), over = max && st && st.end - st.start > max * 60;
-    w.style.display = over ? '' : 'none';
-    if (over) w.textContent = '⚠️ ยาว ' + mmss(st.end - st.start) + ' เกิน ' + max + ' นาที';
-  });
-}
 // saved = only show a split this file already has (on opening it); nothing saved = leave the box empty
 async function planStories(saved) {
   const box = document.getElementById('storyPlan');
@@ -1938,7 +1927,6 @@ async function planStories(saved) {
       row.innerHTML = `<label class="tick"><input type="checkbox" checked data-i="${i}"></label>
         <div class="st-txt"><b></b><span class="hint"></span></div>
         <span class="st-done" style="display:none"></span>
-        <span class="st-warn" style="display:none;color:#f59e0b;font-size:12px;white-space:nowrap"></span>
         <span class="st-time" title="กดเพื่อฟังช่วงนี้">▶ ${mmss(st.start)}–${mmss(st.end)}</span>`;
       row.querySelector('b').textContent = (i + 1) + '. ' + st.title;
       row.querySelector('.hint').textContent = st.summary;
@@ -1960,7 +1948,6 @@ async function planStories(saved) {
     all.querySelector('input').onchange = e => box.querySelectorAll('.story input').forEach(c => { c.checked = e.target.checked; c.onchange(); });
     box.insertBefore(all, box.children[1]);
     storyNotes();
-    storyWarn();
     markMade();
   } catch (e) {
     box.textContent = '❌ ' + e.message;
@@ -2805,7 +2792,7 @@ function webAiBox(step, target, note) {
     };
     el('dl').onclick = async () => {
       try {
-        const r = await api('web-ai/export', {step, target, max_minutes: step === 'stories' ? storyMax() : null});
+        const r = await api('web-ai/export', {step, target, max_minutes: step === 'clip' ? +el('max').value || null : null});
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([r.text], {type: 'text/markdown'}));
         a.download = r.name; a.click();
@@ -2820,6 +2807,7 @@ function webAiBox(step, target, note) {
     };
   });
   return '<div class="agent-cmd"><div class="hint">' + note + '</div>'
+    + (step === 'clip' ? '<div class="hint">ให้คลิปยาวราว <input id="' + id + 'max" type="number" min="0.5" step="0.5" style="width:72px;display:inline-block"> นาที (ว่าง = ตัดแค่ส่วนเกิน · ใส่ก่อนกดปุ่มไฟล์)</div>' : '')
     + '<button class="small primary" id="' + id + 'dl">⬇ ไฟล์ให้ AI</button>'
     + '<textarea id="' + id + 'ta" rows="4" style="width:100%" placeholder="AI บนเว็บ: วางคำตอบ JSON ที่นี่"></textarea>'
     + '<button class="small" id="' + id + 'in">นำเข้าคำตอบ</button><div class="hint" id="' + id + 'msg"></div></div>';
