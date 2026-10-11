@@ -397,14 +397,14 @@
   body.dropping::after { content: 'วางไฟล์วิดีโอหรือโฟลเดอร์ที่นี่'; position: fixed; inset: 12px; z-index: 98;
     border: 3px dashed #7c5cff; border-radius: 18px; background: rgba(12,15,23,.82); color: #fff; font-size: 22px;
     display: grid; place-items: center; pointer-events: none; }
-  .new-zone { display: flex; align-items: center; gap: 18px; padding: 26px 28px; border: 2px dashed #3b3f63;
+  .new-zone { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 2px dashed #3b3f63;
     border-radius: 16px; background: linear-gradient(120deg, #1d1a3d, #15203a); cursor: pointer; transition: border-color .15s; }
   .new-zone:hover { border-color: #7c5cff; }
-  .new-zone b { display: block; font-size: 19px; }
-  .new-zone span { color: #b9bedd; font-size: 14px; }
-  .nz-plus { width: 54px; height: 54px; border-radius: 14px; background: #7c5cff; display: grid; place-items: center;
-    font-size: 32px; font-weight: 300; flex: none; }
-  .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 26px 0 12px; }
+  .new-zone b { display: block; font-size: 16px; }
+  .new-zone span { color: #b9bedd; font-size: 13px; }
+  .nz-plus { width: 38px; height: 38px; border-radius: 10px; background: #7c5cff; display: grid; place-items: center;
+    font-size: 24px; font-weight: 300; flex: none; }
+  .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 8px; }
   .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
   .foot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; }
   .foot { background: #141824; border: 1px solid #262d40; border-radius: 12px; overflow: hidden; min-width: 0; }
@@ -415,19 +415,30 @@
   .foot .ft-nm span { color: #828ca4; font-weight: 400; font-size: 12.5px; margin-left: 6px; }
   .foot .ft-path { font-size: 11.5px; color: #6b7590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
   .foot .ft-ps { padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-  .foot-grid.list { grid-template-columns: 1fr; }
-  .foot-grid.list .foot { display: grid; grid-template-columns: 220px 1fr; }
-  .foot-grid.list .ft-th { grid-row: span 2; aspect-ratio: auto; min-height: 124px; }
-  .proj { background: #1b2030; border: 1px solid #262d40; border-radius: 9px; padding: 7px 9px; }
-  .proj .pr-top { display: flex; gap: 6px; align-items: center; }
-  .proj .nm { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
-  .proj .pct { font-size: 11.5px; color: #828ca4; }
-  .proj .pbar { height: 5px; border-radius: 99px; background: #262d40; margin: 6px 0; overflow: hidden; }
+  /* list = a tree: one short line per footage, its projects indented underneath (click the line to fold) */
+  .foot-grid.list { grid-template-columns: 1fr; gap: 4px; }
+  .foot-grid.list .foot { display: grid; grid-template-columns: 64px 1fr; background: none; border: 0; border-radius: 8px; }
+  .foot-grid.list .ft-th { aspect-ratio: 16/9; border-radius: 5px; overflow: hidden; margin: 6px 0 6px 6px; font-size: 16px; }
+  .foot-grid.list .ft-info { padding: 6px 10px; align-self: center; cursor: pointer; }
+  .foot-grid.list .ft-info:hover { background: #141824; border-radius: 6px; }
+  .foot-grid.list .ft-nm { font-size: 14px; }
+  .foot-grid.list .ft-nm::before { content: '▾ '; color: #6b7590; }
+  .foot-grid.list .foot.closed .ft-nm::before { content: '▸ '; }
+  .foot-grid.list .foot.closed .ft-ps { display: none; }
+  .foot-grid.list .ft-ps { grid-column: 1 / -1; margin-left: 38px; padding: 0 0 6px 10px; border-left: 1px solid #262d40; gap: 0; }
+  .proj { display: flex; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; }
+  .proj:hover { background: #1b2030; }
+  .proj .pr-top { display: flex; gap: 6px; align-items: center; flex: 1; min-width: 0; }
+  .proj .nm { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .proj .nm:hover { color: #fff; text-decoration: underline; }
+  .proj .pct { font-size: 11px; color: #828ca4; }
+  .proj .pbar { width: 48px; flex: none; height: 4px; border-radius: 99px; background: #262d40; overflow: hidden; }
   .proj .pbar i { display: block; height: 100%; background: #7c5cff; border-radius: 99px; }
   .proj.full .pbar i { background: #10b981; }
-  .proj .acts { display: flex; gap: 4px; }
-  .proj .acts button { flex: 1; padding: 4px 2px; font-size: 12px; border-radius: 7px; cursor: pointer;
-    background: #141824; color: #c5cde0; border: 1px solid #262d40; }
+  .proj .acts { display: flex; gap: 2px; opacity: .35; }
+  .proj:hover .acts, .proj.sel .acts { opacity: 1; }
+  .proj .acts button { min-height: 0; height: auto; padding: 2px 6px; font-size: 13px; border-radius: 6px; cursor: pointer;
+    background: none; color: #c5cde0; border: 1px solid transparent; }
   .proj .acts button:hover { border-color: #7c5cff; color: #fff; }
   .proj .acts .del:hover { border-color: #ef4444; color: #ef4444; }
   .proj .badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #0f9d76; color: #fff; }
@@ -2365,6 +2376,17 @@ function footCard(g) {
     };
   }
   g.ps.forEach(d => el.querySelector('.ft-ps').appendChild(projCard(d)));
+  // list view: click the footage line to fold its projects (remembered on this machine)
+  let closed = {};
+  try { closed = JSON.parse(localStorage.getItem('ck_home_closed') || '{}'); } catch {}
+  const key = g.raw || g.name;
+  el.classList.toggle('closed', !!closed[key]);
+  el.querySelector('.ft-info').onclick = () => {
+    if (!document.getElementById('homeDrafts').classList.contains('list')) return;
+    closed[key] = el.classList.toggle('closed');
+    if (!closed[key]) delete closed[key];
+    try { localStorage.setItem('ck_home_closed', JSON.stringify(closed)); } catch {}
+  };
   return el;
 }
 // share of the workbench steps done (the same ticks the step bar shows)
@@ -2376,17 +2398,19 @@ function projCard(d) {
   const el = document.createElement('div');
   el.className = 'proj';
   const badge = `<span class="badge ${d.sys}">${{clipkit: 'CK', capcut: 'CC', hyperframes: 'HF'}[d.sys]}</span>`;
-  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm"></span><span class="pct"></span></div><div class="pbar"><i></i></div>' +
-    '<div class="acts"><button data-a="done"></button><button data-a="open">✏️ แก้ไข</button><button data-a="del" class="del">🗑️ ลบ</button></div>';
+  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open"></span><span class="pct"></span></div><div class="pbar"><i></i></div>' +
+    '<div class="acts"><button data-a="done"></button><button data-a="ren" title="เปลี่ยนชื่อ">✎</button><button data-a="del" class="del" title="ลบ">🗑️</button></div>';
   el.querySelector('.nm').textContent = d.name;
-  el.querySelector('.nm').title = d.name + ' · ดับเบิลคลิกเพื่อแก้ชื่อ';
+  el.querySelector('.nm').title = d.name + ' · คลิกเพื่อเปิด';
   el._d = d;
   const show = () => {
     const f = guideShare(d);
     el.classList.toggle('full', f === 1);
     el.querySelector('.pbar i').style.width = Math.round(f * 100) + '%';
     el.querySelector('.pct').textContent = Math.round(f * 100) + '%';
-    el.querySelector('[data-a=done]').textContent = f === 1 ? '↩️ ยังไม่เสร็จ' : '✅ เสร็จ';
+    const done = el.querySelector('[data-a=done]');
+    done.textContent = f === 1 ? '↩️' : '✅';
+    done.title = f === 1 ? 'ยังไม่เสร็จ' : 'ทำเครื่องหมายว่าเสร็จ';
   };
   show();
   el.querySelector('[data-a=done]').onclick = () => {
@@ -2400,7 +2424,7 @@ function projCard(d) {
     if (r && r.url) window.open(r.url, '_blank');
   };
   el.querySelector('[data-a=open]').onclick = open;
-  el.querySelector('.nm').ondblclick = async () => {
+  el.querySelector('[data-a=ren]').onclick = async () => {
     const name = prompt('ชื่อโปรเจกต์ใหม่', d.name);
     if (!name || name.trim() === d.name) return;
     const r = await kit('draft-rename', d.path, {name: name.trim()});
