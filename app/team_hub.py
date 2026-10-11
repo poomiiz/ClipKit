@@ -142,6 +142,9 @@ def save_setup(body: Setup, request: Request) -> dict:
     _same_origin(request)
     cfg = kit_settings._read_config()
     values = {key: value.strip() for key, value in body.model_dump(exclude={"google_drive_client_secret"}).items()}
+    if cfg.get("google_drive_client_secret") and cfg.get("google_drive_client_id")!=values["google_drive_client_id"] and values["google_drive_client_id"] and not body.google_drive_client_secret.get_secret_value().strip():
+        raise HTTPException(400,"เปลี่ยน Drive Client ID ต้องใส่ Client secret คู่กันใหม่")
+    if not values["google_drive_client_id"]:values["google_drive_client_secret"]=""
     if body.google_drive_client_secret.get_secret_value().strip():
         values["google_drive_client_secret"] = body.google_drive_client_secret.get_secret_value().strip()
     _validate_config(values)

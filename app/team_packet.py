@@ -117,7 +117,7 @@ def safe_member(name: str) -> PurePosixPath:
     return path
 
 
-def unpack(packet: Path, staging: Path, final: Path, org: str, asset: str, name: str) -> None:
+def unpack(packet: Path, staging: Path, final: Path, org: str, asset: str, name: str) -> Path:
     with zipfile.ZipFile(packet) as archive:
         entries=archive.infolist();seen=set()
         if len(entries)>100000:raise HTTPException(400,"แพ็กมีไฟล์มากเกินไป")
@@ -170,9 +170,12 @@ def unpack(packet: Path, staging: Path, final: Path, org: str, asset: str, name:
             if path.name=="draft_content.json":shutil.copy2(path,path.with_name(path.name+".bak_sync"))
             parsed=walk(parsed,local)
             if path==project/"draft_content.json":parsed["id"]=project_id
-            if path==project/"draft_meta_info.json":parsed.update(draft_id=project_id,draft_name=name,draft_fold_path=final.as_posix(),draft_root_path=final.parent.as_posix(),draft_json_file=(final/"draft_content.json").as_posix())
+            if path==project/"draft_meta_info.json":
+                parsed.update(draft_id=project_id,draft_name=name,draft_fold_path=final.as_posix(),draft_root_path=final.parent.as_posix(),draft_json_file=(final/"draft_content.json").as_posix(),cloud_draft_sync=False)
+                for key in list(parsed):
+                    if key.startswith("tm_draft_cloud_"):parsed[key]=0 if isinstance(parsed[key],int) else ""
             path.write_text(json.dumps(parsed,ensure_ascii=False),encoding="utf-8")
     if (staging/"resources").exists():shutil.move(str(staging/"resources"),str(project/"_team_resources"))
     if final.exists():raise HTTPException(409,"โปรเจกต์รุ่นนี้มีอยู่ในเครื่องแล้ว ไม่เขียนทับ")
     if not project.resolve().is_relative_to(staging.resolve()) or final.resolve().parent!=final.parent.resolve():raise HTTPException(400,"ตำแหน่งรับโปรเจกต์ไม่ถูกต้อง")
-    project.rename(final)
+    return project
