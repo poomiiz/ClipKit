@@ -35,6 +35,7 @@ body.shell { padding-left: var(--sb-w); font-family: "Segoe UI", "Leelawadee UI"
 .ck-top a:hover, .sb-control-buttons button:hover, .ck-top a.on { background: var(--sb-hover); border-color: var(--sb-line); }
 .sb-controls { position: relative; }
 .sb-control-buttons { display: flex; gap: 4px; }
+.sb-control-buttons button[hidden] { display: none; }
 .sb-control-buttons button:disabled { opacity: .5; cursor: wait; }
 #ckShutdown { color: #ff8a92; font-size: 17px; }
 #ckSystemStatus { position: absolute; right: 0; top: 38px; width: max-content; max-width: 280px; font-size: 12px; color: #aab3c8;

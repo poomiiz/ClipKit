@@ -124,6 +124,8 @@ function Invoke-ClipKitControl([string]$Operation) {
     }
     if ($owner) { Assert-ClipKitOwned $owner }
     if ($Operation -eq 'start' -and $owner) {
+        try { Invoke-RestMethod -Method Post "http://127.0.0.1:$Port/api/window/cancel-shutdown?control=v2" -TimeoutSec 2 | Out-Null }
+        catch { Write-Verbose "No pending ClipKit shutdown to cancel: $_" }
         return @{state = 'succeeded'; instance = (Wait-ClipKitReady $owner.ProcessId)}
     }
     if ($owner) {
