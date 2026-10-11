@@ -36,6 +36,9 @@ def main():
         assert client.get("/api/team/session").status_code == 200
         provider.assert_called_with("/auth/v1/token?grant_type=refresh_token", "POST", {"refresh_token": "provider-refresh"})
         assert hub._sessions[session_id]["access_token"] == "renewed-access"
+        provider.return_value=[{"id":"00000000-0000-0000-0000-000000000010","clipkit_members":[{"user_id":user["id"],"role":"editor"}]}]
+        assert client.post("/api/team/organizations/00000000-0000-0000-0000-000000000010/members",json={"email":"invited@example.test","role":"lead"}).status_code==403
+        assert provider.call_args.args[0].startswith("/rest/v1/clipkit_organizations")
         assert client.post("/api/team/logout", json={}).status_code == 200
         assert client.get("/api/team/organizations").status_code == 401
     with TestClient(app) as client, patch.object(hub.kit_settings, "_read_config", return_value={}):
