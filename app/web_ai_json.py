@@ -5,6 +5,7 @@ export_*() writes one text file to upload: the prompt plus the transcript and ti
 answers with one JSON (schema: prompts/web_ai/schema.md); import_answer() checks it and writes the same files the
 local agent writes (<video>.stories.json, clipkit_punch.json, clipkit_hook.json, clipkit_caption.json, motion), so
 run_clip / the editor carry on as before and the CapCut project is built here from this machine's own media.
+The same file works for an AI on this machine: it saves the JSON to answer_file() and the editor imports it.
 """
 from __future__ import annotations
 
@@ -29,8 +30,22 @@ def _prompt(name: str) -> str:
     return bare(PROMPTS / "web_ai" / name).replace("{STORY_RULES}", bare(PROMPTS / "story_split.md"))
 
 
+def packet_file(step: str, target: str) -> Path:
+    return (Path(target).with_name(Path(target).name + ".web-ai-stories.md") if step == "stories"
+            else Path(target) / "clipkit_web_ai.md")
+
+
+def answer_file(step: str, target: str) -> Path:
+    """Where an AI on this machine (Claude Code...) saves its answer instead of replying in chat."""
+    return packet_file(step, target).with_suffix(".answer.json")
+
+
 def _packet(prompt: str, data: dict[str, Any], out: Path) -> Path:
-    out.write_text(prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
+    ans = out.with_suffix(".answer.json")
+    ans.unlink(missing_ok=True)  # an answer to an older export must not be imported for this one
+    out.write_text(f"> ถ้าคุณเขียนไฟล์ในเครื่องนี้ได้ (เช่น Claude Code): ไม่ต้องตอบในแชต ให้บันทึก JSON คำตอบ "
+                   f"(ตามหัวข้อ ตอบกลับ ด้านล่าง ไม่ต้องมี ```) ลงไฟล์ `{ans}` แล้ว ClipKit จะนำเข้าเอง\n\n"
+                   + prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
                    + json.dumps(data, ensure_ascii=False, indent=1) + "\n```\n", encoding="utf-8")
     return out
 
@@ -52,7 +67,7 @@ def export_stories(video: str) -> Path:
     lines = [{"start": round(p["start"], 2), "end": round(p["end"], 2), "text": p["text"]}
              for p in json.loads(tf.read_text(encoding="utf-8"))]
     data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "lines": lines}
-    return _packet(_prompt("stories.md"), data, Path(video).with_name(Path(video).name + ".web-ai-stories.md"))
+    return _packet(_prompt("stories.md"), data, packet_file("stories", video))
 
 
 def export_clip(path: str) -> Path:
@@ -63,7 +78,7 @@ def export_clip(path: str) -> Path:
     (Path(path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "caption_language": _caption_lang(path),
             "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)]}
-    return _packet(_prompt("clip.md"), data, Path(path) / "clipkit_web_ai.md")
+    return _packet(_prompt("clip.md"), data, packet_file("clip", path))
 
 
 def parse(text: str) -> dict[str, Any]:
@@ -205,9 +220,14 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
 
 
 def import_answer(step: str, target: str, text: str) -> dict[str, Any]:
-    ans = parse(text)
-    if step == "stories":
-        return {"stories": import_stories(target, ans)}
-    if step == "clip":
-        return import_clip(target, ans)
-    raise VideoEditError(f"unknown step: {step}")
+    """text = the pasted answer; empty = the answer file an AI on this machine saved ({"waiting": True} until then)."""
+    if step not in ("stories", "clip"):
+        raise VideoEditError(f"unknown step: {step}")
+    saved = answer_file(step, target) if not text.strip() else None
+    if saved and not saved.is_file():
+        return {"waiting": True}
+    ans = parse(saved.read_text(encoding="utf-8-sig") if saved else text)
+    out = {"stories": import_stories(target, ans)} if step == "stories" else import_clip(target, ans)
+    if saved:
+        saved.unlink()  # imported once: a clip answer cuts footage, so it must never run twice
+    return out
