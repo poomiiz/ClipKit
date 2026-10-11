@@ -2,6 +2,7 @@
 import json
 import os
 import tempfile
+import threading
 from pathlib import Path
 from uuid import UUID
 from typing import Literal
@@ -13,6 +14,7 @@ import team_hub as hub
 
 router=APIRouter(prefix='/api/team',tags=['team-workspace'])
 BINDINGS=kit.KIT/'team_project_bindings.json'
+_binding_lock=threading.RLock()
 
 class Workspace(BaseModel):
  path:str=Field(max_length=2000)
@@ -130,9 +132,14 @@ class Bind(BaseModel):
 def bind(org:UUID,project:UUID,body:Bind,request:Request):
  item=owned(org,project,request);kind,path=kit._project(body.path)
  if kind!=item['project_type']:raise HTTPException(400,'ชนิดโปรเจกต์ไม่ตรงกับงาน')
- bindings=json.loads(BINDINGS.read_text(encoding='utf-8')) if BINDINGS.exists() else {}
- bindings[str(project)]={'path':str(path.resolve()),'owner_id':item['owner_id'],'organization_id':str(org)}
- BINDINGS.write_text(json.dumps(bindings,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+ with _binding_lock:
+  bindings=json.loads(BINDINGS.read_text(encoding='utf-8')) if BINDINGS.exists() else {}
+  if any(k!=str(project) and v['path']==str(path.resolve()) for k,v in bindings.items()):raise HTTPException(409,'โปรเจกต์นี้ผูกกับงานอื่นแล้ว')
+  bindings[str(project)]={'path':str(path.resolve()),'owner_id':item['owner_id'],'organization_id':str(org)}
+  with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=BINDINGS.parent,delete=False) as out:
+   tmp=Path(out.name);json.dump(bindings,out,ensure_ascii=False,indent=2)
+  try:os.replace(tmp,BINDINGS)
+  finally:tmp.unlink(missing_ok=True)
  return {'saved':True}
 @router.post('/organizations/{org}/projects/{project}/open')
 def open_project(org:UUID,project:UUID,body:Version,request:Request):
@@ -166,3 +173,23 @@ def preview(org:UUID,project:UUID,request:Request):
  path=file_at(workspace(org)/'exports',item.get('export_name'),item.get('export_size'))
  if not path:raise HTTPException(409,'MP4 ยังไม่ได้ sync')
  return FileResponse(path,media_type='video/mp4')
+
+def guard_paths(values,request):
+ """One boundary for existing editor callers; database decides every bound project access."""
+ if not BINDINGS.exists():return
+ with _binding_lock:bindings=json.loads(BINDINGS.read_text(encoding='utf-8'))
+ def strings(value):
+  if isinstance(value,str):yield value
+  elif isinstance(value,dict):
+   for item in value.values():yield from strings(item)
+  elif isinstance(value,list):
+   for item in value:yield from strings(item)
+ paths=[]
+ for value in strings(values):
+  if not Path(value).is_absolute():continue
+  try:paths.append(Path(value).resolve())
+  except (OSError,ValueError):continue
+ for project,binding in bindings.items():
+  root=Path(binding['path']).resolve()
+  if any(path==root or root in path.parents for path in paths):
+   owned(UUID(binding['organization_id']),UUID(project),request)
