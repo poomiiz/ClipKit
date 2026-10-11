@@ -1,0 +1,14 @@
+:root{--bg:#0c0f17;--card:#141824;--line:#262d40;--txt:#f1f4fb;--mut:#828ca4;--accent:#7c5cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 "Segoe UI","Leelawadee UI",sans-serif}
+main{max-width:1200px;margin:auto;padding:24px 18px 90px}h1{font-size:23px;margin:0 0 8px}h2{font-size:18px;margin:0 0 12px}
+button,input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#1b2030;color:var(--txt)}
+button{cursor:pointer}button:hover{border-color:var(--accent)}button:disabled{opacity:.5;cursor:wait}.primary{background:var(--accent)}
+label{display:flex;flex-direction:column;gap:6px}input,select,textarea{min-width:0;width:100%}textarea{min-height:75px}
+form,.panel{padding:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin:16px 0}
+form{display:grid;gap:12px;max-width:500px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row select{width:auto;max-width:100%}
+.muted{color:var(--mut)}#message{padding:10px 0;min-height:42px;color:#d0b8ff}.error{color:#fda4af!important}
+.assets{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}.asset{border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.asset label{display:flex;flex-direction:row;align-items:center}.asset input[type=checkbox]{width:auto}.name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{display:inline-block;font-size:13px;margin:8px 0;color:#f4ce79}.asset .muted{font-size:12px}.activity{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+[hidden]{display:none!important}a{color:#c5b8ff}.help{max-width:760px;font-size:13px;color:#aab3c8}.help p{margin:6px 0}
+:focus-visible{outline:2px solid #b9a8ff;outline-offset:3px}

@@ -15,7 +15,7 @@
   const svg = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
   const NAV = [
     // starting or continuing a clip lives on the home tiles; the sidebar only moves between pages
-    ['', [['home', 'หน้าแรก', '/video-editor.html'], ['style', 'คลังสไตล์', '/styles.html']]],
+    ['', [['home', 'หน้าแรก', '/video-editor.html'], ['style', 'คลังสไตล์', '/styles.html'], ['drafts', 'ทีมตัดต่อ', '/team.html'], ['clip', 'ตรวจงานทีม', '/review.html']]],
   ];
   const here = location.pathname + location.hash;
   const isOn = href => href === here || (href === location.pathname && !location.hash && !href.includes('#'));

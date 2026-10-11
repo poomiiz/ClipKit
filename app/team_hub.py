@@ -163,6 +163,21 @@ def add_member(org: UUID, body: Member, request: Request) -> dict:
     return {"saved": True}
 
 
+@router.get("/organizations/{org}/members")
+def member_directory(org: UUID, request: Request) -> Any:
+    return rpc(request, "clipkit_member_directory", {"org": str(org)})
+
+
+class DriveFolder(BaseModel):
+    folder_id: str = Field(pattern=r"^[A-Za-z0-9_-]{10,200}$")
+
+
+@router.post("/organizations/{org}/drive-folder")
+def set_drive_folder(org: UUID, body: DriveFolder, request: Request) -> dict:
+    rpc(request, "clipkit_set_drive_folder", {"org": str(org), "folder_id": body.folder_id})
+    return {"saved": True}
+
+
 @router.get("/organizations/{org}/assets")
 def assets(org: UUID, request: Request) -> Any:
     return _provider("/rest/v1/clipkit_assets?organization_id=eq." + str(org) + "&select=*&order=updated_at.desc", token=session(request)["access_token"])

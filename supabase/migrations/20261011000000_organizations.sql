@@ -102,6 +102,23 @@ begin
   return asset;
 end $$;
 
+create function public.clipkit_member_directory(org uuid) returns table(user_id uuid, role text, email text, display_name text)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if public.clipkit_role(org) is null then raise exception 'Not an organization member' using errcode='42501'; end if;
+  return query select m.user_id,m.role,u.email::text,coalesce(u.raw_user_meta_data->>'display_name',u.email::text)
+    from public.clipkit_members m join auth.users u on u.id=m.user_id where m.organization_id=org;
+end $$;
+
+create function public.clipkit_set_drive_folder(org uuid, folder_id text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if public.clipkit_role(org) is distinct from 'owner' then raise exception 'Owner only' using errcode='42501'; end if;
+  update public.clipkit_organizations set drive_folder_id=folder_id where id=org;
+  insert into public.clipkit_activity(organization_id,actor_id,action,detail)
+    values (org,auth.uid(),'drive_folder_changed',jsonb_build_object('folder_id',folder_id));
+end $$;
+
 create function public.clipkit_review_assets(org uuid, asset_ids uuid[], next_status text, expected_revisions jsonb, note text default '') returns integer
 language plpgsql security definer set search_path = '' as $$
 declare member_role text; item public.clipkit_assets; found integer := 0; total integer;
@@ -137,3 +154,5 @@ end $$;
 
 revoke execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text) from public, anon;
 grant execute on function public.clipkit_role(uuid), public.clipkit_create_organization(text), public.clipkit_add_member(uuid,text,text), public.clipkit_register_asset(uuid,text,text,uuid), public.clipkit_review_assets(uuid,uuid[],text,jsonb,text) to authenticated;
+revoke execute on function public.clipkit_member_directory(uuid),public.clipkit_set_drive_folder(uuid,text) from public,anon;
+grant execute on function public.clipkit_member_directory(uuid),public.clipkit_set_drive_folder(uuid,text) to authenticated;
