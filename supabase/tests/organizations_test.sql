@@ -1,7 +1,8 @@
 -- Run only on an isolated database after local_stub.sql and the organization migration.
 alter table auth.users add column email text;
 alter table auth.users add column email_confirmed_at timestamptz;
-insert into auth.users values
+alter table auth.users add column raw_user_meta_data jsonb default '{}';
+insert into auth.users(id,email,email_confirmed_at) values
  ('00000000-0000-0000-0000-000000000001','owner@example.test',now()),
  ('00000000-0000-0000-0000-000000000002','editor@example.test',now()),
  ('00000000-0000-0000-0000-000000000003','lead@example.test',now()),
@@ -22,6 +23,8 @@ select pg_temp.as_user('00000000-0000-0000-0000-000000000001');
 select public.clipkit_create_organization('First team') as org \gset
 select public.clipkit_add_member(:'org','editor@example.test','editor');
 select public.clipkit_add_member(:'org','lead@example.test','lead');
+select 1 / case when count(*)=3 then 1 else 0 end from public.clipkit_member_directory(:'org');
+select public.clipkit_set_drive_folder(:'org','sampleDriveFolder123');
 select public.clipkit_register_asset(:'org','footage','Take 1') as footage \gset
 select public.clipkit_register_asset(:'org','project','Clip 1',:'footage') as clip \gset
 select public.clipkit_register_asset(:'org','project','Clip 2',:'footage') as second \gset
@@ -29,6 +32,7 @@ select public.clipkit_register_asset(:'org','project','Clip 2',:'footage') as se
 select pg_temp.as_user('00000000-0000-0000-0000-000000000002');
 select pg_temp.must_fail(format('update public.clipkit_assets set status=%L where id=%L','approved',:'clip'));
 select pg_temp.must_fail(format('select public.clipkit_add_member(%L,%L,%L)',:'org','outsider@example.test','lead'));
+select pg_temp.must_fail(format('select public.clipkit_set_drive_folder(%L,%L)',:'org','sampleDriveFolder999'));
 select pg_temp.must_fail(format('select public.clipkit_review_assets(%L,array[%L]::uuid[],%L,%L::jsonb,%L)',:'org',:'clip','approved','{}','client approved'));
 select public.clipkit_review_assets(:'org',array[:'clip',:'second']::uuid[],'awaiting_lead',jsonb_build_object(:'clip',1,:'second',1));
 
@@ -45,6 +49,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-000000000004');
 select 1 / case when count(*)=0 then 1 else 0 end from public.clipkit_assets;
 select 1 / case when count(*)=0 then 1 else 0 end from public.clipkit_members;
 select 1 / case when count(*)=0 then 1 else 0 end from public.clipkit_activity;
+select pg_temp.must_fail(format('select * from public.clipkit_member_directory(%L)',:'org'));
 select public.clipkit_create_organization('Other team') as other_org \gset
 select public.clipkit_register_asset(:'other_org','project','Private clip') as other_clip \gset
 select pg_temp.must_fail(format('select public.clipkit_register_asset(%L,%L,%L,%L)',:'other_org','project','Cross-team source',:'footage'));
