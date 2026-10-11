@@ -33,6 +33,7 @@ SCOPE = "https://www.googleapis.com/auth/drive"
 API = "https://www.googleapis.com/drive/v3/"
 CHUNK = 8 * 1024 * 1024
 _import_lock=threading.Lock()
+_sharing_lock=threading.Lock()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -125,10 +126,14 @@ def connect(request: Request) -> dict:
                 token = oauth_token({**cfg, "grant_type": "authorization_code", "code": params["code"][0], "redirect_uri": redirect, "code_verifier": verifier})
                 if SCOPE not in token.get("scope", "").split() or not token.get("refresh_token"):
                     raise HTTPException(400, "Google ให้สิทธิ์ Drive ไม่ครบ กรุณาเชื่อมใหม่")
+                email=drive_json(token,"about?fields=user(emailAddress)").get("user",{}).get("emailAddress","").lower()
                 with hub._session_lock:
                     current = hub._sessions.get(session_id)
                     if not current or current["ends_at"] <= time.time() or current.get("drive_state") != state:
                         raise HTTPException(401, "บัญชี ClipKit ออกจากระบบแล้ว กรุณาเชื่อมใหม่")
+                    # shortcut: require the same email; add verified identity linking if separate accounts are needed.
+                    if not email or email!=current["user"].get("email","").lower():raise HTTPException(400,"เชื่อม Google บัญชีเดียวกับอีเมลที่สมัคร ClipKit เพื่อรับสิทธิ์ฟุตขององค์กร")
+                    token["email"]=email
                     current["drive"] = token
                 message = "Connected. Return to ClipKit."
             except (HTTPException, ValueError, KeyError) as exc:
@@ -211,12 +216,34 @@ def organization(request: Request, org: UUID) -> dict:
     return found
 
 
-def folder_access(token: dict, folder_id: str, writing: bool = False) -> None:
-    folder = drive_json(token, "files/" + folder_id + "?supportsAllDrives=true&fields=id,mimeType,trashed,capabilities(canAddChildren)")
+def folder_access(token: dict, folder_id: str, writing: bool = False,sharing: bool=False) -> None:
+    folder = drive_json(token, "files/" + folder_id + "?supportsAllDrives=true&fields=id,mimeType,trashed,capabilities(canAddChildren,canShare)")
     if folder.get("trashed") or folder.get("mimeType") != "application/vnd.google-apps.folder":
         raise HTTPException(409, "โฟลเดอร์ Drive นี้ใช้ไม่ได้")
     if writing and not folder.get("capabilities", {}).get("canAddChildren"):
         raise HTTPException(403, "บัญชี Google นี้ไม่มีสิทธิ์ส่งไฟล์เข้าโฟลเดอร์องค์กร")
+    if sharing and not folder.get("capabilities",{}).get("canShare"):raise HTTPException(403,"บัญชี Google นี้ให้สิทธิ์สมาชิกในโฟลเดอร์ไม่ได้")
+
+
+def share_members(token: dict,folder: str,members: list[dict]) -> None:
+    with _sharing_lock:
+        permissions={};page=""
+        while True:
+            result=drive_json(token,"files/"+folder+"/permissions?"+urllib.parse.urlencode({"supportsAllDrives":"true","pageSize":100,"fields":"nextPageToken,permissions(id,type,emailAddress,role)","pageToken":page}))
+            permissions.update({p.get("emailAddress","").lower():p for p in result.get("permissions",[]) if p.get("type")=="user"})
+            page=result.get("nextPageToken","")
+            if not page:break
+        for member in members:
+            email=member["email"].strip().lower();old=permissions.get(email)
+            if old and old["role"] in ("owner","organizer","fileOrganizer","writer"):continue
+            path="files/"+folder+"/permissions"
+            body={"role":"writer"}
+            if old:path+="/"+urllib.parse.quote(old["id"],safe="");method="PATCH"
+            else:body.update(type="user",emailAddress=email);method="POST"
+            query={"supportsAllDrives":"true","fields":"id"}
+            if not old:query["sendNotificationEmail"]="false"
+            request=urllib.request.Request(API+path+"?"+urllib.parse.urlencode(query),data=json.dumps(body).encode(),method=method,headers={"Authorization":"Bearer "+token["access_token"],"Content-Type":"application/json"})
+            with google(request):pass
 
 
 def upload_file(token: dict, file: Path, org: str, asset: str, folder: str, checksum: str) -> str:
