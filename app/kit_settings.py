@@ -794,16 +794,44 @@ def bug_report(body: BugReport) -> dict[str, Any]:
     return report_bug(body.text, body.page, body.errors, body.auto)
 
 
+# display names people give raw files on the home page; the files themselves are never renamed
+FOOTAGE_NAMES = KIT / "footage_names.json"
+
+
+def _footage_names() -> dict[str, str]:
+    return json.loads(FOOTAGE_NAMES.read_text(encoding="utf-8")) if FOOTAGE_NAMES.is_file() else {}
+
+
+class FootageName(BaseModel):
+    path: str
+    name: str   # empty = back to the file name
+
+
+@router.post("/footage-name")
+def footage_name(body: FootageName) -> dict[str, str]:
+    p = Path(body.path)
+    if not p.is_file():
+        raise HTTPException(404, f"file not found: {p}")
+    names, key, name = _footage_names(), str(p).lower(), body.name.strip()
+    if name:
+        names[key] = name
+    else:
+        names.pop(key, None)
+    FOOTAGE_NAMES.write_text(json.dumps(names, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"name": name or p.stem}
+
+
 @router.get("/raw-groups")
 def raw_groups() -> dict[str, Any]:
     """Every project grouped under the raw file it was cut from (newest group first)."""
     import capcut_edit
+    names = _footage_names()
     groups: dict[str, dict[str, Any]] = {}
     items = [("capcut", d) for d in capcut_edit.list_drafts()] + [("hyperframes", p) for p in hf_projects()["projects"]]
     for kind, d in items:
         raw = _raw_of(Path(d["path"]), d.get("sources") or [])
         key = str(Path(raw)).lower() if raw else ""
-        g = groups.setdefault(key, {"raw": raw, "name": Path(raw).stem if raw else "ไม่ทราบไฟล์ดิบ",
+        g = groups.setdefault(key, {"raw": raw, "name": names.get(key) or Path(raw).stem if raw else "ไม่ทราบไฟล์ดิบ",
                                     "exists": bool(raw) and Path(raw).is_file(), "modified": 0, "projects": []})
         g["projects"].append({"kind": kind, "name": d["name"], "path": d["path"], "modified": d.get("modified") or 0})
         g["modified"] = max(g["modified"], d.get("modified") or 0)
