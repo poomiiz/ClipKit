@@ -115,6 +115,11 @@ async def no_cache_html(request, call_next):
         from fastapi import HTTPException
         from starlette.concurrency import run_in_threadpool
         values = dict(request.query_params)
+        if request.url.path.startswith('/api/video/hfp/'):
+            import base64
+            key=request.url.path.split('/')[4]
+            try: values['preview_path']=base64.urlsafe_b64decode(key+'='*(-len(key)%4)).decode('utf-8')
+            except (ValueError,UnicodeError): return JSONResponse({'detail':'Invalid preview path'},status_code=400)
         if request.headers.get('content-type', '').startswith('application/json'):
             try: values['body'] = await request.json()
             except ValueError: return JSONResponse({'detail':'Invalid JSON'},status_code=400)
