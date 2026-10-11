@@ -45,6 +45,10 @@ def main():
    assert client.post(path+'/export',json={'expected_revision':2,'name':'cut.mp4','size_bytes':3}).status_code==200
    assert rpc.call_args.args[1]=='clipkit_project_action'
    assert client.post(path+'/export',json={'expected_revision':2,'name':'missing.mp4','size_bytes':3}).status_code==409
+   with patch.object(w.kit,'KIT',shared/'footage'):
+    try:w.workspace(org)
+    except HTTPException as e:assert e.status_code==409
+    else:raise AssertionError('machine metadata inside sync accepted')
    with patch.object(w.kit,'_project_roots',return_value={'capcut':shared/'footage'/'drafts'}):
     try:w.workspace(org)
     except HTTPException as e:assert e.status_code==409

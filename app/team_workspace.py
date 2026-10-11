@@ -25,13 +25,19 @@ def workspace(org:UUID) -> Path:
  if not value:raise HTTPException(409,'เลือกโฟลเดอร์ทีมในเครื่องนี้ก่อน')
  root=Path(value).resolve()
  if not root.is_dir():raise HTTPException(409,'โฟลเดอร์ทีมยังไม่พร้อม')
- for project_root in kit._project_roots().values():
-  if str(project_root) in ('','.'):continue
-  project_root=project_root.resolve()
-  for shared in (root/'footage',root/'exports'):
-   if project_root==shared or shared in project_root.parents or project_root in shared.parents:
-    raise HTTPException(409,'โฟลเดอร์โปรเจกต์ต้องอยู่แยกจากโฟลเดอร์ซิงก์')
+ return validate_workspace(root)
+
+def validate_workspace(root:Path) -> Path:
+ for shared in (root/'footage',root/'exports'):
+  shared=shared.resolve()
+  if shared.parent!=root:raise HTTPException(409,'footage และ exports ต้องเป็นโฟลเดอร์ย่อยจริงของทีม')
+  for private_root in [kit.KIT.resolve(),*kit._project_roots().values()]:
+   if str(private_root) in ('','.'):continue
+   private_root=private_root.resolve()
+   if private_root==shared or shared in private_root.parents or private_root in shared.parents:
+    raise HTTPException(409,'โปรเจกต์และข้อมูลเครื่องต้องอยู่แยกจากโฟลเดอร์ซิงก์')
  return root
+
 
 def writable(root:Path):
  for folder in ('footage','exports'):
@@ -49,12 +55,7 @@ def save_workspace(org:UUID,body:Workspace,request:Request):
  root=Path(body.path).resolve()
  if not root.is_dir():raise HTTPException(400,'โฟลเดอร์ทีมไม่มีอยู่')
  cfg=kit._read_config();cfg.setdefault('team_workspaces',{})[str(org)]={'path':str(root),'tool':body.tool}
- # Check before saving; no project or metadata folder is created inside the shared workspace.
- for project_root in kit._project_roots().values():
-  if str(project_root) in ('','.'):continue
-  p=project_root.resolve()
-  for shared in (root/'footage',root/'exports'):
-   if p==shared or p in shared.parents or shared in p.parents:raise HTTPException(400,'โปรเจกต์ต้องอยู่แยกจาก footage และ exports')
+ validate_workspace(root)
  try:writable(root)
  except OSError as exc:raise HTTPException(400,'เขียนโฟลเดอร์ทีมไม่ได้') from exc
  kit.CONFIG.write_text(json.dumps(cfg,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
