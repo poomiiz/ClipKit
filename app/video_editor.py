@@ -325,6 +325,9 @@ def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
 @router.get("/story-plan")
 def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
     job = _story_jobs.get(file)
+    if not job and video_edit.stories_file(file).is_file() and video_edit.transcript_file(file).is_file():
+        job = _story_jobs[file] = {"status": "running"}  # split before ClipKit restarted: reload it, no Whisper
+        _run_story_plan(file)
     if not job:
         raise HTTPException(status_code=404, detail="no plan started for this file")
     if job["status"] == "waiting":
@@ -977,6 +980,7 @@ class WebAiRequest(BaseModel):
     step: str = Field(pattern="^(stories|clip)$")
     target: str  # the video (stories) or the project folder (clip)
     answer: str = ""
+    max_minutes: float | None = Field(default=None, gt=0)  # clip: about how long the person wants the clip
 
 
 @router.post("/web-ai/export")
@@ -984,7 +988,8 @@ def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
     """The file to upload to an AI in the browser instead of pasting the command to the agent here."""
     import web_ai_json as web_ai
     try:
-        out = (web_ai.export_stories if req.step == "stories" else web_ai.export_clip)(req.target)
+        out = (web_ai.export_stories(req.target) if req.step == "stories"
+               else web_ai.export_clip(req.target, req.max_minutes))
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"file": str(out), "name": out.name, "text": out.read_text(encoding="utf-8")}
