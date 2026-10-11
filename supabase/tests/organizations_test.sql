@@ -42,6 +42,7 @@ select pg_temp.must_fail(format('select public.clipkit_review_assets(%L,array[%L
 select 1 / case when count(*)=2 then 1 else 0 end from public.clipkit_assets where kind='project' and status='awaiting_lead' and revision=2;
 select public.clipkit_review_assets(:'org',array[:'clip']::uuid[],'awaiting_review',jsonb_build_object(:'clip',2));
 select pg_temp.must_fail(format('select public.clipkit_review_assets(%L,array[%L]::uuid[],%L,%L::jsonb)',:'org',:'clip','approved',jsonb_build_object(:'clip',3)::text));
+select pg_temp.must_fail(format('select public.clipkit_review_assets(%L,array[%L]::uuid[],%L,%L::jsonb,null)',:'org',:'clip','approved',jsonb_build_object(:'clip',3)::text));
 select public.clipkit_review_assets(:'org',array[:'clip']::uuid[],'approved',jsonb_build_object(:'clip',3),'Client confirmed version 3');
 select 1 / case when count(*)=1 then 1 else 0 end from public.clipkit_activity where asset_id=:'clip' and actor_id=auth.uid() and detail->>'to'='approved';
 

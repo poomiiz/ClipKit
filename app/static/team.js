@@ -71,7 +71,7 @@ function renderAssets(id, list) {
   list.forEach(asset=>{
     const card=document.createElement('div');card.className='asset';
     const label=document.createElement('label');
-    if (reviewPage) {const check=document.createElement('input');check.type='checkbox';check.value=asset.id;check.setAttribute('aria-label','เลือก '+asset.name);label.append(check);}
+    if (asset.kind==='project' && (reviewPage || ['editing','changes_requested'].includes(asset.status))) {const check=document.createElement('input');check.type='checkbox';check.value=asset.id;check.setAttribute('aria-label','เลือก '+asset.name);label.append(check);}
     const name=document.createElement('span');name.className='name';name.textContent=asset.name;name.title=asset.name;label.append(name);card.append(label);
     if (asset.kind==='project') {
       const status=document.createElement('div');status.className='status';status.textContent=LABELS[asset.status];card.append(status);
@@ -94,6 +94,7 @@ form('createOrg',async body=>{const org=await team('organizations',body);localSt
 form('addMember',async body=>{await team('organizations/'+selectedOrg+'/members',body);await loadOrganizations();say('บันทึกสมาชิกแล้ว');});
 form('driveFolder',async body=>{const match=body.folder.match(/\/folders\/([A-Za-z0-9_-]+)/);await team('organizations/'+selectedOrg+'/drive-folder',{folder_id:match ? match[1] : body.folder.trim()});await loadOrganizations();say('บันทึกโฟลเดอร์แล้ว การรับส่งไฟล์ต้องเชื่อมบัญชี Drive');});
 form('review',async body=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),body.status,body.note);await loadOrganization();say('บันทึกผลตรวจแล้ว '+result.updated+' โปรเจกต์');});
+form('submitProjects',async()=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),'awaiting_lead','');await loadOrganization();say('ส่งหัวหน้าตรวจแล้ว '+result.updated+' โปรเจกต์');});
 $('organization').onchange=()=>loadOrganization().catch(e=>say(e.message,true));
 $('logout').onclick=async()=>{try{await team('logout',{});selectedOrg='';await loadIdentity();say('ออกจากระบบแล้ว');}catch(e){say(e.message,true);}};
 loadIdentity().catch(e=>say(e.message,true));

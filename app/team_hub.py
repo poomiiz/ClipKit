@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import secrets
 import threading
 import time
@@ -24,10 +25,24 @@ COOKIE = "clipkit_session"
 
 def _config() -> tuple[str, str]:
     cfg = kit_settings._read_config()
+    return _validate_config(cfg)
+
+
+def _validate_config(cfg: dict) -> tuple[str, str]:
     url, key = str(cfg.get("supabase_url", "")).rstrip("/"), str(cfg.get("supabase_anon_key", ""))
     parsed = urllib.parse.urlsplit(url)
     if not key or parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.query or parsed.fragment:
         raise HTTPException(503, "ยังไม่ได้ตั้งค่าระบบบัญชีผู้ใช้และองค์กร")
+    if key.startswith("sb_secret_"):
+        raise HTTPException(503, "ระบบบัญชีต้องใช้ Publishable หรือ anon key เท่านั้น")
+    if key.count(".") == 2:
+        try:
+            payload = key.split(".")[1]
+            role = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))).get("role")
+        except (ValueError, UnicodeError):
+            raise HTTPException(503, "ค่า anon key ของระบบบัญชีไม่ถูกต้อง")
+        if role != "anon":
+            raise HTTPException(503, "ระบบบัญชีต้องใช้ anon key เท่านั้น")
     return url, key
 
 
@@ -61,7 +76,7 @@ def _remember(data: dict, response: Response) -> bool:
         return False
     session_id = secrets.token_urlsafe(32)
     with _session_lock:
-        _sessions[session_id] = {**data, "expires_at": time.time() + data.get("expires_in", 3600)}
+        _sessions[session_id] = {**data, "expires_at": time.time() + data.get("expires_in", 3600), "ends_at": time.time() + 86400}
     response.set_cookie(COOKIE, session_id, httponly=True, samesite="strict", max_age=86400, path="/")
     return True
 
@@ -72,8 +87,17 @@ def session(request: Request) -> dict[str, Any]:
         data = _sessions.get(session_id)
         if not data:
             raise HTTPException(401, "เข้าสู่ระบบก่อน")
+        if data["ends_at"] <= time.time():
+            _sessions.pop(session_id)
+            raise HTTPException(401, "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่")
         if data["expires_at"] <= time.time() + 30:
-            renewed = _provider("/auth/v1/token?grant_type=refresh_token", "POST", {"refresh_token": data["refresh_token"]})
+            try:
+                renewed = _provider("/auth/v1/token?grant_type=refresh_token", "POST", {"refresh_token": data["refresh_token"]})
+            except HTTPException as exc:
+                if exc.status_code in (400, 401, 403):
+                    _sessions.pop(session_id)
+                    raise HTTPException(401, "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่") from exc
+                raise
             data.update(renewed)
             data["expires_at"] = time.time() + renewed.get("expires_in", 3600)
         return data.copy()
@@ -91,6 +115,37 @@ class Credentials(BaseModel):
 
 class Signup(Credentials):
     display_name: str = Field(min_length=1, max_length=120)
+
+
+class Setup(BaseModel):
+    supabase_url: str = Field(max_length=500)
+    supabase_anon_key: str = Field(min_length=1, max_length=5000)
+    google_drive_client_id: str = Field(default="", max_length=250, pattern=r"^$|^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$")
+
+
+@router.get("/setup")
+def get_setup() -> dict:
+    cfg = kit_settings._read_config()
+    values = {key: cfg.get(key, "") for key in Setup.model_fields}
+    try:
+        _validate_config(cfg)
+    except HTTPException:
+        values["supabase_anon_key"] = ""
+    return values
+
+
+@router.post("/setup")
+def save_setup(body: Setup, request: Request) -> dict:
+    # This is the existing desktop's machine setup boundary, not an organization role.
+    _same_origin(request)
+    cfg = kit_settings._read_config()
+    values = {key: value.strip() for key, value in body.model_dump().items()}
+    _validate_config(values)
+    cfg.update(values)
+    kit_settings.CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with _session_lock:
+        _sessions.clear()
+    return {"saved": True, "note": "บันทึกค่าแล้ว ผู้ใช้ต้องเข้าสู่ระบบใหม่; ต้องติดตั้งฐานข้อมูลองค์กรใน Supabase ก่อนเปิดใช้งาน"}
 
 
 @router.post("/signup")
