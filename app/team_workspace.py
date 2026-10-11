@@ -130,6 +130,10 @@ def owned(org,project,request):
  if not item or item['owner_id']!=hub.session(request)['user']['id']:raise HTTPException(403,'เจ้าของโปรเจกต์เท่านั้น')
  if item['status'] not in ('editing','changes_requested'):raise HTTPException(409,'โปรเจกต์ล็อกระหว่างตรวจหรืออนุมัติ')
  return item
+def begin_edit(org,project,item,request):
+ if item['status']=='changes_requested':
+  review(org,Review(project_ids=[project],expected_revisions={project:item['revision']},status='editing'),request)
+
 class Bind(BaseModel):
  path:str=Field(max_length=2000)
 @router.post('/organizations/{org}/projects/{project}/bind')
@@ -152,8 +156,7 @@ def open_project(org:UUID,project:UUID,body:Version,request:Request):
  bindings=json.loads(BINDINGS.read_text(encoding='utf-8')) if BINDINGS.exists() else {}
  binding=bindings.get(str(project))
  if not binding or binding['owner_id']!=item['owner_id']:raise HTTPException(409,'เลือกโปรเจกต์ส่วนตัวในเครื่องนี้ก่อน')
- if item['status']=='changes_requested':
-  review(org,Review(project_ids=[project],expected_revisions={project:item['revision']},status='editing'),request)
+ begin_edit(org,project,item,request)
  return kit.draft_open(kit.DraftPath(path=binding['path']))
 class Export(Version):
  name:str=Field(min_length=1,max_length=500)
@@ -195,7 +198,10 @@ def guard_paths(values,request):
  for project,binding in bindings.items():
   root=Path(binding['path']).resolve()
   if any(path==root or root in path.parents for path in paths):
-   owned(UUID(binding['organization_id']),UUID(project),request)
+   org=UUID(binding['organization_id']);project_id=UUID(project)
+   item=owned(org,project_id,request)
+   if request.method=='POST' and request.url.path in ('/api/video/draft','/api/kit/draft-open'):
+    begin_edit(org,project_id,item,request)
    if request.url.path=='/api/kit/draft-rename':raise HTTPException(409,'โปรเจกต์ทีมให้เปลี่ยนชื่อเรื่องจากหน้าทีม เพื่อเก็บสิทธิ์ของไฟล์เดิม')
 
 class ProjectName(Version):

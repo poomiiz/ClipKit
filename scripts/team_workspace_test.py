@@ -36,7 +36,12 @@ def main():
     assert client.post(path+'/bind',json={'path':str(local/'mine')}).status_code==200
    assert not list(shared.rglob('*bindings*')) and set(p.name for p in shared.iterdir())=={'footage','exports'}
    from types import SimpleNamespace
-   request=SimpleNamespace(url=SimpleNamespace(path='/api/kit/draft-open'));w.guard_paths({'path':str(local/'mine')},request)
+   request=SimpleNamespace(method='POST',url=SimpleNamespace(path='/api/kit/draft-open'));w.guard_paths({'path':str(local/'mine')},request)
+   item['status']='changes_requested'
+   for endpoint in ('/api/kit/draft-open','/api/video/draft'):
+    w.guard_paths({'path':str(local/'mine')},SimpleNamespace(method='POST',url=SimpleNamespace(path=endpoint)))
+    assert rpc.call_args.args[1]=='clipkit_project_action' and rpc.call_args.args[2]['next_status']=='editing'
+   item['status']='editing'
    item['owner_id']='00000000-0000-0000-0000-000000000002'
    try:w.guard_paths({'body':{'path':str(local/'mine'/'draft_content.json')}},request)
    except HTTPException as e:assert e.status_code==403
@@ -53,7 +58,7 @@ def main():
     assert original.post('/api/kit/draft-open',json={'path':str(local/'mine')}).status_code==403
     assert original.get('/api/video/hfp/'+key+'/index.html').status_code==403
    item['owner_id']=owner
-   try:w.guard_paths({'path':str(local/'mine')},SimpleNamespace(url=SimpleNamespace(path='/api/kit/draft-rename')))
+   try:w.guard_paths({'path':str(local/'mine')},SimpleNamespace(method='POST',url=SimpleNamespace(path='/api/kit/draft-rename')))
    except HTTPException as e:assert e.status_code==409
    else:raise AssertionError('folder rename would orphan team permissions')
    assert client.post(path+'/rename',json={'name':'Short name','expected_revision':2}).status_code==200
