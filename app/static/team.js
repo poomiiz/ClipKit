@@ -29,6 +29,7 @@ async function loadIdentity() {
   }
   if (!identity.signed_in) return;
   $('userName').textContent=identity.user.display_name || identity.user.email;
+  if (!reviewPage) await loadDrive();
   await loadOrganizations();
 }
 async function loadOrganizations() {
@@ -61,7 +62,7 @@ async function loadOrganization() {
   renderAssets('projects',all.filter(a=>a.kind==='project'));
   $('activity').replaceChildren(...activity.map(entry=>{
     const row=document.createElement('div');row.className='activity';
-    const detail=entry.action==='delivery_changed' ? (LABELS[entry.detail.from]+' → '+LABELS[entry.detail.to]+(entry.detail.note ? ' · '+entry.detail.note : '')) : {organization_created:'สร้างองค์กร',member_added:'เพิ่ม / เปลี่ยนสิทธิ์สมาชิก',asset_registered:'เพิ่มฟุต / โปรเจกต์',drive_folder_changed:'ตั้งค่าโฟลเดอร์ Drive'}[entry.action] || entry.action;
+    const detail=entry.action==='delivery_changed' ? (LABELS[entry.detail.from]+' → '+LABELS[entry.detail.to]+(entry.detail.note ? ' · '+entry.detail.note : '')) : {organization_created:'สร้างองค์กร',member_added:'เพิ่ม / เปลี่ยนสิทธิ์สมาชิก',asset_registered:'เพิ่มฟุต / โปรเจกต์',drive_folder_changed:'ตั้งค่าโฟลเดอร์ Drive',file_sent:'ส่งไฟล์ขึ้น Drive',file_received:'รับไฟล์จาก Drive'}[entry.action] || entry.action;
     row.textContent=person(entry.actor_id)+' · '+detail+' · '+new Date(entry.created_at).toLocaleString('th-TH');return row;
   }));
 }
@@ -82,6 +83,10 @@ function renderAssets(id, list) {
       }
     }
     const changed=document.createElement('div');changed.className='muted';changed.textContent='แก้ไขล่าสุด: '+person(asset.updated_by)+' · รุ่น '+asset.revision;card.append(changed);box.append(card);
+    if (!reviewPage && asset.kind==='footage') {
+      const send=document.createElement('button');send.textContent=asset.drive_file_id ? 'ส่งรุ่นใหม่' : 'ส่งไฟล์';send.onclick=()=>withTransfer(send,async()=>{const path=await pickFootage();if(path) await sendFootage(asset,path);});card.append(send);
+      if(asset.drive_file_id){const receive=document.createElement('button');receive.textContent='รับฟุตเข้าเครื่อง';receive.onclick=()=>withTransfer(receive,async()=>{const result=await team('drive/download',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision});say('รับฟุตแล้ว: '+result.path);});card.append(receive);}
+    }
   });
 }
 async function decide(list, status, note) {
@@ -97,4 +102,13 @@ form('review',async body=>{const ids=[...document.querySelectorAll('#projects in
 form('submitProjects',async()=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),'awaiting_lead','');await loadOrganization();say('ส่งหัวหน้าตรวจแล้ว '+result.updated+' โปรเจกต์');});
 $('organization').onchange=()=>loadOrganization().catch(e=>say(e.message,true));
 $('logout').onclick=async()=>{try{await team('logout',{});selectedOrg='';await loadIdentity();say('ออกจากระบบแล้ว');}catch(e){say(e.message,true);}};
+async function loadDrive(){const state=await team('drive/connection');$('connectionState').textContent=state.connected ? ' · เชื่อมต่อแล้ว' : state.pending ? ' · รออนุญาตในเบราว์เซอร์' : ' · '+(state.error || 'ยังไม่เชื่อมต่อ');$('connectDrive').disabled=state.pending;$('disconnectDrive').hidden=!state.connected;if(state.pending && identity.signed_in)setTimeout(()=>loadDrive().catch(e=>say(e.message,true)),2500);}
+async function withTransfer(button,action){button.disabled=true;$('organization').disabled=true;say('กำลังรับส่งไฟล์…');try{await action();await loadOrganization();}catch(e){say(e.message,true);}finally{button.disabled=false;$('organization').disabled=false;}}
+async function pickFootage(){const response=await fetch('/api/kit/browse-file',{method:'POST'});const result=await response.json();if(!response.ok)throw new Error(result.detail || 'เลือกไฟล์ไม่ได้');return result.path;}
+async function sendFootage(asset,path){await team('drive/upload',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision,path});say('ส่งฟุตให้องค์กรแล้ว');}
+if(!reviewPage){
+ $('connectDrive').onclick=async()=>{try{await team('drive/connect',{});await loadDrive();}catch(e){say(e.message,true);}};
+ $('disconnectDrive').onclick=async()=>{try{await team('drive/disconnect',{});await loadDrive();}catch(e){say(e.message,true);}};
+ $('addFootage').onclick=()=>withTransfer($('addFootage'),async()=>{if(!(await team('drive/connection')).connected)throw new Error('เชื่อม Drive ก่อนส่งฟุต');const path=await pickFootage();if(!path)return;const registered=await team('organizations/'+selectedOrg+'/assets',{kind:'footage',name:path.replaceAll('\\','/').split('/').pop()});await sendFootage({id:registered.id,revision:1},path);});
+}
 loadIdentity().catch(e=>say(e.message,true));

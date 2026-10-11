@@ -121,12 +121,14 @@ class Setup(BaseModel):
     supabase_url: str = Field(max_length=500)
     supabase_anon_key: str = Field(min_length=1, max_length=5000)
     google_drive_client_id: str = Field(default="", max_length=250, pattern=r"^$|^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$")
+    google_drive_client_secret: SecretStr = Field(default=SecretStr(""))
 
 
 @router.get("/setup")
 def get_setup() -> dict:
     cfg = kit_settings._read_config()
-    values = {key: cfg.get(key, "") for key in Setup.model_fields}
+    values = {key: cfg.get(key, "") for key in Setup.model_fields if key != "google_drive_client_secret"}
+    values["drive_secret_configured"] = bool(cfg.get("google_drive_client_secret"))
     try:
         _validate_config(cfg)
     except HTTPException:
@@ -139,7 +141,9 @@ def save_setup(body: Setup, request: Request) -> dict:
     # This is the existing desktop's machine setup boundary, not an organization role.
     _same_origin(request)
     cfg = kit_settings._read_config()
-    values = {key: value.strip() for key, value in body.model_dump().items()}
+    values = {key: value.strip() for key, value in body.model_dump(exclude={"google_drive_client_secret"}).items()}
+    if body.google_drive_client_secret.get_secret_value().strip():
+        values["google_drive_client_secret"] = body.google_drive_client_secret.get_secret_value().strip()
     _validate_config(values)
     cfg.update(values)
     kit_settings.CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
