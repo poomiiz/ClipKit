@@ -4,12 +4,23 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
+
+_shutdown_lock = threading.Lock()
+_shutdown_timer: threading.Timer | None = None
+
+
+def _run_delayed_shutdown(port: int) -> None:
+    global _shutdown_timer
+    with _shutdown_lock:
+        _shutdown_timer = None
+    launch_control("shutdown", port)
 
 
 def launch_control(action: str, port: int) -> None:
@@ -45,10 +56,23 @@ def window_router(port: int, exit_server: Callable[[], None],
         return {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy()}
 
     def control(action: str, control_version: str):
+        global _shutdown_timer
         # Cached pages from before explicit controls must not issue a delayed restart.
         if control_version != "v2":
             raise HTTPException(409, "หน้านี้เก่าเกินไป กรุณารีเฟรช ClipKit ก่อนสั่งระบบ")
         try:
+            if action == "shutdown":
+                with _shutdown_lock:
+                    if _shutdown_timer:
+                        _shutdown_timer.cancel()
+                    _shutdown_timer = threading.Timer(60, _run_delayed_shutdown, args=(port,))
+                    _shutdown_timer.daemon = True
+                    _shutdown_timer.start()
+                return {"action": action, "accepted": True, "scheduled_in": 60, "instance": os.getpid()}
+            with _shutdown_lock:
+                if _shutdown_timer:
+                    _shutdown_timer.cancel()
+                    _shutdown_timer = None
             launch_control(action, port)
         except OSError as exc:
             raise HTTPException(503, "เปิดตัวควบคุม ClipKit ไม่ได้") from exc
@@ -61,6 +85,18 @@ def window_router(port: int, exit_server: Callable[[], None],
     @router.post("/shutdown", status_code=202)
     def shutdown(control_version: str = Query("", alias="control")):
         return control("shutdown", control_version)
+
+    @router.post("/cancel-shutdown", status_code=202)
+    def cancel_shutdown(control_version: str = Query("", alias="control")):
+        global _shutdown_timer
+        if control_version != "v2":
+            raise HTTPException(409, "หน้านี้เก่าเกินไป กรุณารีเฟรช ClipKit ก่อนสั่งระบบ")
+        with _shutdown_lock:
+            pending = _shutdown_timer is not None
+            if _shutdown_timer:
+                _shutdown_timer.cancel()
+                _shutdown_timer = None
+        return {"action": "cancel-shutdown", "cancelled": pending}
 
     @router.post("/exit", status_code=202, include_in_schema=False)
     def exit_after_response(instance: int, background_tasks: BackgroundTasks):

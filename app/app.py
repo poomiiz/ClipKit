@@ -102,7 +102,7 @@ async def no_cache_html(request, call_next):
     widget_health = (request.method == "GET" and request.url.path == "/api/window/health"
                      and origin in WIDGET_ORIGINS)
     widget_control = (request.method == "POST" and request.url.path in
-                      {"/api/window/restart", "/api/window/shutdown"} and origin in WIDGET_ORIGINS)
+                      {"/api/window/restart", "/api/window/shutdown", "/api/window/cancel-shutdown"} and origin in WIDGET_ORIGINS)
     foreign = ((origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}")
                or request.headers.get("sec-fetch-site") == "cross-site")
     if foreign and not (widget_navigation or widget_health or widget_control):

@@ -40,7 +40,8 @@
   const controls = document.createElement('div');
   controls.className = 'sb-controls';
   controls.innerHTML = '<div class="sb-control-buttons"><button type="button" id="ckRestart" title="รีสตาร์ต ClipKit">🔄</button>' +
-    '<button type="button" id="ckShutdown" title="ปิดระบบ ClipKit">⏻</button></div>' +
+    '<button type="button" id="ckShutdown" title="ปิดระบบ ClipKit (หน่วง 1 นาที)">⏻</button>' +
+    '<button type="button" id="ckCancelShutdown" title="ยกเลิกการปิด" hidden>↩</button></div>' +
     '<div id="ckSystemStatus" role="status" aria-live="polite"></div>';
   aside.insertBefore(controls, document.getElementById('sbVer'));
   const systemStatus = document.getElementById('ckSystemStatus');
@@ -63,13 +64,18 @@
     try {
       const before = await health();
       if ((!before || before.busy) && !confirm((action === 'restart' ? 'รีสตาร์ต' : 'ปิด') +
-          ' ClipKit? งานที่กำลังประมวลผลจะถูกหยุด')) return;
-      systemStatus.textContent = action === 'restart' ? 'กำลังรีสตาร์ต…' : 'กำลังปิดระบบ…';
+          ' ClipKit? งานที่กำลังประมวลผลจะหยุดเมื่อครบ 1 นาที')) return;
+      systemStatus.textContent = action === 'restart' ? 'กำลังรีสตาร์ต…' : 'กำลังตั้งเวลาปิด · ยกเลิกได้ใน 1 นาที';
       let accepted, queued;
       try {
         const response = await fetch('/api/window/' + action + '?control=v2', {method: 'POST', signal: AbortSignal.timeout(3000)});
         if (!response.ok) throw new Error('HTTP ' + response.status);
         accepted = await response.json();
+        if (action === 'shutdown' && accepted.scheduled_in) {
+          cancelShutdown.hidden = false;
+          systemStatus.textContent = 'จะปิดใน 1 นาที · กด ↩ เพื่อยกเลิก';
+          return;
+        }
       } catch (error) {
         // The dashboard's host worker remains available when this server is hung.
         if (location.port !== '8770') throw error;
@@ -108,6 +114,15 @@
     }
   }
   document.getElementById('ckRestart').onclick = () => systemControl('restart');
+  const cancelShutdown = document.getElementById('ckCancelShutdown');
+  cancelShutdown.onclick = async () => {
+    try {
+      const response = await fetch('/api/window/cancel-shutdown?control=v2', {method: 'POST'});
+      if (!response.ok) throw new Error('ยกเลิกไม่สำเร็จ');
+      cancelShutdown.hidden = true;
+      systemStatus.textContent = 'ยกเลิกการปิดแล้ว';
+    } catch (error) { systemStatus.textContent = error.message; }
+  };
   document.getElementById('ckShutdown').onclick = () => systemControl('shutdown');
   // End manual system controls.
   top.append(controls);
