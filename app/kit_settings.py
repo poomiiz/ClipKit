@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -845,6 +845,42 @@ def _draft_dir(path: str) -> Path:
     return _project(path)[1]
 
 
+DELIVERY_STATUSES = KIT / "delivery_statuses.json"
+_delivery_lock = threading.RLock()
+
+
+def _delivery_statuses() -> dict[str, Any]:
+    return json.loads(DELIVERY_STATUSES.read_text(encoding="utf-8")) if DELIVERY_STATUSES.is_file() else {}
+
+
+def _save_delivery_statuses(statuses: dict[str, Any]) -> None:
+    temporary = DELIVERY_STATUSES.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(statuses, ensure_ascii=False, indent=1), encoding="utf-8")
+    temporary.replace(DELIVERY_STATUSES)
+
+
+class DeliveryStatus(BaseModel):
+    path: str
+    status: Literal["editing", "awaiting_review", "changes_requested", "approved"]
+
+
+@router.get("/delivery-status")
+def delivery_statuses() -> dict[str, Any]:
+    with _delivery_lock:
+        return {"statuses": _delivery_statuses()}
+
+
+@router.post("/delivery-status")
+def delivery_status(body: DeliveryStatus) -> dict[str, Any]:
+    p = _draft_dir(body.path)
+    record = {"status": body.status, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    with _delivery_lock:
+        statuses = _delivery_statuses()
+        statuses[str(p.resolve()).lower()] = record
+        _save_delivery_statuses(statuses)
+    return record
+
+
 @router.get("/hf-projects")
 def hf_projects() -> dict[str, Any]:
     root = _project_roots()["hyperframes"]
@@ -902,6 +938,12 @@ def draft_rename(body: DraftPath) -> dict[str, str]:
             rm.write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
     else:
         p.rename(target)
+    with _delivery_lock:
+        statuses = _delivery_statuses()
+        record = statuses.pop(str(p.resolve()).lower(), None)
+        if record is not None:
+            statuses[str(target.resolve()).lower()] = record
+            _save_delivery_statuses(statuses)
     return {"path": str(target), "name": new}
 
 
