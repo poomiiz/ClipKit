@@ -60,14 +60,23 @@ def _caption_lang(path: str) -> str | None:
     return look["caption_lang"] if look["caption"] and look["caption_lang"] != "th" else None
 
 
-def export_stories(video: str) -> Path:
+def export_stories(video: str, max_minutes: float | None = None) -> Path:
+    """max_minutes: the person's cap per story; the AI still splits by topic and breaks a longer one into parts."""
+    if max_minutes is not None and max_minutes <= 0:
+        raise VideoEditError(f"ความยาวสูงสุดต้องมากกว่า 0 นาที (ได้ {max_minutes})")
     tf = video_edit.transcript_file(video)
     if not tf.is_file():
         raise VideoEditError(f"ยังไม่ได้ถอดเสียง: ไม่มี {tf.name} (กด ถอดเสียงและแบ่งเรื่อง ก่อน)")
     lines = [{"start": round(p["start"], 2), "end": round(p["end"], 2), "text": p["text"]}
              for p in json.loads(tf.read_text(encoding="utf-8"))]
     data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "lines": lines}
-    return _packet(_prompt("stories.md"), data, packet_file("stories", video))
+    prompt = _prompt("stories.md")
+    if max_minutes:
+        prompt = prompt.replace("## ตอบกลับ", f"ข้อบังคับจากผู้ตัดต่อ (ใช้แทนช่วงความยาวในกติกาข้างบน): แต่ละเรื่องยาวไม่เกิน "
+                                f"{max_minutes:g} นาที ({round(max_minutes * 60)} วินาที, end - start) จำแนกตามประเด็นก่อน "
+                                "ประเด็นไหนยาวเกิน ให้แตกเป็นตอนย่อยตามจุดเปลี่ยนประเด็นย่อย ชื่อเรื่องแต่ละตอนต้องบอกประเด็นของตอนนั้น"
+                                "\n\n## ตอบกลับ", 1)
+    return _packet(prompt, data, packet_file("stories", video))
 
 
 def export_clip(path: str) -> Path:
