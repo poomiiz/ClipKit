@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets
 import threading
 import tempfile
@@ -26,6 +27,14 @@ router = APIRouter(prefix="/api/team/drive", tags=["team-drive"])
 SCOPE = "https://www.googleapis.com/auth/drive"
 API = "https://www.googleapis.com/drive/v3/"
 CHUNK = 8 * 1024 * 1024
+
+
+def file_checksum(file: Path) -> str:
+    digest=hashlib.sha256()
+    with file.open("rb") as stream:
+        while chunk:=stream.read(CHUNK):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -214,22 +223,38 @@ def upload_file(token: dict, file: Path, org: str, asset: str, folder: str, chec
     parsed = urllib.parse.urlsplit(upload_url)
     if parsed.scheme != "https" or parsed.hostname != "www.googleapis.com" or parsed.username or parsed.port not in (None,443):
         raise HTTPException(502, "Drive ส่งที่อยู่รับไฟล์ไม่ถูกต้อง")
-    size, sent = file.stat().st_size, 0
+    size, sent, retries = file.stat().st_size, 0, 0
     with file.open("rb") as source:
         while sent < size:
+            source.seek(sent)
             chunk = source.read(CHUNK)
             if not chunk:
                 raise HTTPException(409, "ไฟล์เปลี่ยนระหว่างส่ง กรุณาส่งใหม่")
             end = sent + len(chunk) - 1
             req = urllib.request.Request(upload_url, data=chunk, method="PUT", headers={"Content-Length":str(len(chunk)), "Content-Range":f"bytes {sent}-{end}/{size}"})
-            with google(req) as response:
+            recovering=False
+            try:
+                response=google(req)
+            except HTTPException as exc:
+                if exc.status_code!=502 or retries>=3:
+                    raise
+                retries+=1
+                recovering=True
+                response=google(urllib.request.Request(upload_url,data=b"",method="PUT",headers={"Content-Range":f"bytes */{size}"}))
+            with response:
                 if response.status in (200,201):
-                    if end != size-1:
+                    if end != size-1 and not recovering:
                         raise HTTPException(502, "Drive จบการรับไฟล์ก่อนครบ")
                     return json.load(response)["id"]
-                if response.status != 308 or response.headers.get("Range") != f"bytes=0-{end}":
+                match=re.fullmatch(r"bytes=0-(\d+)",response.headers.get("Range",""))
+                offset=int(match[1])+1 if match else 0
+                if response.status != 308 or not sent<=offset<=end+1:
                     raise HTTPException(502, "Drive ยืนยันจำนวนข้อมูลไม่ตรง กรุณาส่งใหม่")
-            sent = end + 1
+                if offset==sent:
+                    retries+=1
+                    if retries>3:
+                        raise HTTPException(502,"Drive ยังไม่รับข้อมูล กรุณาส่งใหม่")
+                sent=offset
     raise HTTPException(400, "ส่งไฟล์ว่างไม่ได้")
 
 
@@ -255,8 +280,7 @@ def upload(body: Transfer, request: Request) -> dict:
     if not file.is_file() or not any(file.is_relative_to(root) for root in roots) or file.suffix.lower() not in (".mp4", ".mov", ".mkv", ".avi", ".wav", ".mp3", ".m4a"):
         raise HTTPException(400, "เลือกฟุตจากโฟลเดอร์งานที่ตั้งค่าไว้")
     before = file.stat()
-    with file.open("rb") as stream:
-        checksum = hashlib.file_digest(stream, "sha256").hexdigest()
+    checksum = file_checksum(file)
     token = drive_session(request)
     folder_access(token, org["drive_folder_id"], writing=True)
     drive_id = upload_file(token, file, str(body.organization_id), str(body.asset_id), org["drive_folder_id"], checksum)
@@ -303,9 +327,8 @@ def download(body: Receive, request: Request) -> dict:
     destination.mkdir(parents=True,exist_ok=True)
     target=destination/(asset["checksum"]+suffix)
     if target.exists():
-        with target.open("rb") as stream:
-            if hashlib.file_digest(stream,"sha256").hexdigest()!=asset["checksum"]:
-                raise HTTPException(409,"ไฟล์ในเครื่องถูกแก้ไข กรุณาเก็บงานนั้นก่อนรับใหม่")
+        if file_checksum(target)!=asset["checksum"]:
+            raise HTTPException(409,"ไฟล์ในเครื่องถูกแก้ไข กรุณาเก็บงานนั้นก่อนรับใหม่")
         hub.rpc(request,"clipkit_record_received",{"org":str(body.organization_id),"asset":str(body.asset_id),"expected_revision":body.expected_revision})
         return {"path":str(target),"revision":asset["revision"]}
     temp=None

@@ -49,6 +49,16 @@ def main():
         with patch.object(drive,"CHUNK",8),patch.object(drive,"google",side_effect=chunked):
             assert drive.upload_file({"access_token":"private"},file,"org","asset","folder",sha)=="driveSnapshot456"
         assert b''.join(parts)==content
+        recovered=[]
+        def interrupted(req):
+            if req.get_method()=="POST":return Response(headers={"Location":"https://www.googleapis.com/upload/drive/v3/files?upload_id=sample"})
+            recovered.append(req)
+            if len(recovered)==1:raise drive.HTTPException(502,"interrupted")
+            if len(recovered)==2:return Response(status=308,headers={"Range":"bytes=0-7"})
+            return Response(b'{"id":"recoveredSnapshot"}')
+        with patch.object(drive,"CHUNK",8),patch.object(drive,"google",side_effect=interrupted):
+            assert drive.upload_file({"access_token":"private"},file,"org","asset","folder",sha)=="recoveredSnapshot"
+        assert recovered[1].data==b'' and recovered[2].data==content[8:]
         with patch.object(drive,"google",return_value=Response(headers={"Location":"https://attacker.example.test/upload"})):
             try:drive.upload_file({"access_token":"private"},file,"org","asset","folder",sha)
             except drive.HTTPException as e:assert e.status_code==502
