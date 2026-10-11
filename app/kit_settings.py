@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 KIT = Path(__file__).resolve().parents[1]
 CONFIG = KIT / "config.json"
@@ -859,9 +859,29 @@ def _save_delivery_statuses(statuses: dict[str, Any]) -> None:
     temporary.replace(DELIVERY_STATUSES)
 
 
+DeliveryState = Literal["editing", "awaiting_review", "changes_requested", "approved"]
+
+
 class DeliveryStatus(BaseModel):
     path: str
-    status: Literal["editing", "awaiting_review", "changes_requested", "approved"]
+    status: DeliveryState
+
+
+class BulkDeliveryStatus(BaseModel):
+    paths: list[str] = Field(min_length=1)
+    status: DeliveryState
+
+
+def _set_delivery_status(paths: list[str], status: DeliveryState) -> dict[str, Any]:
+    # Validate the entire selection before writing, so a stale project cannot leave a partial batch.
+    keys = {str(_draft_dir(path).resolve()).lower() for path in paths}
+    record = {"status": status, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    changed = dict.fromkeys(keys, record)
+    with _delivery_lock:
+        statuses = _delivery_statuses()
+        statuses.update(changed)
+        _save_delivery_statuses(statuses)
+    return changed
 
 
 @router.get("/delivery-status")
@@ -872,13 +892,13 @@ def delivery_statuses() -> dict[str, Any]:
 
 @router.post("/delivery-status")
 def delivery_status(body: DeliveryStatus) -> dict[str, Any]:
-    p = _draft_dir(body.path)
-    record = {"status": body.status, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    with _delivery_lock:
-        statuses = _delivery_statuses()
-        statuses[str(p.resolve()).lower()] = record
-        _save_delivery_statuses(statuses)
-    return record
+    return next(iter(_set_delivery_status([body.path], body.status).values()))
+
+
+@router.post("/delivery-status/bulk")
+def bulk_delivery_status(body: BulkDeliveryStatus) -> dict[str, Any]:
+    changed = _set_delivery_status(body.paths, body.status)
+    return {"updated": len(changed), "statuses": changed}
 
 
 @router.get("/hf-projects")
