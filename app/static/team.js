@@ -97,16 +97,16 @@ function renderAssets(id, list) {
     }
   });
 }
-async function decide(list, status, note) {
+async function decide(list, status, note, importExisting=false) {
   if (!list.length) throw new Error('เลือกโปรเจกต์ก่อน');
-  return team('organizations/'+selectedOrg+'/review',{asset_ids:list.map(a=>a.id),status,note,expected_revisions:Object.fromEntries(list.map(a=>[a.id,a.revision]))});
+  return team('organizations/'+selectedOrg+'/review',{asset_ids:list.map(a=>a.id),status,note,import_existing:importExisting,expected_revisions:Object.fromEntries(list.map(a=>[a.id,a.revision]))});
 }
 form('login',async body=>{await team('login',body);$('login').reset();say('เข้าสู่ระบบแล้ว');await loadIdentity();});
 form('signup',async body=>{const result=await team('signup',body);$('signup').reset();say(result.verification_required ? 'เปิดอีเมลเพื่อยืนยันบัญชี แล้วเข้าสู่ระบบ' : 'สมัครบัญชีแล้ว');await loadIdentity();});
 form('createOrg',async body=>{const org=await team('organizations',body);localStorage.setItem('ck-organization',org.id);$('createOrg').reset();await loadOrganizations();say('สร้างองค์กรแล้ว');});
 form('addMember',async body=>{await team('organizations/'+selectedOrg+'/members',body);await loadOrganizations();say('บันทึกสมาชิกแล้ว');});
 form('driveFolder',async body=>{const match=body.folder.match(/\/folders\/([A-Za-z0-9_-]+)/);await team('organizations/'+selectedOrg+'/drive-folder',{folder_id:match ? match[1] : body.folder.trim()});await loadOrganizations();say('บันทึกโฟลเดอร์แล้ว การรับส่งไฟล์ต้องเชื่อมบัญชี Drive');});
-form('review',async body=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),body.status,body.note);await loadOrganization();say('บันทึกผลตรวจแล้ว '+result.updated+' โปรเจกต์');});
+form('review',async body=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),body.status,body.note,body.import_existing==='on');await loadOrganization();say('บันทึกผลตรวจแล้ว '+result.updated+' โปรเจกต์');});
 form('submitProjects',async()=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),'awaiting_lead','');await loadOrganization();say('ส่งหัวหน้าตรวจแล้ว '+result.updated+' โปรเจกต์');});
 $('organization').onchange=()=>loadOrganization().catch(e=>say(e.message,true));
 $('logout').onclick=async()=>{try{await team('logout',{});selectedOrg='';await loadIdentity();say('ออกจากระบบแล้ว');}catch(e){say(e.message,true);}};

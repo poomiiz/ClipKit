@@ -46,7 +46,7 @@ def json_content(data: bytes, name: str):
 
 def pack(project: Path, destination: Path, org: str, asset: str, roots: list[Path]) -> None:
     project=project.resolve(); roots=[p.resolve() for p in roots]
-    files={};directories=set();resources={}
+    files={};directories=set();resources={};document_folder=project
     def include(path: Path, member: str):
         if path.is_symlink() or not any(path.resolve().is_relative_to(root) for root in [project,*roots]):
             raise HTTPException(400,"โปรเจกต์อ้างถึงไฟล์นอกโฟลเดอร์งาน: "+path.name)
@@ -62,7 +62,7 @@ def pack(project: Path, destination: Path, org: str, asset: str, roots: list[Pat
             value=urllib.parse.unquote(urllib.parse.urlsplit(value).path)
             if len(value)>3 and value[0]=="/" and value[2]==":":value=value[1:]
         if value and not "://" in value and not (Path(value).is_absolute() or PureWindowsPath(value).is_absolute()) and (key=="path" or key.endswith("_path")):
-            candidate=project/value
+            candidate=document_folder/value
             if not candidate.exists():raise HTTPException(400,"โปรเจกต์อ้างถึงสื่อที่หาไม่เจอ: "+value)
             value=str(candidate.resolve())
         if not value or not (Path(value).is_absolute() or PureWindowsPath(value).is_absolute()):return value
@@ -87,6 +87,7 @@ def pack(project: Path, destination: Path, org: str, asset: str, roots: list[Pat
     while pending:=[member for member in files if member not in processed]:
         for member in pending:
             path=files[member];before=path.stat()
+            document_folder=path.parent
             with path.open("rb") as stream:head=stream.read(4)
             parsed=None
             if path.suffix==".json" or head.lstrip().startswith((b"{",b"[")):
