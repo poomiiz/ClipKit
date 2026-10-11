@@ -101,6 +101,10 @@ function Start-ClipKitServer {
     $pythonPath = if ($Python) { (Resolve-Path -LiteralPath $Python -ErrorAction Stop).Path }
                   else { (Get-Command python -ErrorAction Stop).Source }
     if (-not [IO.Path]::IsPathRooted($pythonPath)) { throw 'Python must have an absolute executable path.' }
+    # The PID reporter needs stdout; the actual server remains hidden below.
+    if ([IO.Path]::GetFileName($pythonPath) -ieq 'pythonw.exe') {
+        $pythonPath = (Resolve-Path -LiteralPath (Join-Path ([IO.Path]::GetDirectoryName($pythonPath)) 'python.exe') -ErrorAction Stop).Path
+    }
     $env:VIDEO_EDITOR_PORT = "$Port"
     $env:CLIPKIT_MANAGED_WINDOW = '0'
     # Close inherited capture handles so the host worker can receive its result.
