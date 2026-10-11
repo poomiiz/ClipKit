@@ -1289,8 +1289,11 @@ function pickFile(f) {
   document.getElementById('clipFolder').textContent = f.path;
   document.getElementById('clipVideo').src = '/api/kit/media?path=' + encodeURIComponent(f.path);
   document.getElementById('result').className = 'msg';
+  storyList = [];
+  document.getElementById('storyPlan').innerHTML = '';
   go('s-clip');
   findFocus();
+  planStories(true);
 }
 
 // crop: the frame shape is one choice for every button; where to crop starts on the speaker's face and can be dragged
@@ -1896,19 +1899,25 @@ async function makeDraft(open = true) {
 // Before choosing CapCut or HyperFrames: transcribe the whole file and split it into stories.
 const mmss = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0');
 let storyList = [];
-async function planStories() {
+// saved = only show a split this file already has (on opening it); nothing saved = leave the box empty
+async function planStories(saved) {
   const box = document.getElementById('storyPlan');
   if (!state.file) { box.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
   const file = state.file.path;
   document.getElementById('planStoriesBtn').disabled = true;
   try {
-    let job = await api('story-plan', {file});
+    let job;
+    if (!saved) job = await api('story-plan', {file});
+    else try { job = await api('story-plan?file=' + encodeURIComponent(file)); }
+    catch (e) { if (e.message === 'no plan started for this file') return; throw e; }
     while (job.status === 'running' || job.status === 'waiting') {
       if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
       else if (!box.querySelector('.agent-cmd')) box.innerHTML = webAiBox('stories', file, 'ถอดเสียงเสร็จแล้ว · กดปุ่มเพื่อเอาไฟล์ไปให้ AI แบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
       await new Promise(r => setTimeout(r, 3000));
       job = await api('story-plan?file=' + encodeURIComponent(file));
+      if (state.file.path !== file) return;  // another file was opened meanwhile
     }
+    if (state.file.path !== file) return;
     if (job.status === 'error') throw new Error(job.error);
     storyList = job.stories;
     box.innerHTML = `<div style="font-weight:700;margin-bottom:6px">ได้ ${storyList.length} เรื่อง · ไฟล์ยาว ${mmss(job.duration)} · มีเสียงพูดรวม ${mmss(job.speech)}</div>`;
@@ -2783,7 +2792,7 @@ function webAiBox(step, target, note) {
     };
     el('dl').onclick = async () => {
       try {
-        const r = await api('web-ai/export', {step, target});
+        const r = await api('web-ai/export', {step, target, max_minutes: step === 'clip' ? +el('max').value || null : null});
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([r.text], {type: 'text/markdown'}));
         a.download = r.name; a.click();
@@ -2798,6 +2807,7 @@ function webAiBox(step, target, note) {
     };
   });
   return '<div class="agent-cmd"><div class="hint">' + note + '</div>'
+    + (step === 'clip' ? '<div class="hint">ให้คลิปยาวราว <input id="' + id + 'max" type="number" min="0.5" step="0.5" style="width:72px;display:inline-block"> นาที (ว่าง = ตัดแค่ส่วนเกิน · ใส่ก่อนกดปุ่มไฟล์)</div>' : '')
     + '<button class="small primary" id="' + id + 'dl">⬇ ไฟล์ให้ AI</button>'
     + '<textarea id="' + id + 'ta" rows="4" style="width:100%" placeholder="AI บนเว็บ: วางคำตอบ JSON ที่นี่"></textarea>'
     + '<button class="small" id="' + id + 'in">นำเข้าคำตอบ</button><div class="hint" id="' + id + 'msg"></div></div>';

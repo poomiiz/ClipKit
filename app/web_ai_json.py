@@ -70,7 +70,10 @@ def export_stories(video: str) -> Path:
     return _packet(_prompt("stories.md"), data, packet_file("stories", video))
 
 
-def export_clip(path: str) -> Path:
+def export_clip(path: str, max_minutes: float | None = None) -> Path:
+    """max_minutes: about how long the person wants the clip; a rough aim for the cut, not a hard limit."""
+    if max_minutes is not None and max_minutes <= 0:
+        raise VideoEditError(f"ความยาวต้องมากกว่า 0 นาที (ได้ {max_minutes})")
     subs = capcut_edit.read_draft(path)["subtitles"]
     if not subs:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
@@ -78,7 +81,12 @@ def export_clip(path: str) -> Path:
     (Path(path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "caption_language": _caption_lang(path),
             "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)]}
-    return _packet(_prompt("clip.md"), data, packet_file("clip", path))
+    prompt = _prompt("clip.md")
+    if max_minutes:
+        prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "
+                                f"{subs[-1]['end'] / 60:.1f} นาที): ตัดพูดซ้ำ พูดผิด ออกนอกเรื่องก่อน ถ้ายังยาวกว่ามาก ให้ตัดบรรทัดที่เป็น"
+                                "รายละเอียดรองที่ตัดแล้วยังเล่าต่อกันรู้เรื่อง คุมคร่าวๆ เกินได้บ้าง อย่าตัดใจความจนเรื่องขาด\n\n## 1. Subtitle", 1)
+    return _packet(prompt, data, packet_file("clip", path))
 
 
 def parse(text: str) -> dict[str, Any]:
