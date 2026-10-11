@@ -122,39 +122,25 @@ class Signup(Credentials):
 class Setup(BaseModel):
     supabase_url: str = Field(max_length=500)
     supabase_anon_key: str = Field(min_length=1, max_length=5000)
-    google_drive_client_id: str = Field(default="", max_length=250, pattern=r"^$|^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$")
-    google_drive_client_secret: SecretStr = Field(default=SecretStr(""))
 
 
 @router.get("/setup")
 def get_setup() -> dict:
-    cfg = kit_settings._read_config()
-    values = {key: cfg.get(key, "") for key in Setup.model_fields if key != "google_drive_client_secret"}
-    values["drive_secret_configured"] = bool(cfg.get("google_drive_client_secret"))
-    try:
-        _validate_config(cfg)
-    except HTTPException:
-        values["supabase_anon_key"] = ""
-    return values
+    cfg=kit_settings._read_config()
+    try:_validate_config(cfg)
+    except HTTPException:return {"supabase_url":cfg.get("supabase_url",""),"supabase_anon_key":""}
+    return {key:cfg.get(key,"") for key in Setup.model_fields}
 
 
 @router.post("/setup")
-def save_setup(body: Setup, request: Request) -> dict:
-    # This is the existing desktop's machine setup boundary, not an organization role.
+def save_setup(body: Setup,request: Request) -> dict:
     _same_origin(request)
-    cfg = kit_settings._read_config()
-    values = {key: value.strip() for key, value in body.model_dump(exclude={"google_drive_client_secret"}).items()}
-    if cfg.get("google_drive_client_secret") and cfg.get("google_drive_client_id")!=values["google_drive_client_id"] and values["google_drive_client_id"] and not body.google_drive_client_secret.get_secret_value().strip():
-        raise HTTPException(400,"เปลี่ยน Drive Client ID ต้องใส่ Client secret คู่กันใหม่")
-    if not values["google_drive_client_id"]:values["google_drive_client_secret"]=""
-    if body.google_drive_client_secret.get_secret_value().strip():
-        values["google_drive_client_secret"] = body.google_drive_client_secret.get_secret_value().strip()
+    values={key:value.strip() for key,value in body.model_dump().items()}
     _validate_config(values)
-    cfg.update(values)
-    kit_settings.CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    with _session_lock:
-        _sessions.clear()
-    return {"saved": True, "note": "บันทึกค่าแล้ว ผู้ใช้ต้องเข้าสู่ระบบใหม่; ต้องติดตั้งฐานข้อมูลองค์กรใน Supabase ก่อนเปิดใช้งาน"}
+    cfg=kit_settings._read_config();cfg.update(values)
+    kit_settings.CONFIG.write_text(json.dumps(cfg,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    with _session_lock:_sessions.clear()
+    return {"saved":True,"note":"บันทึกแล้ว กรุณาเข้าสู่ระบบใหม่"}
 
 
 @router.post("/signup")
@@ -210,7 +196,7 @@ def organizations(request: Request) -> Any:
 def owner_organization(org: UUID,request: Request) -> dict:
     user=session(request)["user"]["id"]
     found=next((row for row in organizations(request) if row["id"]==str(org)),None)
-    if not found or not any(member["user_id"]==user and member["role"]=="owner" for member in found["clipkit_members"]):raise HTTPException(403,"เจ้าขององค์กรเท่านั้น")
+    if not found or not any(member["user_id"]==user and member["role"]=="admin" for member in found["clipkit_members"]):raise HTTPException(403,"เจ้าขององค์กรเท่านั้น")
     return found
 
 
@@ -232,15 +218,8 @@ class Member(BaseModel):
 def add_member(org: UUID, body: Member, request: Request) -> dict:
     _same_origin(request)
     organization=owner_organization(org,request)
-    if organization.get("drive_folder_id"):
-        import team_drive
-        token=team_drive.drive_session(request)
-        team_drive.folder_access(token,organization["drive_folder_id"],sharing=True)
-    rpc(request, "clipkit_add_member", {"org": str(org), "member_email": body.email.strip(), "member_role": body.role})
-    if organization.get("drive_folder_id"):
-        try:team_drive.share_members(token,organization["drive_folder_id"],member_directory(org,request))
-        except HTTPException as exc:raise HTTPException(409,"สมาชิกบันทึกแล้ว แต่ให้สิทธิ์ Drive ไม่ครบ กรุณาตรวจบัญชี Google แล้วเพิ่มสมาชิกอีกครั้ง: "+str(exc.detail)) from exc
-    return {"saved": True}
+    rpc(request,"clipkit_add_member",{"org":str(org),"member_email":body.email.strip(),"member_role":body.role})
+    return {"saved":True}
 
 
 @router.get("/organizations/{org}/members")
@@ -248,53 +227,6 @@ def member_directory(org: UUID, request: Request) -> Any:
     return rpc(request, "clipkit_member_directory", {"org": str(org)})
 
 
-class DriveFolder(BaseModel):
-    folder_id: str = Field(pattern=r"^[A-Za-z0-9_-]{10,200}$")
-
-
-@router.post("/organizations/{org}/drive-folder")
-def set_drive_folder(org: UUID, body: DriveFolder, request: Request) -> dict:
-    _same_origin(request)
-    owner_organization(org,request)
-    import team_drive
-    token=team_drive.drive_session(request)
-    team_drive.folder_access(token,body.folder_id,sharing=True)
-    team_drive.share_members(token,body.folder_id,member_directory(org,request))
-    rpc(request, "clipkit_set_drive_folder", {"org": str(org), "folder_id": body.folder_id})
-    return {"saved": True}
-
-
-@router.get("/organizations/{org}/assets")
-def assets(org: UUID, request: Request) -> Any:
-    return _provider("/rest/v1/clipkit_assets?organization_id=eq." + str(org) + "&select=*&order=updated_at.desc", token=session(request)["access_token"])
-
-
 @router.get("/organizations/{org}/activity")
 def activity(org: UUID, request: Request) -> Any:
     return _provider("/rest/v1/clipkit_activity?organization_id=eq." + str(org) + "&select=*&order=created_at.desc&limit=100", token=session(request)["access_token"])
-
-
-class Asset(BaseModel):
-    kind: Literal["footage", "project"]
-    name: str = Field(min_length=1, max_length=500)
-    source_id: UUID | None = None
-
-
-@router.post("/organizations/{org}/assets")
-def register_asset(org: UUID, body: Asset, request: Request) -> dict:
-    return {"id": rpc(request, "clipkit_register_asset", {"org": str(org), "asset_kind": body.kind, "asset_name": body.name.strip(), "source": str(body.source_id) if body.source_id else None})}
-
-
-class Review(BaseModel):
-    asset_ids: list[UUID] = Field(min_length=1, max_length=500)
-    status: Literal["editing", "awaiting_lead", "awaiting_review", "changes_requested", "approved"]
-    expected_revisions: dict[UUID, int]
-    note: str = Field(default="", max_length=5000)
-    import_existing: bool = False
-
-
-@router.post("/organizations/{org}/review")
-def review(org: UUID, body: Review, request: Request) -> dict:
-    changed = rpc(request, "clipkit_review_assets", {"org": str(org), "asset_ids": [str(x) for x in body.asset_ids],
-                  "next_status": body.status, "expected_revisions": {str(k): v for k, v in body.expected_revisions.items()}, "note": body.note,"import_existing":body.import_existing})
-    return {"updated": changed}

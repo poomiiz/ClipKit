@@ -43,7 +43,7 @@ import kit_settings  # noqa: E402
 import style_lab_api  # noqa: E402
 import video_editor  # noqa: E402
 import team_hub  # noqa: E402
-import team_drive  # noqa: E402
+import team_workspace  # noqa: E402
 from window_lifecycle import window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
@@ -69,7 +69,7 @@ app.include_router(video_editor.router)
 app.include_router(kit_settings.router)
 app.include_router(style_lab_api.router)
 app.include_router(team_hub.router)
-app.include_router(team_drive.router)
+app.include_router(team_workspace.router)
 app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested))
 
 
@@ -111,6 +111,20 @@ async def no_cache_html(request, call_next):
                or request.headers.get("sec-fetch-site") == "cross-site")
     if foreign and not (widget_navigation or widget_health or widget_control):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+    if request.url.path.startswith('/api/') and not request.url.path.startswith('/api/team/'):
+        from fastapi import HTTPException
+        from starlette.concurrency import run_in_threadpool
+        values = dict(request.query_params)
+        if request.url.path.startswith('/api/video/hfp/'):
+            import base64
+            key=request.url.path.split('/')[4]
+            try: values['preview_path']=base64.urlsafe_b64decode(key+'='*(-len(key)%4)).decode('utf-8')
+            except (ValueError,UnicodeError): return JSONResponse({'detail':'Invalid preview path'},status_code=400)
+        if request.headers.get('content-type', '').startswith('application/json'):
+            try: values['body'] = await request.json()
+            except ValueError: return JSONResponse({'detail':'Invalid JSON'},status_code=400)
+        try: await run_in_threadpool(team_workspace.guard_paths, values, request)
+        except HTTPException as exc: return JSONResponse({'detail':exc.detail},status_code=exc.status_code)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page else "")

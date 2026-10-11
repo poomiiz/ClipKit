@@ -2,13 +2,13 @@
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ตรวจงานทีม</title><link rel="stylesheet" href="/team.css"><link rel="stylesheet" href="/shell.css"></head>
 <body data-team-page="review"><main>
 <h1>🔎 ตรวจงานทีม</h1><p class="muted">หัวหน้าตรวจงานและบันทึกผลตอบกลับจากลูกค้า</p>
-<div class="help"><p>✂️ คนตัดส่งงาน → 📤 รอหัวหน้าตรวจ → ⏳ รอลูกค้าตรวจ → ✅ ลูกค้าอนุมัติ</p><p>🛠️ ส่งกลับแก้: ต้องระบุจุดที่แก้ แล้วคนตัดส่งตรวจใหม่ · ✅ ลูกค้าอนุมัติ: หัวหน้าบันทึกคำยืนยันของลูกค้า ไม่ใช่คนตัดอนุมัติเอง</p></div>
+<div class="help"><p>✂️ กำลังทำ → 👀 รอลูกค้าตรวจ → ✅ อนุมัติแล้ว</p><p>🔁 ต้องแก้: หัวหน้าบันทึกโน้ตจากลูกค้า คนตัดเปิดแก้แล้วส่งใหม่ · ตรวจจาก MP4 โดยไม่รับไฟล์โปรเจกต์</p></div>
 <div id="message" role="status" aria-live="polite"></div>
 <section id="auth" hidden><a href="/team.html">เข้าสู่ระบบ / สมัครบัญชี</a></section>
 <section id="signedIn" hidden><div class="row"><span id="userName"></span><button id="logout">ออกจากระบบ</button></div>
 <div class="panel"><label>องค์กร<select id="organization"><option value="">เลือกองค์กร</option></select></label><p class="muted" id="role"></p></div>
 <section id="organizationContent" hidden><div id="leadControls" hidden>
-<form id="review"><h2>ตัดสินใจสำหรับโปรเจกต์ที่เลือก</h2><label>ผลการตรวจ<select name="status"><option value="awaiting_review">⏳ ผ่านหัวหน้า ส่งลูกค้าตรวจ</option><option value="changes_requested">🛠️ ส่งกลับแก้</option><option value="approved">✅ ลูกค้ายืนยันอนุมัติแล้ว</option><option value="editing">✂️ เปิดแก้หลังอนุมัติ</option></select></label><label>จุดที่ต้องแก้ / หลักฐานคำยืนยันลูกค้า<textarea name="note" maxlength="5000"></textarea></label><label><input type="checkbox" name="import_existing">ยืนยันงานเดิมที่รอลูกค้าตรวจแล้ว</label><span class="muted">ใช้กับงานที่นำเข้าจากเครื่องเท่านั้น ต้องระบุที่มาของสถานะเดิมในช่องบันทึก</span><button class="primary">บันทึกผลที่เลือก</button></form>
-<div id="projects" class="assets"></div><div class="panel"><h2>ประวัติการตรวจ</h2><div id="activity"></div></div>
+<form id="review"><h2>ตัดสินใจสำหรับโปรเจกต์ที่เลือก</h2><label>ผลการตรวจ<select name="status"><option value="changes_requested">🔁 ต้องแก้</option><option value="approved">✅ อนุมัติแล้ว</option><option value="editing">✂️ เปิดแก้หลังอนุมัติ</option></select></label><label>จุดที่ต้องแก้ / หลักฐานคำยืนยันลูกค้า<textarea name="note" maxlength="5000"></textarea></label><button class="primary">บันทึกผลที่เลือก</button></form>
+<label>แสดง<select id="reviewFilter"><option value="awaiting_review">👀 งานรอตรวจ</option><option value="approved">✅ งานอนุมัติแล้ว</option><option value="all">ทุกงาน / โอนงาน</option></select></label><div id="projects" class="assets"></div><div class="panel"><h2>ประวัติการตรวจ</h2><div id="activity"></div></div>
 </div></section></section>
 </main><script src="/team.js"></script><script src="/shell.js"></script></body></html>
