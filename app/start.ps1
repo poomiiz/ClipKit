@@ -15,17 +15,10 @@ foreach ($f in Get-ChildItem ([Environment]::GetFolderPath('Desktop')) -Filter *
     }
 }
 $url = "http://127.0.0.1:$port/video-editor.html"
-$up = $false
-try { $up = (Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2).StatusCode -eq 200 } catch {}
-if (-not $up) {
-    $py = (Get-Command python -ErrorAction Stop).Source
-    Start-Process -FilePath $py -ArgumentList "app.py" -WorkingDirectory $app -WindowStyle Hidden `
-        -RedirectStandardError "$app\video_editor.log" -RedirectStandardOutput "$app\video_editor.out.log"
-    for ($i = 0; $i -lt 20 -and -not $up; $i++) {
-        Start-Sleep -Milliseconds 500
-        try { $up = (Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2).StatusCode -eq 200 } catch {}
-    }
-}
+# already running = only open the page; the shared controller starts it and waits until /api/window/health is ready
+# a refusal (e.g. a copy started by hand before this controller) is written to control.log and the window still opens
+try { & (Join-Path $app 'control.ps1') -Action start -Port $port | Out-Null }
+catch { Add-Content "$app\control.log" "$(Get-Date -Format s) start: $_" }
 # open as its own app window (no address bar or tabs) so it feels like a program, not a web page;
 # Chrome first, else Edge (every Windows 10/11 has it), else a normal browser tab
 $win = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
