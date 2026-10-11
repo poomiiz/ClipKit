@@ -60,6 +60,20 @@ def config():
     return "config.json OK"
 
 
+def team_workspace():
+    import kitconfig
+    import tempfile
+    configured=kitconfig.CFG.get('team_workspaces',{})
+    if not configured:return 'no team workspace configured'
+    for item in configured.values():
+        root=Path(item['path'])
+        for folder in ('footage','exports'):
+            target=root/folder
+            if not target.is_dir():raise RuntimeError(f'team folder missing: {target}')
+            with tempfile.TemporaryFile(dir=target) as probe:probe.write(b'check');probe.flush()
+    return f'{len(configured)} team workspace(s) writable'
+
+
 def font():
     import kitconfig
     return kitconfig.font_file()
@@ -111,7 +125,7 @@ def asr():
 
 
 for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("node", node), ("config + folders", config),
-             ("GPU", gpu), ("speech model", model), ("disk space", disk)]:
+             ("team workspace", team_workspace), ("GPU", gpu), ("speech model", model), ("disk space", disk)]:
     check(n, f)
 # fonts are each editor's own choice; only the preview render needs "card_font" installed
 check("preview font", font, optional=True)

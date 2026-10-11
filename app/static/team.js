@@ -1,123 +1,30 @@
-const $ = id => document.getElementById(id);
-const LABELS = {editing:'✂️ กำลังตัด',awaiting_lead:'📤 รอหัวหน้าตรวจ',awaiting_review:'⏳ รอลูกค้าตรวจ',changes_requested:'🛠️ ส่งกลับแก้',approved:'✅ ลูกค้าอนุมัติ'};
-const ROLES = {owner:'เจ้าขององค์กร',lead:'หัวหน้าตรวจงาน',editor:'คนตัด'};
-let identity, organizations = [], selectedOrg = '', assets = [], members = [], localProjects = [];
-const reviewPage = document.body.dataset.teamPage === 'review';
-function say(text, error=false) { $('message').textContent=text; $('message').classList.toggle('error',error); }
-async function team(path, body) {
-  const response = await fetch('/api/team/'+path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const result = await response.json();
-  if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'คำขอใช้ไม่ได้');
-  return result;
-}
-function form(id, action) {
-  if (!$(id)) return;
-  $(id).onsubmit = async event => {
-    event.preventDefault(); const button=$(id).querySelector('button'); button.disabled=true;$('organization').disabled=true;
-    try { await action(Object.fromEntries(new FormData($(id)))); }
-    catch(e) { say(e.message,true); }
-    finally { button.disabled=false;$('organization').disabled=false; }
-  };
-}
-async function loadIdentity() {
-  identity=await team('session');
-  $('auth').hidden=identity.signed_in;
-  $('signedIn').hidden=!identity.signed_in;
-  if (!identity.configured) {
-    document.querySelectorAll('#auth input,#auth button').forEach(el=>{el.disabled=true;});
-    say('ระบบบัญชีทีมยังไม่เปิดใช้งาน ต้องตั้งค่าบริการบัญชีส่วนกลางก่อน',true); return;
-  }
-  if (!identity.signed_in) return;
-  $('userName').textContent=identity.user.display_name || identity.user.email;
-  if (!reviewPage) {await loadDrive();const response=await fetch('/api/video/drafts');const result=await response.json();if(!response.ok)throw new Error(result.detail || 'อ่านโปรเจกต์ในเครื่องไม่ได้');localProjects=result.drafts;$('localProject').replaceChildren(new Option('เลือกโปรเจกต์ CapCut',''),...localProjects.map(project=>new Option(project.name,project.path)));}
-  await loadOrganizations();
-}
-async function loadOrganizations() {
-  organizations=await team('organizations');
-  $('organization').replaceChildren(new Option('เลือกองค์กร',''));
-  organizations.forEach(org=>$('organization').add(new Option(org.name,org.id)));
-  const remembered=localStorage.getItem('ck-organization');
-  selectedOrg=organizations.some(org=>org.id===remembered) ? remembered : organizations.length===1 ? organizations[0].id : '';
-  $('organization').value=selectedOrg; await loadOrganization();
-}
-function person(id) { const member=members.find(m=>m.user_id===id); return member?.display_name || member?.email || id; }
-async function loadOrganization() {
-  selectedOrg=$('organization').value;
-  $('organizationContent').hidden=true; $('role').textContent='';
-  if (!selectedOrg) return;
-  localStorage.setItem('ck-organization',selectedOrg);
-  const org=organizations.find(o=>o.id===selectedOrg);
-  const role=org.clipkit_members.find(m=>m.user_id===identity.user.id)?.role;
-  $('role').textContent=ROLES[role] || '';
-  if (reviewPage && !['owner','lead'].includes(role)) { say('การตัดสินใจตรวจงานเป็นสิทธิ์ของหัวหน้า คนตัดส่งงานได้จากหน้าทีม',true); return; }
-  const [all,directory,activity]=await Promise.all([team('organizations/'+selectedOrg+'/assets'),team('organizations/'+selectedOrg+'/members'),team('organizations/'+selectedOrg+'/activity')]);
-  assets=all;members=directory; $('organizationContent').hidden=false;
-  if (reviewPage) $('leadControls').hidden=false;
-  else {
-    $('ownerControls').hidden=role!=='owner';
-    $('members').replaceChildren(...members.map(member=>{const row=document.createElement('div');row.textContent=person(member.user_id)+' · '+ROLES[member.role];return row;}));
-    $('driveFolder').elements.folder.value=org.drive_folder_id || '';
-    renderAssets('footage',all.filter(a=>a.kind==='footage'));
-    $('projectSource').replaceChildren(new Option('ไม่ระบุ',''),...all.filter(a=>a.kind==='footage').map(a=>new Option(a.name,a.id)));
-  }
-  renderAssets('projects',all.filter(a=>a.kind==='project'));
-  $('activity').replaceChildren(...activity.map(entry=>{
-    const row=document.createElement('div');row.className='activity';
-    const detail=entry.action==='delivery_changed' ? (LABELS[entry.detail.from]+' → '+LABELS[entry.detail.to]+(entry.detail.note ? ' · '+entry.detail.note : '')) : {organization_created:'สร้างองค์กร',member_added:'เพิ่ม / เปลี่ยนสิทธิ์สมาชิก',asset_registered:'เพิ่มฟุต / โปรเจกต์',drive_folder_changed:'ตั้งค่าโฟลเดอร์ Drive',file_sent:'ส่งไฟล์ขึ้น Drive',file_received:'รับไฟล์จาก Drive'}[entry.action] || entry.action;
-    row.textContent=person(entry.actor_id)+' · '+detail+' · '+new Date(entry.created_at).toLocaleString('th-TH');return row;
-  }));
-}
-function renderAssets(id, list) {
-  const box=$(id);box.replaceChildren();
-  if (!list.length) {box.textContent='ยังไม่มีรายการในองค์กรนี้';return;}
-  list.forEach(asset=>{
-    const card=document.createElement('div');card.className='asset';
-    const label=document.createElement('label');
-    if (asset.kind==='project' && (reviewPage || ['editing','changes_requested'].includes(asset.status))) {const check=document.createElement('input');check.type='checkbox';check.value=asset.id;check.setAttribute('aria-label','เลือก '+asset.name);label.append(check);}
-    const name=document.createElement('span');name.className='name';name.textContent=asset.name;name.title=asset.name;label.append(name);card.append(label);
-    if (asset.kind==='project') {
-      const status=document.createElement('div');status.className='status';status.textContent=LABELS[asset.status];card.append(status);
-      if (!reviewPage && ['editing','changes_requested'].includes(asset.status)) {
-        const submit=document.createElement('button');submit.textContent='📤 ส่งหัวหน้าตรวจ';
-        submit.onclick=async()=>{submit.disabled=true;try{await decide([asset],'awaiting_lead','');await loadOrganization();say('ส่งหัวหน้าตรวจแล้ว');}catch(e){say(e.message,true);}finally{submit.disabled=false;}};
-        card.append(submit);
-      }
-    }
-    const changed=document.createElement('div');changed.className='muted';changed.textContent='แก้ไขล่าสุด: '+person(asset.updated_by)+' · รุ่น '+asset.revision;card.append(changed);box.append(card);
-    if (asset.kind==='footage' || asset.kind==='project') {
-      if(!reviewPage){
-      const send=document.createElement('button');send.textContent=asset.drive_file_id ? 'ส่งรุ่นใหม่' : 'ส่งไฟล์';send.onclick=()=>withTransfer(send,async()=>{const path=await pickFootage();if(path) await sendFootage(asset,path);});card.append(send);
-      if(asset.kind==='project' && !['editing','changes_requested'].includes(asset.status))send.disabled=true;
-      if(asset.kind==='project'){
-        const select=document.createElement('select');select.setAttribute('aria-label','โปรเจกต์ในเครื่องสำหรับ '+asset.name);select.append(new Option('เลือกโปรเจกต์ในเครื่อง',''),...localProjects.map(project=>new Option(project.name,project.path)));card.append(select);
-        send.onclick=()=>withTransfer(send,async()=>{if(!select.value)throw new Error('เลือกโปรเจกต์ในเครื่องก่อนส่ง');await sendFootage(asset,select.value);});
-      }
-      }
-      if(asset.drive_file_id){const receive=document.createElement('button');receive.textContent=asset.kind==='project' ? 'รับโปรเจกต์เข้า CapCut' : 'รับฟุตเข้าเครื่อง';receive.onclick=()=>withTransfer(receive,async()=>{const result=await team('drive/download',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision});say('รับไฟล์แล้ว: '+result.path);});card.append(receive);}
-    }
-  });
-}
-async function decide(list, status, note, importExisting=false) {
-  if (!list.length) throw new Error('เลือกโปรเจกต์ก่อน');
-  return team('organizations/'+selectedOrg+'/review',{asset_ids:list.map(a=>a.id),status,note,import_existing:importExisting,expected_revisions:Object.fromEntries(list.map(a=>[a.id,a.revision]))});
-}
-form('login',async body=>{await team('login',body);$('login').reset();say('เข้าสู่ระบบแล้ว');await loadIdentity();});
-form('signup',async body=>{const result=await team('signup',body);$('signup').reset();say(result.verification_required ? 'เปิดอีเมลเพื่อยืนยันบัญชี แล้วเข้าสู่ระบบ' : 'สมัครบัญชีแล้ว');await loadIdentity();});
-form('createOrg',async body=>{const org=await team('organizations',body);localStorage.setItem('ck-organization',org.id);$('createOrg').reset();await loadOrganizations();say('สร้างองค์กรแล้ว');});
-form('addMember',async body=>{try{await team('organizations/'+selectedOrg+'/members',body);}finally{await loadOrganizations();}say('บันทึกสมาชิกและสิทธิ์ Drive แล้ว');});
-form('driveFolder',async body=>{const match=body.folder.match(/\/folders\/([A-Za-z0-9_-]+)/);await team('organizations/'+selectedOrg+'/drive-folder',{folder_id:match ? match[1] : body.folder.trim()});await loadOrganizations();say('บันทึกโฟลเดอร์แล้ว การรับส่งไฟล์ต้องเชื่อมบัญชี Drive');});
-form('review',async body=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),body.status,body.note,body.import_existing==='on');await loadOrganization();say('บันทึกผลตรวจแล้ว '+result.updated+' โปรเจกต์');});
-form('submitProjects',async()=>{const ids=[...document.querySelectorAll('#projects input:checked')].map(e=>e.value);const result=await decide(assets.filter(a=>ids.includes(a.id)),'awaiting_lead','');await loadOrganization();say('ส่งหัวหน้าตรวจแล้ว '+result.updated+' โปรเจกต์');});
-$('organization').onchange=()=>loadOrganization().catch(e=>say(e.message,true));
-$('logout').onclick=async()=>{try{await team('logout',{});selectedOrg='';await loadIdentity();say('ออกจากระบบแล้ว');}catch(e){say(e.message,true);}};
-async function loadDrive(){const state=await team('drive/connection');$('connectionState').textContent=' · '+(state.pending ? 'รออนุญาตในเบราว์เซอร์' : state.error || (state.connected ? 'เชื่อมต่อแล้ว' : 'ยังไม่เชื่อมต่อ'));$('connectDrive').disabled=state.pending;$('disconnectDrive').hidden=!state.connected;if(state.pending && identity.signed_in)setTimeout(()=>loadDrive().catch(e=>say(e.message,true)),2500);}
-async function withTransfer(button,action){button.disabled=true;$('organization').disabled=true;say('กำลังรับส่งไฟล์…');try{await action();await loadOrganization();}catch(e){say(e.message,true);}finally{button.disabled=false;$('organization').disabled=false;}}
-async function pickFootage(){const response=await fetch('/api/kit/browse-file',{method:'POST'});const result=await response.json();if(!response.ok)throw new Error(result.detail || 'เลือกไฟล์ไม่ได้');return result.path;}
-async function sendFootage(asset,path){await team('drive/upload',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision,path});say('ส่งไฟล์ให้องค์กรแล้ว');}
-form('publishProject',async()=>{if(!(await team('drive/connection')).connected)throw new Error('เชื่อม Drive ก่อนส่งโปรเจกต์');const project=localProjects.find(p=>p.path===$('localProject').value);if(!project)throw new Error('เลือกโปรเจกต์ก่อน');const registered=await team('organizations/'+selectedOrg+'/assets',{kind:'project',name:project.name,source_id:$('projectSource').value || null});await sendFootage({id:registered.id,revision:1},project.path);await loadOrganization();});
-if(!reviewPage){
- $('connectDrive').onclick=async()=>{try{await team('drive/connect',{});await loadDrive();}catch(e){say(e.message,true);}};
- $('disconnectDrive').onclick=async()=>{try{await team('drive/disconnect',{});await loadDrive();}catch(e){say(e.message,true);}};
- $('addFootage').onclick=()=>withTransfer($('addFootage'),async()=>{if(!(await team('drive/connection')).connected)throw new Error('เชื่อม Drive ก่อนส่งฟุต');const path=await pickFootage();if(!path)return;const registered=await team('organizations/'+selectedOrg+'/assets',{kind:'footage',name:path.replaceAll('\\','/').split('/').pop()});await sendFootage({id:registered.id,revision:1},path);});
-}
+const $=id=>document.getElementById(id);
+const LABELS={editing:'✂️ กำลังทำ',awaiting_review:'👀 รอลูกค้าตรวจ',changes_requested:'🔁 ต้องแก้',approved:'✅ อนุมัติแล้ว'};
+const ROLES={admin:'ผู้ดูแลองค์กร',lead:'หัวหน้าตรวจงาน',editor:'คนตัด'};
+const reviewPage=document.body.dataset.teamPage==='review';
+let workspaceFiles={footage:[],exports:[]};
+let identity,organizations=[],selectedOrg='',members=[],projects=[],footage=[],role='';
+function say(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
+async function team(path,body){const r=await fetch('/api/team/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw new Error(typeof j.detail==='string'?j.detail:'คำขอไม่ถูกต้อง');return j;}
+const orgPath=()=> 'organizations/'+selectedOrg;
+const person=id=>members.find(m=>m.user_id===id)?.display_name||members.find(m=>m.user_id===id)?.email||'ยังไม่มีคนรับ';
+function form(id,fn){if(!$(id))return;$(id).onsubmit=async e=>{e.preventDefault();const b=$(id).querySelector('button');b.disabled=true;try{await fn(Object.fromEntries(new FormData($(id))));}catch(e){say(e.message,true);}finally{b.disabled=false;}};}
+function button(card,text,fn){const b=document.createElement('button');b.textContent=text;b.onclick=async()=>{b.disabled=true;try{await fn();await loadOrganization();}catch(e){say(e.message,true);}finally{b.disabled=false;}};card.append(b);}
+async function loadIdentity(){identity=await team('session');$('auth').hidden=identity.signed_in;$('signedIn').hidden=!identity.signed_in;if(!identity.configured){say('ตั้งค่า Supabase ในหน้าตั้งค่าระบบทีมก่อน',true);return;}if(!identity.signed_in)return;$('userName').textContent=identity.user.display_name||identity.user.email;await loadOrganizations();}
+async function loadOrganizations(){organizations=await team('organizations');$('organization').replaceChildren(new Option('เลือกองค์กร',''),...organizations.map(o=>new Option(o.name,o.id)));const remembered=localStorage.getItem('ck-organization');$('organization').value=organizations.some(o=>o.id===remembered)?remembered:organizations[0]?.id||'';if($('createOrg'))$('createOrg').hidden=organizations.length>0;await loadOrganization();}
+async function loadOrganization(){selectedOrg=$('organization').value;$('organizationContent').hidden=true;if(!selectedOrg)return;localStorage.setItem('ck-organization',selectedOrg);role=organizations.find(o=>o.id===selectedOrg).clipkit_members.find(m=>m.user_id===identity.user.id)?.role;$('role').textContent=ROLES[role]||'';if(reviewPage&&!['admin','lead'].includes(role)){say('หน้านี้สำหรับหัวหน้าและผู้ดูแลองค์กร',true);return;}
+ [projects,footage,members]=await Promise.all([team(orgPath()+'/projects'),team(orgPath()+'/footage'),team(orgPath()+'/members')]);$('organizationContent').hidden=false;
+ if(reviewPage)$('leadControls').hidden=false;
+ else{$('ownerControls').hidden=role!=='admin';$('members').replaceChildren(...members.map(m=>{const d=document.createElement('div');d.textContent=person(m.user_id)+' · '+ROLES[m.role];return d;}));const ws=await team(orgPath()+'/workspace');$('workspace').elements.path.value=ws.path||'';$('workspace').elements.tool.value=ws.tool||'syncthing';workspaceFiles=ws.path?await team(orgPath()+'/workspace-files'):{footage:[],exports:[]};$('footageFile').replaceChildren(...workspaceFiles.footage.map(f=>new Option(f.name,f.name)));$('projectSource').replaceChildren(...footage.map(f=>new Option(f.name,f.id)));renderFootage();}
+ renderProjects();const activity=await team(orgPath()+'/activity');$('activity').replaceChildren(...activity.filter(a=>['owner_changed','delivery_changed'].includes(a.action)).map(a=>{const d=document.createElement('div');d.className='activity';d.textContent=person(a.actor_id)+' · '+(a.action==='owner_changed'?'โอน / รับงาน: '+person(a.detail.from)+' → '+person(a.detail.to):LABELS[a.detail.from]+' → '+LABELS[a.detail.to])+(a.detail.note?' · '+a.detail.note:'')+' · '+new Date(a.created_at).toLocaleString('th-TH');return d;}));}
+function renderFootage(){$('footage').replaceChildren(...footage.map(f=>{const card=document.createElement('div');card.className='asset';const name=document.createElement('strong');name.textContent=f.name;name.title=f.name;name.className='name';card.append(name);const detail=document.createElement('p');detail.textContent=(f.synced?'พร้อมตัด':'ยังไม่ได้ sync')+' · '+projects.filter(p=>p.footage_id===f.id).length+' เรื่อง';card.append(detail);button(card,'ดูเรื่องจากฟุตนี้',async()=>{ $('projectFilter').value='all';renderProjects(f.id);});return card;}));}
+function renderProjects(source=''){$('projects').replaceChildren();const filter=$('projectFilter')?.value||'all';const list=projects.filter(p=>(!source||p.footage_id===source)&&(filter!=='mine'||p.owner_id===identity.user.id)&&(filter!=='unclaimed'||!p.owner_id));for(const f of footage){const items=list.filter(p=>p.footage_id===f.id);if(!items.length)continue;const heading=document.createElement('h3');heading.textContent=f.name;heading.className='group-title';$('projects').append(heading);for(const p of items){const own=p.owner_id===identity.user.id;const editable=['editing','changes_requested'].includes(p.status);const card=document.createElement('div');card.className='asset';const label=document.createElement('label');if(reviewPage||own&&editable&&p.export_name){const check=document.createElement('input');check.type='checkbox';check.value=p.id;check.setAttribute('aria-label','เลือก '+p.name);label.append(check);}const name=document.createElement('span');name.className='name';name.textContent=p.name;name.title=p.name;label.append(name);card.append(label);const status=document.createElement('p');status.textContent=LABELS[p.status]+' · '+person(p.owner_id);card.append(status);
+ if(!p.owner_id&&!reviewPage)button(card,'รับงาน',()=>team(orgPath()+'/projects/'+p.id+'/claim',{expected_revision:p.revision}));
+ if(own&&editable&&!reviewPage){button(card,'เลือกโปรเจกต์ส่วนตัว',async()=>{const r=await fetch('/api/video/drafts');const j=await r.json();if(!r.ok)throw new Error('อ่านโปรเจกต์ไม่ได้');const select=document.createElement('select');select.setAttribute('aria-label','เลือกโปรเจกต์สำหรับ '+p.name);select.append(new Option('เลือกโปรเจกต์',''),...j.drafts.map(d=>new Option(d.name,d.path)));card.append(select);button(card,'ผูกโปรเจกต์นี้',async()=>{if(!select.value)throw new Error('เลือกโปรเจกต์ก่อน');await team(orgPath()+'/projects/'+p.id+'/bind',{path:select.value});});});button(card,'เปิดแก้',()=>team(orgPath()+'/projects/'+p.id+'/open',{expected_revision:p.revision}));button(card,'ส่ง MP4 ตรวจ',async()=>{const select=document.createElement('select');select.setAttribute('aria-label','เลือก MP4 สำหรับ '+p.name);select.append(new Option('เลือก MP4 ที่ส่งออก',''),...workspaceFiles.exports.map(f=>new Option(f.name,f.name)));card.append(select);button(card,'ส่ง MP4 ที่เลือก',async()=>{const file=workspaceFiles.exports.find(f=>f.name===select.value);if(!file)throw new Error('เลือก MP4 ก่อน');await team(orgPath()+'/projects/'+p.id+'/export',{...file,expected_revision:p.revision});});});}
+ if(['admin','lead'].includes(role)){const select=document.createElement('select');select.setAttribute('aria-label','โอนงาน '+p.name);select.append(new Option('ปลดให้ยังไม่มีคนรับ',''),...members.map(m=>new Option(person(m.user_id),m.user_id)));select.value=p.owner_id||'';card.append(select);button(card,'โอน / ปลดงาน',async()=>{const note=prompt('เหตุผลการโอน / ปลดงาน');if(!note)return;await team(orgPath()+'/projects/'+p.id+'/transfer',{owner_id:select.value||null,expected_revision:p.revision,note});});}
+ if(p.export_name){const exportLabel=document.createElement('p');exportLabel.className='muted';exportLabel.textContent='MP4: '+p.export_name;card.append(exportLabel);const a=document.createElement('a');a.textContent='▶️ ตรวจ MP4';a.href='/api/team/'+orgPath()+'/projects/'+p.id+'/preview';a.target='_blank';a.rel='noopener';card.append(a);} $('projects').append(card);}}}
+async function decide(status,note=''){const ids=[...$('projects').querySelectorAll('input:checked')].map(e=>e.value);if(!ids.length)throw new Error('เลือกงานก่อน');return team(orgPath()+'/review',{project_ids:ids,status,note,expected_revisions:Object.fromEntries(projects.filter(p=>ids.includes(p.id)).map(p=>[p.id,p.revision]))});}
+form('login',async b=>{await team('login',b);$('login').reset();await loadIdentity();});form('signup',async b=>{const r=await team('signup',b);$('signup').reset();say(r.verification_required?'ยืนยันบัญชีในอีเมลแล้วเข้าสู่ระบบ':'สมัครแล้ว');await loadIdentity();});form('createOrg',async b=>{await team('organizations',b);await loadOrganizations();});form('addMember',async b=>{await team(orgPath()+'/members',b);await loadOrganizations();});form('workspace',async b=>{await team(orgPath()+'/workspace',b);await loadOrganization();say('บันทึกโฟลเดอร์ทีมแล้ว');});form('addFootage',async b=>{await team(orgPath()+'/footage',workspaceFiles.footage.find(f=>f.name===b.name));await loadOrganization();});form('addStories',async b=>{const names=b.names.split('\n').map(s=>s.trim()).filter(Boolean);await team(orgPath()+'/projects',{footage_id:b.footage_id,stories:names.map(name=>({name,project_type:b.project_type}))});await loadOrganization();});form('submitProjects',async()=>{const r=await decide('awaiting_review');await loadOrganization();say('ส่งตรวจแล้ว '+r.updated+' งาน');});form('review',async b=>{const r=await decide(b.status,b.note);await loadOrganization();say('บันทึก '+r.updated+' งาน');});$('organization').onchange=()=>loadOrganization().catch(e=>say(e.message,true));if($('projectFilter'))$('projectFilter').onchange=()=>renderProjects();$('logout').onclick=async()=>{try{await team('logout',{});await loadIdentity();}catch(e){say(e.message,true);}};
+// Refresh authoritative status from Supabase across machines; no metadata file enters the sync folder.
+setInterval(()=>{if(identity?.signed_in&&selectedOrg&&!document.querySelector('input:focus,textarea:focus,select:focus')&&!$('projects').querySelector('input:checked,select'))loadOrganization().catch(e=>say(e.message,true));},15000);
 loadIdentity().catch(e=>say(e.message,true));
