@@ -14,6 +14,8 @@ presets/previews/
 presets/parts/
 corrections.json
 footage_names.json
+delivery_statuses.json
+delivery_statuses.json.tmp
 
 # personal / client data, never in the public repo
 *.sqlite
