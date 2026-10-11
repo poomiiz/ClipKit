@@ -67,7 +67,7 @@ language plpgsql security definer set search_path='' as $$
 declare story jsonb; total integer:=0;
 begin
  if public.clipkit_role(org) is null then raise exception 'Organization member only' using errcode='42501'; end if;
- if jsonb_typeof(stories)<>'array' or jsonb_array_length(stories) not between 1 and 500 then raise exception '1 to 500 stories required'; end if;
+ if stories is null or jsonb_typeof(stories)<>'array' or jsonb_array_length(stories) not between 1 and 500 then raise exception '1 to 500 stories required'; end if;
  for story in select value from jsonb_array_elements(stories) loop
   insert into public.projects(organization_id,footage_id,name,project_type,created_by,updated_by)
   values(org,source,story->>'name',story->>'project_type',auth.uid(),auth.uid()); total:=total+1;
@@ -96,6 +96,9 @@ begin
  if next_owner is not null and not exists(select 1 from public.clipkit_members where organization_id=org and user_id=next_owner) then raise exception 'Owner must belong to organization'; end if;
  update public.projects set owner_id=next_owner,status='editing',revision=revision+1,approved_by=null,approved_at=null,updated_by=auth.uid(),updated_at=now() where id=project;
  insert into public.clipkit_activity(organization_id,actor_id,asset_id,action,detail) values(org,auth.uid(),project,'owner_changed',jsonb_build_object('from',item.owner_id,'to',next_owner,'note',note,'revision',item.revision+1));
+ if item.status<>'editing' then
+  insert into public.clipkit_activity(organization_id,actor_id,asset_id,action,detail) values(org,auth.uid(),project,'delivery_changed',jsonb_build_object('from',item.status,'to','editing','note',note,'revision',item.revision+1));
+ end if;
  return item.revision+1;
 end $$;
 create function public.clipkit_project_action(org uuid,project_ids uuid[],next_status text,expected_revisions jsonb,note text default '',export_file text default null,export_bytes bigint default null) returns integer
