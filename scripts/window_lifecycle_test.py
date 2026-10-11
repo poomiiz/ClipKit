@@ -92,7 +92,7 @@ def helper_check():
     function Get-ClipKitPortOwner { return $script:fakeOwner }
     function Get-ClipKitProcess { param($ProcessId); if ($script:fakeOwner -and $ProcessId -eq 4201) { return $script:fakeOwner } }
     function Get-ClipKitChildren { param($Owner); return @([pscustomobject]@{ProcessId=4202}) }
-    function Invoke-RestMethod { $script:events += 'exit'; $script:fakeOwner = $null }
+    function Invoke-RestMethod { param($Uri); if ($Uri -like '*cancel-shutdown*') { $script:events += 'cancel' } else { $script:events += 'exit'; $script:fakeOwner = $null } }
     function Stop-ClipKitVerified { param($Snapshot); $script:events += ('stop:' + $Snapshot.ProcessId) }
     function Start-ClipKitServer {
         if ($script:fakeOwner) { throw 'Start ran before the old owner released its port.' }
@@ -109,7 +109,7 @@ def helper_check():
     if ($null -ne $result.instance -or ($script:events -join ',') -ne 'exit,stop:4202') { throw 'Shutdown started another server.' }
     $script:fakeOwner = $owner; $script:events = @()
     $result = Invoke-ClipKitControl 'start'
-    if ($result.instance -ne 4201 -or ($script:events -join ',') -ne 'ready') { throw 'Existing owner was duplicated.' }
+    if ($result.instance -ne 4201 -or ($script:events -join ',') -ne 'cancel,ready') { throw 'Existing owner was duplicated.' }
     $script:fakeOwner = $foreign; $script:events = @()
     $rejected = $false
     try { Invoke-ClipKitControl 'restart' | Out-Null } catch { $rejected = $true }
@@ -144,7 +144,7 @@ def live_check():
         port = sock.getsockname()[1]
     root = Path(__file__).resolve().parents[1]
     command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-               str(root / "app" / "control.ps1"), "-Port", str(port), "-Python", sys.executable]
+               str(root / "app" / "control.ps1"), "-Port", str(port), "-Python", str(Path(sys.executable).with_name("pythonw.exe"))]
     records = []
     handle = None
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
