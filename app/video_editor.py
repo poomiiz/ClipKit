@@ -977,6 +977,7 @@ class WebAiRequest(BaseModel):
     step: str = Field(pattern="^(stories|clip)$")
     target: str  # the video (stories) or the project folder (clip)
     answer: str = ""
+    max_minutes: float | None = Field(default=None, gt=0)  # stories: the cap per story the person typed
 
 
 @router.post("/web-ai/export")
@@ -984,7 +985,8 @@ def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
     """The file to upload to an AI in the browser instead of pasting the command to the agent here."""
     import web_ai_json as web_ai
     try:
-        out = (web_ai.export_stories if req.step == "stories" else web_ai.export_clip)(req.target)
+        out = (web_ai.export_stories(req.target, req.max_minutes) if req.step == "stories"
+               else web_ai.export_clip(req.target))
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"file": str(out), "name": out.name, "text": out.read_text(encoding="utf-8")}

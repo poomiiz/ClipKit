@@ -379,6 +379,9 @@ def web_ai_answers_are_checked():
         (Path(t) / "ep.mov.transcript.json").write_text(json.dumps(
             [{"start": 0.0, "end": 2.0, "text": "สวัสดี"}, {"start": 10.0, "end": 14.0, "text": "เรื่องเงิน"}]), encoding="utf-8")
         assert "เรื่องเงิน" in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        assert "ไม่เกิน" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        capped = web_ai.export_stories(str(video), 1.5).read_text(encoding="utf-8")
+        assert "ไม่เกิน 1.5 นาที (90 วินาที" in capped and capped.index("90 วินาที") < capped.index("## ตอบกลับ")
         head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
         for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},
                     {**head, "stories": [{"title": "a", "start": 3, "end": 5}]}):  # wrong video / no speech
