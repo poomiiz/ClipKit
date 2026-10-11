@@ -8,6 +8,8 @@ import re
 import secrets
 import threading
 import tempfile
+import shutil
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -22,19 +24,13 @@ from pydantic import BaseModel, Field
 
 import kit_settings
 import team_hub as hub
+import team_packet
+from team_packet import digest as file_checksum
 
 router = APIRouter(prefix="/api/team/drive", tags=["team-drive"])
 SCOPE = "https://www.googleapis.com/auth/drive"
 API = "https://www.googleapis.com/drive/v3/"
 CHUNK = 8 * 1024 * 1024
-
-
-def file_checksum(file: Path) -> str:
-    digest=hashlib.sha256()
-    with file.open("rb") as stream:
-        while chunk:=stream.read(CHUNK):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -273,12 +269,27 @@ def upload(body: Transfer, request: Request) -> dict:
     asset = next((x for x in all_assets if x["id"] == str(body.asset_id)), None)
     if not asset or asset["revision"] != body.expected_revision:
         raise HTTPException(409, "รายการเปลี่ยนหรือไม่อยู่ในองค์กร กรุณาโหลดใหม่")
-    if asset["kind"] != "footage":
-        raise HTTPException(400, "โปรเจกต์ต้องแพ็กไฟล์และผูกฟุตก่อนส่ง")
     file = Path(body.path).resolve()
-    roots = [Path(value).resolve() for key,value in kit_settings._read_config().items() if key in ("work_root", "output_dir") and value]
+    cfg=kit_settings._read_config()
+    if asset["kind"]=="project":
+        kind,project=kit_settings._project(str(file))
+        if kind!="capcut":raise HTTPException(400,"ขณะนี้ส่งโปรเจกต์ CapCut ได้เท่านั้น")
+        if kit_settings._capcut_running():raise HTTPException(409,"ปิด CapCut ก่อนส่งโปรเจกต์")
+        base=Path(cfg.get("output_dir") or cfg.get("work_root") or "")
+        if not base.is_dir() or str(base)==".":raise HTTPException(400,"ตั้งโฟลเดอร์งานก่อนส่งโปรเจกต์")
+        roots=[Path(cfg[k]) for k in kit_settings.FOLDER_KEYS if cfg.get(k) and k!="models_dir"]
+        with tempfile.TemporaryDirectory(dir=base,prefix="clipkit-packet-") as directory:
+            if not Path(directory).resolve().is_relative_to(base.resolve()):raise HTTPException(400,"โฟลเดอร์แพ็กไม่ถูกต้อง")
+            packet=Path(directory)/"snapshot.zip"
+            team_packet.pack(project,packet,str(body.organization_id),str(body.asset_id),roots)
+            return send_snapshot(packet,org,body,request)
+    roots = [Path(value).resolve() for key,value in cfg.items() if key in ("work_root", "output_dir") and value]
     if not file.is_file() or not any(file.is_relative_to(root) for root in roots) or file.suffix.lower() not in (".mp4", ".mov", ".mkv", ".avi", ".wav", ".mp3", ".m4a"):
         raise HTTPException(400, "เลือกฟุตจากโฟลเดอร์งานที่ตั้งค่าไว้")
+    return send_snapshot(file,org,body,request)
+
+
+def send_snapshot(file: Path,org: dict,body: Transfer,request: Request) -> dict:
     before = file.stat()
     checksum = file_checksum(file)
     token = drive_session(request)
@@ -307,8 +318,6 @@ def download(body: Receive, request: Request) -> dict:
     asset = next((x for x in hub.assets(body.organization_id,request) if x["id"]==str(body.asset_id)),None)
     if not asset or asset["revision"]!=body.expected_revision or not asset.get("drive_file_id") or not asset.get("checksum"):
         raise HTTPException(409,"ไฟล์เปลี่ยนหรือยังไม่ได้ส่งขึ้น Drive กรุณาโหลดใหม่")
-    if asset["kind"]!="footage":
-        raise HTTPException(400,"โปรเจกต์ต้องตรวจแพ็กและผูกฟุตก่อนเปิดข้ามเครื่อง")
     cfg=kit_settings._read_config()
     if not cfg.get("work_root") or not Path(cfg["work_root"]).is_dir():
         raise HTTPException(400,"ตั้งค่าโฟลเดอร์ฟุตของเครื่องก่อนรับไฟล์")
@@ -318,7 +327,7 @@ def download(body: Receive, request: Request) -> dict:
     if meta.get("trashed") or org["drive_folder_id"] not in meta.get("parents",[]) or props.get("clipkit_org")!=str(body.organization_id) or props.get("clipkit_asset")!=str(body.asset_id) or props.get("sha256")!=asset["checksum"]:
         raise HTTPException(409,"ไฟล์บน Drive ไม่ตรงกับรายการองค์กร")
     suffix=Path(meta["name"]).suffix.lower()
-    if suffix not in (".mp4",".mov",".mkv",".avi",".wav",".mp3",".m4a"):
+    if (asset["kind"]=="project" and suffix!=".zip") or (asset["kind"]=="footage" and suffix not in (".mp4",".mov",".mkv",".avi",".wav",".mp3",".m4a")):
         raise HTTPException(400,"ไฟล์ Drive นี้ไม่ใช่ฟุตที่รองรับ")
     root=Path(cfg["work_root"]).resolve()
     destination=root/"clipkit-team"/str(body.organization_id)/str(body.asset_id)
@@ -330,6 +339,7 @@ def download(body: Receive, request: Request) -> dict:
         if file_checksum(target)!=asset["checksum"]:
             raise HTTPException(409,"ไฟล์ในเครื่องถูกแก้ไข กรุณาเก็บงานนั้นก่อนรับใหม่")
         hub.rpc(request,"clipkit_record_received",{"org":str(body.organization_id),"asset":str(body.asset_id),"expected_revision":body.expected_revision})
+        if asset["kind"]=="project":return import_project(target,asset,body,cfg)
         return {"path":str(target),"revision":asset["revision"]}
     temp=None
     try:
@@ -344,7 +354,42 @@ def download(body: Receive, request: Request) -> dict:
             raise HTTPException(409,"ข้อมูลที่รับไม่ตรงกับไฟล์ต้นทาง ยังไม่เปิดใช้ไฟล์")
         temp.rename(target)
         hub.rpc(request,"clipkit_record_received",{"org":str(body.organization_id),"asset":str(body.asset_id),"expected_revision":body.expected_revision})
+        if asset["kind"]=="project":return import_project(target,asset,body,cfg)
         return {"path":str(target),"revision":asset["revision"]}
     finally:
         if temp and temp.exists():
             temp.unlink()
+
+
+def import_project(packet: Path,asset: dict,body: Receive,cfg: dict) -> dict:
+    if kit_settings._capcut_running():raise HTTPException(409,"รับแพ็กแล้ว ปิด CapCut ก่อนนำโปรเจกต์เข้า")
+    root=Path(cfg.get("capcut_drafts") or "")
+    if not root.is_dir() or str(root)==".":raise HTTPException(400,"ตั้งโฟลเดอร์โปรเจกต์ CapCut ก่อนรับงาน")
+    root=root.resolve()
+    final=root/("CK-"+str(body.asset_id)+"-"+asset["checksum"][:12])
+    if final.resolve().parent!=root:raise HTTPException(400,"ตำแหน่งรับโปรเจกต์ไม่ถูกต้อง")
+    if final.exists():raise HTTPException(409,"โปรเจกต์รุ่นนี้อยู่ในเครื่องแล้ว: "+str(final)+" · เก็บงานในเครื่องไว้ ไม่เขียนทับ")
+    sys.path.insert(0,str(kit_settings.KIT/"scripts"/"capcut"))
+    import kitconfig
+    registry=Path(kitconfig.ROOT_META)
+    if not registry.is_file():raise HTTPException(400,"ไม่พบรายชื่อโปรเจกต์ CapCut เปิด CapCut ครั้งแรกและตั้งโฟลเดอร์ให้ถูกต้องก่อน")
+    existing=json.loads(registry.read_text(encoding="utf-8-sig"))
+    if not isinstance(existing.get("all_draft_store"),list):raise HTTPException(400,"รายชื่อโปรเจกต์ CapCut อ่านไม่ได้")
+    with tempfile.TemporaryDirectory(dir=root,prefix="clipkit-import-") as directory:
+        staging=Path(directory)
+        if not staging.resolve().is_relative_to(root):raise HTTPException(400,"โฟลเดอร์รับโปรเจกต์ไม่ถูกต้อง")
+        team_packet.unpack(packet,staging,final,str(body.organization_id),str(body.asset_id),asset["name"])
+    metadata=final/"draft_meta_info.json"
+    if not metadata.is_file():raise HTTPException(400,"รับโปรเจกต์แล้ว แต่แพ็กไม่มีข้อมูลรายชื่อ CapCut: "+str(final))
+    entry=json.loads(metadata.read_text(encoding="utf-8"))
+    entry["draft_cover"]=(final/"draft_cover.jpg").as_posix()
+    existing["all_draft_store"].insert(0,entry)
+    backup=registry.with_name(registry.name+".bak_team_"+secrets.token_hex(6))
+    shutil.copy2(registry,backup)
+    temporary=registry.with_name(registry.name+".tmp_"+secrets.token_hex(6))
+    try:
+        temporary.write_text(json.dumps(existing,ensure_ascii=False),encoding="utf-8")
+        temporary.replace(registry)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {"path":str(final),"revision":asset["revision"],"kind":"capcut"}
