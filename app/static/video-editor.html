@@ -498,7 +498,8 @@
   .proj.sel { outline: 2px solid #7c5cff; }
   .proj.sel .nm { color: #b9a8ff; }
   .marquee { position: fixed; z-index: 50; border: 1px solid #7c5cff; background: rgba(124,92,255,.15); pointer-events: none; border-radius: 4px; }
-  #selBar { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
+  #selBar { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
+  #selDelivery { width: auto; font-size: 13px; padding: 6px 8px; }
   #selHint { margin-left: 12px; font-size: 12.5px; }
   .proj-tabs { display: inline-flex; gap: 6px; margin-left: 12px; }
   .proj-tabs button.on { background: #7c5cff; color: #fff; border-color: #7c5cff; }
@@ -561,6 +562,8 @@
     </div>
     <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
+        <select id="selDelivery" aria-label="สถานะส่งงานของโปรเจกต์ที่เลือก"><option value="awaiting_review">รอลูกค้าตรวจ</option><option value="editing">กำลังทำ</option><option value="changes_requested">ต้องแก้</option><option value="approved">อนุมัติแล้ว</option></select>
+        <button class="small primary" id="selDeliveryApply" onclick="setSelectedDelivery()">เปลี่ยนสถานะที่เลือก</button>
         <button class="small del" onclick="delSelected()">ลบที่เลือก</button>
         <button class="small" onclick="clearSel()">ยกเลิก</button></span>
       <span class="hint" id="selHint">ลากคลุมเพื่อเลือกหลายโปรเจกต์ · Ctrl+คลิก เลือกทีละอัน</span></div>
@@ -2410,6 +2413,7 @@ function projCard(d) {
     delivery.title = 'สถานะที่ยืนยันเอง' + (d.delivery?.updated_at ? ' · บันทึก ' + new Date(d.delivery.updated_at).toLocaleString('th-TH') : '');
   };
   show();
+  el._showDelivery = show;
   delivery.onchange = async () => {
     delivery.disabled = true;
     try {
@@ -2446,6 +2450,31 @@ function showSel() {
   document.getElementById('selHint').style.display = selSet.size ? 'none' : '';
 }
 function clearSel() { selSet.clear(); showSel(); }
+async function setSelectedDelivery() {
+  const selected = [...selSet];
+  if (!selected.length) return;
+  if (selected.some(el => el.querySelector('.delivery').disabled)) { toast('รอการบันทึกสถานะก่อนหน้าให้เสร็จก่อน'); return; }
+  const status = document.getElementById('selDelivery').value;
+  const controls = [...document.querySelectorAll('#selBar button, #selBar select'), ...selected.flatMap(el => [...el.querySelectorAll('button, select')])];
+  const disabled = controls.map(el => el.disabled);
+  controls.forEach(el => { el.disabled = true; });
+  const apply = document.getElementById('selDeliveryApply');
+  apply.textContent = 'กำลังบันทึก…';
+  try {
+    const r = await fetch('/api/kit/delivery-status/bulk', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({paths: selected.map(el => el._d.path), status})});
+    const result = await r.json();
+    if (!r.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'บันทึกสถานะไม่ได้');
+    selected.forEach(el => {
+      el._d.delivery = result.statuses[el._d.path.replaceAll('/', '\\').toLowerCase()];
+      el._showDelivery();
+    });
+    toast('เปลี่ยนสถานะแล้ว ' + result.updated + ' โปรเจกต์');
+  } catch (e) { toast('❌ ' + e.message); }
+  finally {
+    controls.forEach((el, i) => { el.disabled = disabled[i]; });
+    apply.textContent = 'เปลี่ยนสถานะที่เลือก';
+  }
+}
 async function delSelected() {
   const list = [...selSet].map(el => el._d);
   if (!list.length || !confirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)\n\n' + list.map(d => '• ' + d.name).join('\n'))) return;
