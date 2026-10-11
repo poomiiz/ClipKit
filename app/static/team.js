@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const LABELS = {editing:'✂️ กำลังตัด',awaiting_lead:'📤 รอหัวหน้าตรวจ',awaiting_review:'⏳ รอลูกค้าตรวจ',changes_requested:'🛠️ ส่งกลับแก้',approved:'✅ ลูกค้าอนุมัติ'};
 const ROLES = {owner:'เจ้าขององค์กร',lead:'หัวหน้าตรวจงาน',editor:'คนตัด'};
-let identity, organizations = [], selectedOrg = '', assets = [], members = [];
+let identity, organizations = [], selectedOrg = '', assets = [], members = [], localProjects = [];
 const reviewPage = document.body.dataset.teamPage === 'review';
 function say(text, error=false) { $('message').textContent=text; $('message').classList.toggle('error',error); }
 async function team(path, body) {
@@ -13,10 +13,10 @@ async function team(path, body) {
 function form(id, action) {
   if (!$(id)) return;
   $(id).onsubmit = async event => {
-    event.preventDefault(); const button=$(id).querySelector('button'); button.disabled=true;
+    event.preventDefault(); const button=$(id).querySelector('button'); button.disabled=true;$('organization').disabled=true;
     try { await action(Object.fromEntries(new FormData($(id)))); }
     catch(e) { say(e.message,true); }
-    finally { button.disabled=false; }
+    finally { button.disabled=false;$('organization').disabled=false; }
   };
 }
 async function loadIdentity() {
@@ -29,7 +29,7 @@ async function loadIdentity() {
   }
   if (!identity.signed_in) return;
   $('userName').textContent=identity.user.display_name || identity.user.email;
-  if (!reviewPage) await loadDrive();
+  if (!reviewPage) {await loadDrive();const response=await fetch('/api/video/drafts');const result=await response.json();if(!response.ok)throw new Error(result.detail || 'อ่านโปรเจกต์ในเครื่องไม่ได้');localProjects=result.drafts;$('localProject').replaceChildren(new Option('เลือกโปรเจกต์ CapCut',''),...localProjects.map(project=>new Option(project.name,project.path)));}
   await loadOrganizations();
 }
 async function loadOrganizations() {
@@ -58,6 +58,7 @@ async function loadOrganization() {
     $('members').replaceChildren(...members.map(member=>{const row=document.createElement('div');row.textContent=person(member.user_id)+' · '+ROLES[member.role];return row;}));
     $('driveFolder').elements.folder.value=org.drive_folder_id || '';
     renderAssets('footage',all.filter(a=>a.kind==='footage'));
+    $('projectSource').replaceChildren(new Option('ไม่ระบุ',''),...all.filter(a=>a.kind==='footage').map(a=>new Option(a.name,a.id)));
   }
   renderAssets('projects',all.filter(a=>a.kind==='project'));
   $('activity').replaceChildren(...activity.map(entry=>{
@@ -83,9 +84,16 @@ function renderAssets(id, list) {
       }
     }
     const changed=document.createElement('div');changed.className='muted';changed.textContent='แก้ไขล่าสุด: '+person(asset.updated_by)+' · รุ่น '+asset.revision;card.append(changed);box.append(card);
-    if (!reviewPage && asset.kind==='footage') {
+    if (asset.kind==='footage' || asset.kind==='project') {
+      if(!reviewPage){
       const send=document.createElement('button');send.textContent=asset.drive_file_id ? 'ส่งรุ่นใหม่' : 'ส่งไฟล์';send.onclick=()=>withTransfer(send,async()=>{const path=await pickFootage();if(path) await sendFootage(asset,path);});card.append(send);
-      if(asset.drive_file_id){const receive=document.createElement('button');receive.textContent='รับฟุตเข้าเครื่อง';receive.onclick=()=>withTransfer(receive,async()=>{const result=await team('drive/download',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision});say('รับฟุตแล้ว: '+result.path);});card.append(receive);}
+      if(asset.kind==='project' && !['editing','changes_requested'].includes(asset.status))send.disabled=true;
+      if(asset.kind==='project'){
+        const select=document.createElement('select');select.setAttribute('aria-label','โปรเจกต์ในเครื่องสำหรับ '+asset.name);select.append(new Option('เลือกโปรเจกต์ในเครื่อง',''),...localProjects.map(project=>new Option(project.name,project.path)));card.append(select);
+        send.onclick=()=>withTransfer(send,async()=>{if(!select.value)throw new Error('เลือกโปรเจกต์ในเครื่องก่อนส่ง');await sendFootage(asset,select.value);});
+      }
+      }
+      if(asset.drive_file_id){const receive=document.createElement('button');receive.textContent=asset.kind==='project' ? 'รับโปรเจกต์เข้า CapCut' : 'รับฟุตเข้าเครื่อง';receive.onclick=()=>withTransfer(receive,async()=>{const result=await team('drive/download',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision});say('รับไฟล์แล้ว: '+result.path);});card.append(receive);}
     }
   });
 }
@@ -105,7 +113,8 @@ $('logout').onclick=async()=>{try{await team('logout',{});selectedOrg='';await l
 async function loadDrive(){const state=await team('drive/connection');$('connectionState').textContent=state.connected ? ' · เชื่อมต่อแล้ว' : state.pending ? ' · รออนุญาตในเบราว์เซอร์' : ' · '+(state.error || 'ยังไม่เชื่อมต่อ');$('connectDrive').disabled=state.pending;$('disconnectDrive').hidden=!state.connected;if(state.pending && identity.signed_in)setTimeout(()=>loadDrive().catch(e=>say(e.message,true)),2500);}
 async function withTransfer(button,action){button.disabled=true;$('organization').disabled=true;say('กำลังรับส่งไฟล์…');try{await action();await loadOrganization();}catch(e){say(e.message,true);}finally{button.disabled=false;$('organization').disabled=false;}}
 async function pickFootage(){const response=await fetch('/api/kit/browse-file',{method:'POST'});const result=await response.json();if(!response.ok)throw new Error(result.detail || 'เลือกไฟล์ไม่ได้');return result.path;}
-async function sendFootage(asset,path){await team('drive/upload',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision,path});say('ส่งฟุตให้องค์กรแล้ว');}
+async function sendFootage(asset,path){await team('drive/upload',{organization_id:selectedOrg,asset_id:asset.id,expected_revision:asset.revision,path});say('ส่งไฟล์ให้องค์กรแล้ว');}
+form('publishProject',async()=>{if(!(await team('drive/connection')).connected)throw new Error('เชื่อม Drive ก่อนส่งโปรเจกต์');const project=localProjects.find(p=>p.path===$('localProject').value);if(!project)throw new Error('เลือกโปรเจกต์ก่อน');const registered=await team('organizations/'+selectedOrg+'/assets',{kind:'project',name:project.name,source_id:$('projectSource').value || null});await sendFootage({id:registered.id,revision:1},project.path);await loadOrganization();});
 if(!reviewPage){
  $('connectDrive').onclick=async()=>{try{await team('drive/connect',{});await loadDrive();}catch(e){say(e.message,true);}};
  $('disconnectDrive').onclick=async()=>{try{await team('drive/disconnect',{});await loadDrive();}catch(e){say(e.message,true);}};

@@ -269,6 +269,8 @@ def upload(body: Transfer, request: Request) -> dict:
     asset = next((x for x in all_assets if x["id"] == str(body.asset_id)), None)
     if not asset or asset["revision"] != body.expected_revision:
         raise HTTPException(409, "รายการเปลี่ยนหรือไม่อยู่ในองค์กร กรุณาโหลดใหม่")
+    if asset["kind"]=="project" and asset["status"] not in ("editing","changes_requested"):
+        raise HTTPException(409,"โปรเจกต์อยู่ระหว่างตรวจหรืออนุมัติแล้ว หัวหน้าต้องส่งกลับแก้ก่อนส่งไฟล์ใหม่")
     file = Path(body.path).resolve()
     cfg=kit_settings._read_config()
     if asset["kind"]=="project":
