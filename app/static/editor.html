@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ตัดต่อ · EditorKrab</title>
 <style>
-:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
@@ -92,7 +92,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   </div>
   <div class="tl">
     <div class="tlbar"><span class="t" id="tc">0:00.0 / 0:00</span>
-      <span>ซูม</span><input type="range" id="zoom" min="10" max="160" value="40" style="width:140px">
+      <span>ซูม</span><input type="range" id="zoom" aria-label="ซูมไทม์ไลน์" min="10" max="160" value="40" style="width:140px">
       <button id="bAddBr" class="media">+ ภาพประกอบตรงเส้นแดง</button>
       <span class="hint">คลิกชิ้นไหนเพื่อแก้ทางขวา · ลากภาพประกอบเพื่อเลื่อน ลากขอบขวาเพื่อยืด · Space เล่น/หยุด · Delete ลบ</span></div>
     <div class="tracks" id="tracks">
@@ -253,15 +253,15 @@ function sideClip(s) {
     <h4>ตัดเนื้อหา</h4>
     <div class="row"><button id="uncut">↶ ย้อนการตัดล่าสุด</button><span class="hint">ตัดประโยคไหนออก: กดที่ข้อความบนไทม์ไลน์ แล้วกด ✂️</span></div>
     <details id="adv"><summary>ตั้งค่าเพิ่มเติม <span class="hint">ไม่ต้องแตะก็ได้</span></summary>
-    <div class="row"><label>ชุดตัวหนังสือ</label><select id="preset" style="flex:1"></select></div>
+    <div class="row"><label for="preset">ชุดตัวหนังสือ</label><select id="preset" style="flex:1"></select></div>
     <div class="hint">สร้างชุดเองได้: บอกในแชท หรือดึงจากโปรเจกต์ CapCut ที่ตัดไว้</div>
     <h4 id="txtH">ข้อความ (ซับ)</h4>
-    <div class="row"><label>ขนาด</label><input type="range" id="tSize" min="8" max="24" step="0.5"><span id="tSizeV" class="hint"></span></div>
-    <div class="row"><label>ตำแหน่ง</label><input type="range" id="tY" min="-0.6" max="0.6" step="0.01"><span id="tYV" class="hint"></span></div>
-    <div class="row"><label>ระยะบรรทัด</label><input type="range" id="tLh" min="0.9" max="2" step="0.05"><span id="tLhV" class="hint"></span></div>
-    <div class="row"><label>เขตปลอดภัย</label><select id="tZone" style="flex:1"></select></div>
-    <div class="row"><label>สี</label><input type="color" id="tColor"><label style="min-width:0">ขอบ</label><input type="range" id="tStroke" min="0" max="0.2" step="0.01"></div>
-    <div class="row"><label>ซับยาวเกินจอ</label><select id="tMode" style="flex:1">${TIDY.map(([k, t]) => `<option value="${k}"${(st.tidy || 'lines') === k ? ' selected' : ''}>${t}</option>`).join('')}</select><button id="tTidy">จัดตอนนี้</button></div>
+    <div class="row"><label for="tSize">ขนาด</label><input type="range" id="tSize" min="8" max="24" step="0.5"><span id="tSizeV" class="hint"></span></div>
+    <div class="row"><label for="tY">ตำแหน่ง</label><input type="range" id="tY" min="-0.6" max="0.6" step="0.01"><span id="tYV" class="hint"></span></div>
+    <div class="row"><label for="tLh">ระยะบรรทัด</label><input type="range" id="tLh" min="0.9" max="2" step="0.05"><span id="tLhV" class="hint"></span></div>
+    <div class="row"><label for="tZone">เขตปลอดภัย</label><select id="tZone" style="flex:1"></select></div>
+    <div class="row"><label for="tColor">สี</label><input type="color" id="tColor"><label style="min-width:0">ขอบ</label><input type="range" id="tStroke" min="0" max="0.2" step="0.01"></div>
+    <div class="row"><label for="tMode">ซับยาวเกินจอ</label><select id="tMode" style="flex:1">${TIDY.map(([k, t]) => `<option value="${k}"${(st.tidy || 'lines') === k ? ' selected' : ''}>${t}</option>`).join('')}</select><button id="tTidy">จัดตอนนี้</button></div>
     <div class="hint" id="tModeH"></div>
     ${T.look === 'pair' ? '<div class="hint">หน้าตาซับ "ข้อความปกติ + เน้น" ใช้ขนาดและตำแหน่งจากพรีเซ็ตใน MP4 · ค่าตรงนี้ใช้กับซับแบบอื่นและโปรเจกต์ CapCut</div>' : ''}
     <div id="tProb"></div>
@@ -272,7 +272,7 @@ function sideClip(s) {
       .map(([k, t, a, b, d]) => `<div class="row"><label>${t}</label><input type="range" data-c="${k}" min="${a}" max="${b}" step="${d}" value="${c[k] ?? (k === 'contrast' || k === 'saturation' ? 1 : 0)}"></div>`).join('')}
     <div class="row"><button id="autoC">✨ ปรับสีอัตโนมัติ</button><button id="resetC">ค่าเดิม</button></div>
     <div class="hint">ปรับอัตโนมัติ = แก้สีเพี้ยน (white balance) + ความสว่าง + ความคม</div>
-    <div class="row"><label>ผิวเนียน</label><input type="range" id="skin" min="0" max="1" step="0.1" value="${st.skin ?? 0}"><span class="hint" id="skinV">${Math.round((st.skin ?? 0) * 100)}%</span></div>
+    <div class="row"><label for="skin">ผิวเนียน</label><input type="range" id="skin" min="0" max="1" step="0.1" value="${st.skin ?? 0}"><span class="hint" id="skinV">${Math.round((st.skin ?? 0) * 100)}%</span></div>
     <h4 id="coverH">ปก</h4>
     ${st.cover ? `<img src="/api/kit/media?path=${encodeURIComponent(st.cover)}&t=${Date.now()}" style="width:140px;border-radius:10px;display:block">` : '<div class="hint">ยังไม่มีปก · กด "ทำให้ครบ" ระบบทำปกจากชื่อเรื่องให้</div>'}
     <div class="row"><button id="cAuto">✨ ทำปกใหม่อัตโนมัติ</button><button id="cEdit">แก้ปกเอง</button></div>
@@ -281,7 +281,7 @@ function sideClip(s) {
     <div class="agent"><code>${esc(T.agent_command)}</code><button id="cp">คัดลอกคำสั่ง</button></div>
     <h4 class="media">เสียงเอฟเฟกต์</h4>
     <div class="row media"><label><input type="checkbox" id="fx" ${PL.sfx.on ? 'checked' : ''}> pop ตอนคำเน้น · whoosh ตอนภาพประกอบ</label></div>
-    <div class="row media"><label>ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>
+    <div class="row media"><label for="fxv">ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>
     </details>`;
   try { $('adv').open = localStorage.getItem('ck_adv') === '1'; } catch {}
   $('adv').ontoggle = () => { try { localStorage.setItem('ck_adv', $('adv').open ? '1' : '0'); } catch {} };
@@ -329,13 +329,13 @@ function sidePhrase(s, p) {
   const line = T.phrases.filter(x => x.line === p.line);
   s.innerHTML = `${back()}<h3>ข้อความ ${mm(p.start)}</h3>
     <div class="hint">ประโยค: ${esc(p.line)}</div>
-    <div class="row"><label>ตัวขาว</label><input id="pl" style="flex:1"></div>
-    <div class="row"><label>คำเน้น</label><input id="pp" style="flex:1"></div>
-    <div class="row"><label>แบบ</label><select id="po" style="flex:1">
+    <div class="row"><label for="pl">ตัวขาว</label><input id="pl" style="flex:1"></div>
+    <div class="row"><label for="pp">คำเน้น</label><input id="pp" style="flex:1"></div>
+    <div class="row"><label for="po">แบบ</label><select id="po" style="flex:1">
       <option value="pair">ขาว + สี</option><option value="white">ขาวอย่างเดียว</option><option value="color">สีอย่างเดียว</option>
       <option value="red">ขาว + แดง (จุดแรงสุด)</option><option value="hold">ขาวค้างจากท่อนก่อน + สี (ลิสต์)</option><option value="skip">ไม่ขึ้นซับ</option></select></div>
-    <div class="row media"><label>หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
-    <div class="row"><label>ซับแปล (ทั้งประโยค)</label><input id="pc" style="flex:1" placeholder="ตัวเล็กด้านล่าง ถ้าพรีเซ็ตมีซับแปล"></div>
+    <div class="row media"><label for="pq">หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
+    <div class="row"><label for="pc">ซับแปล (ทั้งประโยค)</label><input id="pc" style="flex:1" placeholder="ตัวเล็กด้านล่าง ถ้าพรีเซ็ตมีซับแปล"></div>
     <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นข้อความใหญ่กลางจอ</button></div>
     <div class="row"><button id="pcut" style="color:#fca5a5">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
     <div class="hint">แก้คำได้เลย (แก้ในซับด้วย) · ย้ายคำระหว่างตัวขาวกับคำเน้นได้ · ใส่คำค้นแล้วบันทึก ระบบหาภาพประกอบให้ตอน "ทำให้ครบ" หรือกดหาเองในแถบภาพประกอบ</div>`;
@@ -366,8 +366,8 @@ function sidePhrase(s, p) {
 function sideBroll(s, b, i) {
   s.innerHTML = `${back()}<h3>ภาพประกอบ ${mm(b.start)}</h3>
     ${b.thumb ? `<img src="${b.thumb}" style="width:100%;border-radius:10px">` : `<div class="hint">${esc(b.file)}</div>`}
-    <div class="row"><label>เริ่ม (วิ)</label><input type="number" step="0.1" id="bs" value="${b.start}" style="width:90px"><label style="min-width:auto">ยาว</label><input type="number" step="0.5" id="bd" value="${b.dur}" style="width:80px"></div>
-    <div class="row"><label>คำค้น</label><input id="bq" style="flex:1" value="${esc(b.query)}"><button id="bf">ค้น Pixabay</button></div>
+    <div class="row"><label for="bs">เริ่ม (วิ)</label><input type="number" step="0.1" id="bs" value="${b.start}" style="width:90px"><label style="min-width:auto">ยาว</label><input type="number" step="0.5" id="bd" value="${b.dur}" style="width:80px"></div>
+    <div class="row"><label for="bq">คำค้น</label><input id="bq" style="flex:1" value="${esc(b.query)}"><button id="bf">ค้น Pixabay</button></div>
     <div class="grid" id="bg"></div>
     <div class="row"><button id="bown">ใช้ไฟล์ของเรา</button><button id="bdel" style="color:#fca5a5">ลบ</button></div>`;
   const up = () => { b.start = +$('bs').value; b.dur = +$('bd').value; savePL(); drawTL(); };
@@ -400,7 +400,7 @@ function sideMusic(s) {
     <div class="row"><select id="ms" style="flex:1"><option>กำลังอ่านคลังเพลง…</option></select></div>
     <div class="row"><button id="mown">ใช้ไฟล์ของเรา</button><button id="mweb">🔎 หาเพลงฟรีใน Pixabay</button></div>
     <audio id="ma" controls style="width:100%"></audio>
-    <div class="row"><label>ความดัง</label><input type="range" id="mv" min="0" max="0.4" step="0.01" value="${PL.music.volume}"><span id="mvt">${Math.round(PL.music.volume * 100)}%</span></div>
+    <div class="row"><label for="mv">ความดัง</label><input type="range" id="mv" min="0" max="0.4" step="0.01" value="${PL.music.volume}"><span id="mvt">${Math.round(PL.music.volume * 100)}%</span></div>
     <div class="hint">โหลดเพลงจาก Pixabay แล้ว กด "ใช้ไฟล์ของเรา" เลือกไฟล์นั้น · เพลงเบาคงที่ตลอดคลิป</div>`;
   const listen = f => { $('ma').src = f ? '/api/kit/media?path=' + encodeURIComponent(f) : ''; };
   (MUSIC || (MUSIC = api('music').then(d => d.music || []).catch(() => []))).then(list => {

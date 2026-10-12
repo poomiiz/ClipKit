@@ -15,8 +15,8 @@
     --txt: #ececf1;
     --txt-sub: #c9cbd3;
     --mut: #8b8d98;
-    --acc: #7c5cff;
-    --acc-hover: #9073ff;
+    --acc: #6c4cf0;
+    --acc-hover: #7a5cf8;
     --acc-glow: rgba(124, 92, 255, 0.25);
     --acc2: #38bdf8;
     --ok: #10b981;
@@ -409,7 +409,7 @@
   .foot .ft-rename[hidden] { display: none; }
   .foot .ft-nm { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .foot .ft-nm span { color: var(--mut); font-weight: 400; font-size: 12px; margin-left: 6px; }
-  .foot .ft-path { font-size: 11px; color: #6b6e78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+  .foot .ft-path { font-size: 11px; color: #82858f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
   .foot .ft-ps { grid-column: 2; min-width: 0; max-height: 224px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; color-scheme: dark; display: flex; flex-direction: column; gap: 2px; }
   .foot .ft-ps .proj { flex-shrink: 0; }
   @media (max-width: 600px) {
@@ -505,7 +505,7 @@
   .proj-tabs button:hover { background: none; color: var(--txt); }
   .proj-tabs button.on { background: var(--card-hover); color: var(--txt); }
   .proj .badge.capcut { background: #2b2d35; color: #c9cbd3; }
-  .proj .badge.clipkit { background: #7c5cff; color: #fff; }
+  .proj .badge.clipkit { background: var(--acc); color: #fff; }
   .ov-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   .ov-row { display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 8px; background: var(--card2, #1b2030); font-size: 13.5px; }
   .ov-row .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -584,7 +584,7 @@
     <div class="clip-layout">
       <div class="card clip-left">
         <div class="vbox" id="vbox"><video id="clipVideo" controls preload="metadata"></video><div id="cropBox" class="crop-box" title="ลากเพื่อเลือกส่วนที่จะติดอยู่ในคลิป"></div></div>
-        <label>ชื่อโปรเจกต์</label>
+        <label for="pname">ชื่อโปรเจกต์</label>
         <input id="pname">
         <div id="clipInfo" class="hint"></div>
         <div id="clipFolder" class="hint" style="word-break:break-all"></div>
@@ -740,10 +740,10 @@
 ขนาดนี้บนจอจริง</div>
           </div>
           <div class="hint text-center">พรีวิวบนเฟรมจริงของคลิปนี้ · อัปเดตทันทีที่ปรับ</div>
-          <div class="form-row"><label>ขนาดตัวอักษร</label><input id="dSize" type="number" value="18"></div>
-          <div class="form-row"><label>ตำแหน่งแนวตั้ง (-1 ล่างสุด, 0 กลาง)</label><input id="dY" type="number" step="0.05" value="-0.6"></div>
-          <div class="form-row"><label>ความหนาขอบดำ</label><input id="dStroke" type="number" step="0.01" value="0.05"></div>
-          <div class="form-row"><label>สีตัวอักษร</label><input id="dColor" type="color" value="#ffffff" style="padding:4px;cursor:pointer"></div>
+          <div class="form-row"><label for="dSize">ขนาดตัวอักษร</label><input id="dSize" type="number" value="18"></div>
+          <div class="form-row"><label for="dY">ตำแหน่งแนวตั้ง (-1 ล่างสุด, 0 กลาง)</label><input id="dY" type="number" step="0.05" value="-0.6"></div>
+          <div class="form-row"><label for="dStroke">ความหนาขอบดำ</label><input id="dStroke" type="number" step="0.01" value="0.05"></div>
+          <div class="form-row"><label for="dColor">สีตัวอักษร</label><input id="dColor" type="color" value="#ffffff" style="padding:4px;cursor:pointer"></div>
           <div class="row">
             <button class="small primary grow" onclick="draftStyle()">💾 ใช้สไตล์นี้กับคลิป</button>
             <button class="small ghost" onclick="go('s-style')">📂 สไตล์ที่เคยทำ</button>
@@ -759,8 +759,8 @@
             <button class="small" onclick="layoutAuto()">จัดอัตโนมัติ (ย่อให้พอดีจอ)</button>
             <button class="small primary" onclick="layoutSave()">💾 บันทึกตำแหน่ง</button>
           </div>
-          <div class="form-row"><label>เอียง (องศา)</label><input id="lyRot" type="range" min="-30" max="30" step="1" value="0" oninput="layoutEdit()"><span id="lyRotV" class="hint">0°</span></div>
-          <div class="form-row"><label>ขนาด</label><input id="lySize" type="number" step="0.5" oninput="layoutEdit()"></div>
+          <div class="form-row"><label for="lyRot">เอียง (องศา)</label><input id="lyRot" type="range" min="-30" max="30" step="1" value="0" oninput="layoutEdit()"><span id="lyRotV" class="hint">0°</span></div>
+          <div class="form-row"><label for="lySize">ขนาด</label><input id="lySize" type="number" step="0.5" oninput="layoutEdit()"></div>
           <div id="lyList" class="ly-list"><div class="hint">กดโหลดข้อความ</div></div>
           <div class="busy" id="lyBusy"></div>
         </div>
@@ -786,8 +786,8 @@
               <button class="small grow" id="an-video" onclick="setAnimTarget('video')">ภาพวิดีโอ</button>
             </div>
           </div>
-          <div class="form-row"><label>เลือกอนิเมชัน</label><select id="animName" class="grow"></select></div>
-          <div class="form-row"><label>ความยาว (วินาที)</label><input id="animDur" type="number" step="0.1" value="0.5"></div>
+          <div class="form-row"><label for="animName">เลือกอนิเมชัน</label><select id="animName" class="grow"></select></div>
+          <div class="form-row"><label for="animDur">ความยาว (วินาที)</label><input id="animDur" type="number" step="0.1" value="0.5"></div>
           <div class="checkbox-row">
             <input type="checkbox" id="animSound" checked>
             <label for="animSound">ใส่เสียง Pop ตามจังหวะซับด้วย</label>
@@ -814,7 +814,7 @@
               <p>ถอดเสียงเฉพาะท่อนที่เพิ่มฟุตเทจทีหลัง โดยไม่แตะซับเดิม</p>
             </div>
           </div>
-          <div class="form-row"><label>ช่วงว่างขั้นต่ำที่นับ (วินาที)</label><input id="fillGap" type="number" step="0.5" value="1"></div>
+          <div class="form-row"><label for="fillGap">ช่วงว่างขั้นต่ำที่นับ (วินาที)</label><input id="fillGap" type="number" step="0.5" value="1"></div>
           <div class="row">
             <button class="small grow" onclick="fillGaps(false)">🔍 สแกนดูก่อน</button>
             <button class="small grow primary" onclick="fillGaps(true)">⚡ เติมซับเลย</button>
@@ -848,8 +848,8 @@
               <p>เลือกเพลงคลอจากคลังและควบคุมระดับเสียง</p>
             </div>
           </div>
-          <div class="form-row"><label>เลือกเพลง</label><select id="musicPick" class="grow" onfocus="loadMusic()"></select></div>
-          <div class="form-row"><label>ความดังเพลง (%)</label><input id="musicVol" type="number" step="1" value="10"></div>
+          <div class="form-row"><label for="musicPick">เลือกเพลง</label><select id="musicPick" class="grow" onfocus="loadMusic()"></select></div>
+          <div class="form-row"><label for="musicVol">ความดังเพลง (%)</label><input id="musicVol" type="number" step="1" value="10"></div>
           <div class="row">
             <button class="small grow" onclick="previewMusic()">▶️ ฟังตัวอย่าง</button>
             <button class="primary small grow" onclick="applyMusic()">🎵 ใส่เพลงลงคลิป</button>
@@ -867,7 +867,7 @@
               <p>ดึงโทนสีและ Color Grading จากคลิปที่แต่งแล้ว</p>
             </div>
           </div>
-          <div class="form-row"><label>เลือกโปรเจกต์ต้นทาง</label><select id="gradeFrom" class="grow"></select></div>
+          <div class="form-row"><label for="gradeFrom">เลือกโปรเจกต์ต้นทาง</label><select id="gradeFrom" class="grow"></select></div>
           <button class="small wide primary" onclick="draftGrade()">🎨 ก๊อปสีมาใส่คลิปนี้</button>
         </div>
 
@@ -884,9 +884,9 @@
   <div class="screen" id="s-subs">
     <div class="card">
       <h2>สไตล์บรรทัดเน้น</h2>
-      <div class="form-row"><label>ขนาด</label><input id="emSize" type="number" value="24"></div>
-      <div class="form-row"><label>ตำแหน่งแนวตั้ง</label><input id="emY" type="number" step="0.05" value="-0.45"></div>
-      <div class="form-row"><label>สี</label><input id="emColor" type="color" value="#ffd84d" style="padding:4px"></div>
+      <div class="form-row"><label for="emSize">ขนาด</label><input id="emSize" type="number" value="24"></div>
+      <div class="form-row"><label for="emY">ตำแหน่งแนวตั้ง</label><input id="emY" type="number" step="0.05" value="-0.45"></div>
+      <div class="form-row"><label for="emColor">สี</label><input id="emColor" type="color" value="#ffd84d" style="padding:4px"></div>
       <div class="hint">บรรทัดธรรมดาใช้สไตล์หลักของโปรเจกต์ · บรรทัดเน้นใช้ค่านี้</div>
     </div>
     <div class="row">

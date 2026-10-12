@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ทำปก</title>
 <style>
-:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:980px;margin:0 auto;padding:24px 16px 60px;display:grid;grid-template-columns:1fr 340px;gap:20px}
@@ -41,15 +41,15 @@ button:disabled{opacity:.5;cursor:wait}
     <label>ถ้าเป็นวิดีโอ: เลือกภาพ</label>
     <button class="ghost" id="suggest" style="width:100%">🔎 หาภาพสวย 6 ภาพให้เลือก</button>
     <div id="frames" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px"></div>
-    <label>หรือใส่วินาทีเอง</label>
+    <label for="at">หรือใส่วินาทีเอง</label>
     <input id="at" type="number" min="0" step="0.5" value="1">
-    <label>หัวข้อบรรทัด 1 (ใหญ่)</label>
+    <label for="l1">หัวข้อบรรทัด 1 (ใหญ่)</label>
     <input id="l1" placeholder="เช่น ธุรกิจสมัยนี้">
-    <label>หัวข้อบรรทัด 2 (รอง)</label>
+    <label for="l2">หัวข้อบรรทัด 2 (รอง)</label>
     <input id="l2" placeholder="เช่น ไม่ต้องแย่งทำเลอีกแล้ว">
-    <label>ฟอนต์</label>
+    <label for="font">ฟอนต์</label>
     <select id="font"></select>
-    <label>แบบปก</label>
+    <label for="layout">แบบปก</label>
     <select id="layout"><option value="cover-a">A · ตัวหนา 2 สี</option></select>
     <label>สี (เลือกเองได้ หรือกดชุดสำเร็จรูป)</label>
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
