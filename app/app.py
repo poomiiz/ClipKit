@@ -142,7 +142,7 @@ async def no_cache_html(request, call_next):
     public = request.url.path in {
         '/login.html', '/login.css', '/login.js', '/logo.svg', '/logo-256.png', '/editorkrab.ico', '/ui.js', '/i18n/en.json',
         '/api/team/session', '/api/team/google', '/api/team/google/callback',
-        '/api/team/login', '/api/team/signup', '/api/team/logout',
+        '/api/team/logout',
     } or request.url.path.startswith('/api/window/')
     if not public:
         from fastapi import HTTPException
