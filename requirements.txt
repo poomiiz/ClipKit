@@ -1,7 +1,8 @@
-faster-whisper>=1.0
-pythainlp>=5.0
-soundfile>=0.12
-playwright>=1.45
-fastapi>=0.110
-uvicorn>=0.29
-opencv-python>=4.8,<5  # OpenCV 5 dropped CascadeClassifier (face finding)
+# Exact versions so every machine and CI install the same thing; bump on purpose and rerun the tests.
+faster-whisper==1.2.1
+pythainlp==5.4.0
+soundfile==0.14.0
+playwright==1.63.0
+fastapi==0.143.0
+uvicorn==0.53.0
+opencv-python==4.14.0.94  # OpenCV 5 dropped CascadeClassifier (face finding)
