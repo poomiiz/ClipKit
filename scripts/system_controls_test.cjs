@@ -8,11 +8,11 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
   let now = 0, calls = [], reloaded = false, checks = 0, closed = false;
   const buttons = [{disabled:false}, {disabled:false}];
   const status = {textContent:''}, body = {innerHTML:''};
-  const ids = {ckRestart:buttons[0], ckShutdown:buttons[1], ckSystemStatus:status, sbVer:{}};
+  const ids = {ckRestart:buttons[0], ckShutdown:buttons[1], ckCancelShutdown:{}, ckSystemStatus:status, sbVer:{}};
   vm.runInNewContext(code, {
     document: {createElement: () => ({querySelectorAll: () => buttons}), getElementById: id => ids[id], body},
     window: {close: () => { closed = true; }},
-    aside: {insertBefore(){}}, AbortSignal: {timeout: () => ({})}, crypto:{randomUUID: () => 'test-id'},
+    aside: {insertBefore(){}}, svg: () => '<svg></svg>', AbortSignal: {timeout: () => ({})}, crypto:{randomUUID: () => 'test-id'},
     location:{port:'8770',reload:()=>{reloaded=true}}, confirm:()=>true,
     Date:{now:()=>now}, setTimeout:(fn,ms)=>{now+=ms; fn()},
     fetch:async (url,opts={})=>{
@@ -36,7 +36,7 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
 (async()=>{
   let test=run(); await test.click(); assert(test.reloaded());
   test=run({unchanged:true}); await test.click(); assert(!test.reloaded()); assert.match(test.status.textContent,/ไม่สำเร็จ/);
-  test=run({action:'shutdown'}); await test.click(); assert(test.closed()); assert.match(test.body.innerHTML,/ปิด ClipKit แล้ว/);
+  test=run({action:'shutdown'}); await test.click(); assert(test.closed()); assert.match(test.body.innerHTML,/ปิด EditorKrab แล้ว/);
   assert(!test.calls.some(url=>url.includes('/start'))); assert(!test.reloaded());
   test=run({fallback:true}); await test.click(); assert(test.reloaded());
   assert(test.calls.includes('http://localhost:8765/bot/api/video-editor/control/test-id'));

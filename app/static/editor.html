@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ตัดต่อ · EditorKrab</title>
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
@@ -71,7 +71,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 @media (max-width:900px){.mid{grid-template-columns:1fr}.player{min-height:300px}}
   body.simple .media { display: none !important; }
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
+<link rel="stylesheet" href="/shell.css?v=8">
 </head>
 <body>
 <main>
@@ -552,6 +552,6 @@ document.addEventListener('keydown', e => {
 if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(e => say('❌ ' + e.message));
 </script>
 <script src="/hyperframes-player.js"></script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 </body>
 </html>

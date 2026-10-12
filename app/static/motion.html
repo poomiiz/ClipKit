@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ทำตัวหนังสือเคลื่อนไหว</title>
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:980px;margin:0 auto;padding:24px 16px 60px;display:grid;grid-template-columns:1fr 340px;gap:20px}
@@ -31,7 +31,7 @@ button:disabled{opacity:.5;cursor:wait}
 .preview .tag{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:3px 8px;border-radius:99px}
 [hidden]{display:none!important}
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
+<link rel="stylesheet" href="/shell.css?v=8">
 </head>
 <body>
 <main>
@@ -125,6 +125,6 @@ Promise.all([fetch('/api/kit/motion-templates').then(r => r.json()), fontsReady]
   drawFields(); refresh();
 }).catch(e => { $('msg').className = 'msg bad'; $('msg').textContent = '❌ โหลดรายชื่อเอฟเฟกต์ไม่ได้: ' + e.message; });
 </script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 </body>
 </html>
