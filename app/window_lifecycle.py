@@ -37,7 +37,7 @@ def launch_control(action: str, port: int) -> None:
 
 
 def window_router(port: int, exit_server: Callable[[], None],
-                  busy: Callable[[], bool], ready: Callable[[], bool]) -> APIRouter:
+                  busy: Callable[[], bool], ready: Callable[[], bool], helper_url: str = "") -> APIRouter:
     router = APIRouter(prefix="/api/window", tags=["window"])
 
     @router.get("/watch")
@@ -53,7 +53,7 @@ def window_router(port: int, exit_server: Callable[[], None],
 
     @router.get("/health")
     def health():
-        return {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy()}
+        return {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy(), "helper": helper_url}
 
     def control(action: str, control_version: str):
         global _shutdown_timer

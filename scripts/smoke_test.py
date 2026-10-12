@@ -250,7 +250,8 @@ def saved_stories_come_back_after_restart():
     with tempfile.TemporaryDirectory() as t:
         video = str(Path(t) / "talk.mp4")
         Path(video).write_bytes(b"x")
-        video_editor._story_jobs.pop(video, None)
+        keep = video_editor._story_jobs.path
+        video_editor._story_jobs.path = Path(t) / "jobs-story-plan.json"  # keep test jobs out of this machine's state/
         try:
             video_editor.story_plan_status(video)
             raise AssertionError("a file never split returned a plan")
@@ -261,6 +262,7 @@ def saved_stories_come_back_after_restart():
         job = video_editor.story_plan_status(video)
         assert job["status"] == "done" and job["stories"][0]["title"] == "เงิน" and job["duration"] == 9.0, job
         video_editor._story_jobs.pop(video)
+        video_editor._story_jobs.path = keep
 
 
 def name_check_works():

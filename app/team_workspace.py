@@ -1,4 +1,5 @@
 """External sync workspace; only metadata crosses Supabase, projects stay local."""
+import atomic
 import json
 import os
 import tempfile
@@ -58,7 +59,7 @@ def save_workspace(org:UUID,body:Workspace,request:Request):
  validate_workspace(root)
  try:writable(root)
  except OSError as exc:raise HTTPException(400,'เขียนโฟลเดอร์ทีมไม่ได้') from exc
- kit.CONFIG.write_text(json.dumps(cfg,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+ atomic.write_text(kit.CONFIG, json.dumps(cfg,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
  return {'saved':True}
 
 def rows(request,org,table):
