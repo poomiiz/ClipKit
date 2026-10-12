@@ -141,7 +141,7 @@ async def no_cache_html(request, call_next):
         try: await run_in_threadpool(team_workspace.require_review_access,request)
         except HTTPException as exc:
             if exc.status_code==401:return RedirectResponse('/team.html',status_code=303)
-            if exc.status_code==403:return HTMLResponse('<!doctype html><html lang="th"><meta charset="utf-8"><link rel="stylesheet" href="/team.css"><main><h1>หน้านี้สำหรับหัวหน้าและผู้ดูแลองค์กร</h1><a href="/team.html">กลับหน้าทีมเพื่อส่งตรวจงาน</a></main></html>',status_code=403)
+            if exc.status_code==403:return HTMLResponse('<!doctype html><html lang="th"><meta charset="utf-8"><link rel="stylesheet" href="/team.css"><main><h1>เริ่มที่หน้าทีมตัดต่อ</h1><p>ถ้ายังไม่มีทีม สร้างทีมแล้วคุณจะเป็นผู้ดูแล</p><p>ถ้าอยู่ในทีมแล้ว ให้ผู้ดูแลเพิ่มสิทธิ์ตรวจงาน</p><a href="/team.html">เปิดหน้าทีมตัดต่อ</a></main></html>',status_code=403)
             return JSONResponse({'detail':exc.detail},status_code=exc.status_code)
     if request.url.path.startswith('/api/') and not request.url.path.startswith('/api/team/'):
         from fastapi import HTTPException
