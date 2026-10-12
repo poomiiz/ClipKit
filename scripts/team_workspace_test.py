@@ -11,7 +11,7 @@ import team_workspace as w
 org=UUID('00000000-0000-0000-0000-000000000010');project=UUID('00000000-0000-0000-0000-000000000020');owner='00000000-0000-0000-0000-000000000001'
 def main():
  with TemporaryDirectory() as tmp:
-  root=Path(tmp);shared=root/'team';shared.mkdir();local=root/'private';local.mkdir()
+  root=Path(tmp).resolve();shared=root/'team';shared.mkdir();local=root/'private';local.mkdir()
   cfg={'team_workspaces':{str(org):{'path':str(shared),'tool':'syncthing'}}}
   app=FastAPI();app.include_router(w.router)
   item={'id':str(project),'owner_id':owner,'status':'editing','revision':2,'project_type':'capcut'}
