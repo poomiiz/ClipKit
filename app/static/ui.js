@@ -76,7 +76,7 @@
   const TH = /[฀-๿]/, ATTRS = ['title', 'placeholder', 'aria-label'];
   const SKIP = 'script,style,textarea,[contenteditable],[translate=no]';
   fetch('/i18n/en.json').then(r => { if (!r.ok) throw new Error('i18n ' + r.status); return r.json(); }).then(dict => {
-    const keys = Object.keys(dict).filter(k => k.length >= 3).sort((a, b) => b.length - a.length);
+    const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
     const re = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
     // all or nothing: if Thai is left after the swap, the text holds someone's own Thai words (a subtitle, a name), keep it whole
     // Thai runs words together, English needs a space where two swapped pieces meet
