@@ -44,6 +44,7 @@ import style_lab_api  # noqa: E402
 import video_editor  # noqa: E402
 import team_hub  # noqa: E402
 import team_workspace  # noqa: E402
+import drive  # noqa: E402
 from window_lifecycle import window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
@@ -86,6 +87,7 @@ app.include_router(kit_settings.router)
 app.include_router(style_lab_api.router)
 app.include_router(team_hub.router)
 app.include_router(team_workspace.router)
+app.include_router(drive.router)
 app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested,
                                  helper_url=HELPER_URL))
 
