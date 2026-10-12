@@ -6,7 +6,7 @@ $port = if ((git -C "$app\.." remote get-url origin 2>$null) -like "*ClipKit-Tea
 $env:VIDEO_EDITOR_PORT = "$port"
 # desktop shortcuts made before the ClipKit logo still show a stock Windows icon: point them at clipkit.ico
 $root = Split-Path $app
-$ico = "$app\static\editorkrab.ico"
+$ico = "$app\static\editorkrab-crab.ico"
 $sh = New-Object -ComObject WScript.Shell
 foreach ($f in Get-ChildItem ([Environment]::GetFolderPath('Desktop')) -Filter *.lnk) {
     $l = $sh.CreateShortcut($f.FullName)
