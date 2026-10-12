@@ -114,6 +114,22 @@ async def no_cache_html(request, call_next):
                     and request.headers.get("sec-fetch-dest") == "document")
     if foreign and not (widget_navigation or widget_health or widget_control or oauth_return):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
+    # Gate pages, files and editing APIs before they can read local projects.
+    public = request.url.path in {
+        '/login.html', '/login.css', '/login.js', '/logo.svg', '/logo-256.png', '/editorkrab.ico',
+        '/api/team/session', '/api/team/google', '/api/team/google/callback',
+        '/api/team/login', '/api/team/signup', '/api/team/logout',
+    } or request.url.path.startswith('/api/window/')
+    if not public:
+        from fastapi import HTTPException
+        from starlette.concurrency import run_in_threadpool
+        try:
+            await run_in_threadpool(team_hub.session, request)
+        except HTTPException as exc:
+            if is_page and exc.status_code == 401:
+                return RedirectResponse('/login.html', status_code=303)
+            return JSONResponse({'detail': exc.detail}, status_code=exc.status_code,
+                                headers={'Cache-Control': 'no-store'})
     if request.method=='GET' and os.path.normpath('/'+request.url.path.replace('\\','/').lstrip('/')).replace('\\','/').lower()=='/review.html':
         from fastapi import HTTPException
         from starlette.concurrency import run_in_threadpool
@@ -131,7 +147,7 @@ async def no_cache_html(request, call_next):
             key=request.url.path.split('/')[4]
             try: values['preview_path']=base64.urlsafe_b64decode(key+'='*(-len(key)%4)).decode('utf-8')
             except (ValueError,UnicodeError): return JSONResponse({'detail':'Invalid preview path'},status_code=400)
-        if request.headers.get('content-type', '').startswith('application/json'):
+        if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and request.headers.get('content-type', '').startswith('application/json') and await request.body():
             try: values['body'] = await request.json()
             except ValueError: return JSONResponse({'detail':'Invalid JSON'},status_code=400)
         try: await run_in_threadpool(team_workspace.guard_paths, values, request)
