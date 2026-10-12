@@ -58,7 +58,7 @@ def normalize_loudness(mp4: Path) -> None:
     tmp = mp4.with_name(mp4.stem + ".loud.mp4")
     r = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(mp4), "-map", "0:v", "-map", "0:a", "-c:v", "copy",
                         "-af", LOUDNESS, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp)],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
     if r.returncode or not tmp.is_file():
         raise VideoEditError("loudness pass failed: " + r.stderr.strip()[-400:])
     tmp.replace(mp4)
@@ -567,7 +567,7 @@ def _sfx(kind: str) -> Path:
     if not f.is_file():
         SFX.mkdir(exist_ok=True)
         r = subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", SFX_RECIPE[kind], str(f)],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, timeout=60)
         if r.returncode or not f.is_file():
             raise VideoEditError(f"could not make sound effect {kind}: {r.stderr[-300:]}")
     return f
@@ -836,7 +836,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         cmd = [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
                "-c:v", "libx264", "-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
-        r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
     return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
