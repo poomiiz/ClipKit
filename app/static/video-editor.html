@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>🎬 ตัดต่อวิดีโอ → CapCut</title>
+<title>EditorKrab · ตัดคลิปและจัดงานทีม</title>
 <style>
   :root {
     --bg: #0c0f17;
@@ -539,7 +539,7 @@
     <button class="back" id="backBtn" onclick="goBack()" style="display:none">‹</button>
     <h1 id="title">ตัดต่อวิดีโอ</h1>
     <span class="chip" id="engine"><span class="chip-dot"></span> …</span>
-    <button class="small ghost" id="updBtn" style="display:none;margin-left:8px" onclick="doUpdate()">⬆️ อัปเดต ClipKit</button>
+    <button class="small ghost" id="updBtn" style="display:none;margin-left:8px" onclick="doUpdate()">⬆️ อัปเดต EditorKrab</button>
   </div>
   <!-- Step progress: where the editor is in the raw file -> finished clip flow -->
   <div id="stepper" style="display:none;gap:6px;padding:10px 18px 0;flex-wrap:wrap;font-size:13px"></div>
@@ -596,7 +596,7 @@
         <span class="hint" id="focusNote"></span>
         &nbsp; เทมเพลต <select id="tpl" onchange="try{localStorage.setItem('ck_tpl',this.value)}catch(e){}"><option value="">ค่าเริ่มต้น</option></select></div>
       <div class="make-pair">
-        <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ ClipKit</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
+        <button class="primary" onclick="makeChosen('clipkit')"><b>⚡ EditorKrab</b><small id="ckNote">ทำในแอปนี้จนได้ MP4</small></button>
         <button class="ghost" onclick="makeChosen('capcut')"><b>🎞️ CapCut</b><small id="ccNote">สร้างโปรเจกต์ แล้วเปิด CapCut</small></button>
         <button class="ghost" onclick="makeChosen('hyperframes')"><b>✨ HyperFrames</b><small id="hfNote">ตัวหนังสือเคลื่อนไหว</small></button>
       </div>
@@ -689,7 +689,7 @@
         <!-- How subtitles move in the MP4 export -->
         <div class="tool-card" id="c-subanim">
           <div class="tc-head"><div class="icon">✨</div><div class="titles">
-            <h3>ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก ClipKit</p></div></div>
+            <h3>ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก EditorKrab</p></div></div>
           <div class="row" id="saBtns" style="gap:8px;flex-wrap:wrap">
             <button class="small" data-a="pair">คู่ประโยค</button>
             <button class="small" data-a="none">ซับนิ่ง</button>
@@ -1012,7 +1012,7 @@ async function doUpdate() {
     const r = await api('update', {});
     b.textContent = r.updated ? '✅ ' + r.note : '✅ ' + r.note;
     if (r.updated) setTimeout(() => location.reload(), 6000);
-    else setTimeout(() => { b.disabled = false; b.textContent = '⬆️ อัปเดต ClipKit'; }, 3000);
+    else setTimeout(() => { b.disabled = false; b.textContent = '⬆️ อัปเดต EditorKrab'; }, 3000);
   } catch (e) { b.textContent = '❌ ' + e.message; b.disabled = false; }
 }
 
@@ -2008,7 +2008,7 @@ async function makeChosen(kind) {
       } else await makeDraft(false);
       done.push(i + 1);
     }
-    // several stories made in ClipKit: go straight on to editing the first one (the rest are in the sidebar)
+    // several stories made in EditorKrab: go straight on to editing the first one (the rest are in the sidebar)
     if (made.length) { location.href = '/editor.html?path=' + encodeURIComponent(made[0]); return; }
     if (list.length > 1) out.textContent = made.length
       ? `✅ ได้ตัวอย่าง ${made.length} เรื่อง (เรื่อง ${done.join(', ')}) รอรีวิว · เปิดแต่ละโปรเจกต์จากแถบซ้าย แท็บ 📤 ส่งออก ดูแล้วกดส่งออกตัวจริง`
@@ -2042,7 +2042,7 @@ function openDraft(i, tools) {
   const d = state.draft;
 
   // Set Project Name
-  document.getElementById('sysBadge').textContent = d.via === 'clipkit' ? 'ClipKit' : 'CapCut';
+  document.getElementById('sysBadge').textContent = d.via === 'clipkit' ? 'EditorKrab' : 'CapCut';
   const titleEl = document.getElementById('draftProjectTitle');
   if (titleEl) titleEl.textContent = d.name;
 
@@ -2284,7 +2284,7 @@ async function loadHomeDrafts() {
       d.sys = d.kind === 'hyperframes' ? 'hyperframes' : d.via || 'capcut';
       d.delivery = delivery.statuses[d.path.replaceAll('/', '\\').toLowerCase()];
     });
-    const SYS = [['all', 'ทั้งหมด'], ['clipkit', 'ClipKit'], ['capcut', 'CapCut'], ['hyperframes', 'HyperFrames']];
+    const SYS = [['all', 'ทั้งหมด'], ['clipkit', 'EditorKrab'], ['capcut', 'CapCut'], ['hyperframes', 'HyperFrames']];
     const pick = loadHomeDrafts.sys || 'all';
     const shown = all.filter(d => pick === 'all' || d.sys === pick);
     document.getElementById('projCount').textContent = shown.length + ' โปรเจกต์';
@@ -2470,7 +2470,7 @@ document.addEventListener('keydown', e => {
   if (ctrl && k === 'v' && lySel >= 0 && lyClip) { e.preventDefault(); Object.assign(LY[lySel], lyClip); layoutList(); return; }
   if (ctrl && k === 's') { e.preventDefault(); layoutSave(); }
 });
-// misheard words: the agent fixes them line by line, and ClipKit remembers each fix for the next transcripts
+// misheard words: the agent fixes them line by line, and EditorKrab remembers each fix for the next transcripts
 async function spellAsk() {
   const box = document.getElementById('saSpellBox');
   try {

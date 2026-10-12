@@ -62,7 +62,7 @@ def exit_server():
     app.state.exit_requested = True
     app.state.server.should_exit = True
 
-app = FastAPI(title="Video to CapCut", version="1.0.0")
+app = FastAPI(title="EditorKrab", version="1.0.0")
 app.state.exit_requested = False
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False)
 app.include_router(video_editor.router)
