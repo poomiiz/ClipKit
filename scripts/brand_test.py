@@ -32,3 +32,7 @@ if os.name=='nt':
   command="$errors=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('"+escaped+"',[ref]$null,[ref]$errors);if($errors.Count){$errors | ForEach-Object {$_.Message};exit 1}"
   subprocess.run([str(shell),'-NoProfile','-Command',command],check=True,capture_output=True)
  print('PASS Windows PowerShell desktop launcher and setup parse Thai strings')
+
+assert (root/"app/static/editorkrab-crab.ico").read_bytes()==(root/"app/static/editorkrab.ico").read_bytes()
+for script in ("app/start.ps1","scripts/setup.ps1"):
+ assert "editorkrab-crab.ico" in (root/script).read_text(encoding="utf-8-sig")
