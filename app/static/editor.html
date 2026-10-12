@@ -7,21 +7,21 @@
 <style>
 :root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
+body{margin:0;background:var(--bg);color:var(--txt);font:13.5px/1.5 "Inter","Segoe UI Variable Text","Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
-button{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font:inherit;cursor:pointer}
+button{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:7px;padding:5px 12px;min-height:30px;font:inherit;font-weight:500;cursor:pointer}
 button:hover{border-color:var(--acc);color:#fff}
 button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
 button:disabled{opacity:.5;cursor:wait}
 input,select{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit}
-.top{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.top h1{font-size:16px;margin:0 8px 0 0;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,420px);gap:14px;padding:14px 16px;min-height:0}
-.player{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;background:#05070c;border-radius:14px;position:relative}
+.top{display:flex;gap:6px;align-items:center;padding:8px 14px;min-height:48px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top h1{font-size:14.5px;font-weight:600;margin:0 8px 0 0;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,380px);gap:10px;padding:10px;min-height:0}
+.player{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;background:#000;border-radius:10px;position:relative}
 .player hyperframes-player{border-radius:10px;overflow:hidden}
 .player .empty{color:var(--mut);text-align:center;padding:30px}
-.side{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:auto;min-height:0}
-.side h3{margin:0 0 8px;font-size:15px}.side h4{margin:16px 0 6px;font-size:13.5px;color:var(--sub)}
+.side{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;min-height:0}
+.side h3{margin:0 0 8px;font-size:14px;font-weight:600}.side h4{margin:16px 0 6px;font-size:11.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
 .hint{color:var(--mut);font-size:12.5px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 .row label{min-width:86px;color:var(--sub)}
@@ -35,18 +35,18 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid transparent}
 .grid img:hover{border-color:var(--acc)}
 /* timeline */
-.tl{border-top:1px solid var(--line);background:var(--card);padding:8px 16px 12px;user-select:none}
+.tl{border-top:1px solid var(--line);background:var(--card);padding:6px 14px 10px;user-select:none}
 .tlbar{display:flex;gap:10px;align-items:center;margin-bottom:6px;font-size:13px;color:var(--sub)}
 .tlbar .t{font-variant-numeric:tabular-nums;color:#fff;min-width:110px}
-.tracks{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:start}
-.lab{font-size:12.5px;color:var(--sub);white-space:nowrap;height:38px;margin-top:4px;display:flex;align-items:center}
-.lane{position:relative;height:38px;background:#0f131d;border-radius:8px;overflow:hidden}
+.tracks{display:grid;grid-template-columns:84px 1fr;gap:8px;align-items:start}
+.lab{font-size:11.5px;color:var(--mut);white-space:nowrap;height:38px;margin-top:4px;display:flex;align-items:center}
+.lane{position:relative;height:38px;background:#1a1b20;border-radius:6px;overflow:hidden}
 .scroll{overflow-x:auto;position:relative;padding-bottom:4px}
 .inner{position:relative}
 .ruler{height:18px;position:relative;font-size:10.5px;color:var(--mut)}
-.ruler i{position:absolute;top:0;border-left:1px solid #2a3147;height:18px;padding-left:3px;font-style:normal}
-.blk{position:absolute;top:3px;bottom:3px;border-radius:6px;padding:2px 6px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;border:1px solid transparent}
-.blk.sub{background:#2b3350;color:#e6e9f5}
+.ruler i{position:absolute;top:0;border-left:1px solid #2a2c33;height:18px;padding-left:3px;font-style:normal}
+.blk{position:absolute;top:3px;bottom:3px;border-radius:5px;padding:2px 6px;font-size:11.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;border:1px solid transparent}
+.blk.sub{background:#2d3a5c;color:#e6e9f5}
 .blk.sub b{color:#ffb15c}
 .blk.br{background:#11463a;color:#c9f7e6;display:flex;gap:4px;align-items:center}
 .blk.br img{height:100%;border-radius:4px}
@@ -58,11 +58,11 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .busy{color:var(--warn);font-size:13px;margin-left:6px}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:-2px}
 @keyframes s{to{transform:rotate(360deg)}}
-.steps{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 6px;font-size:13px}
+.steps{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0 0 6px;font-size:13px}
 .steps ol{margin:6px 0 0;padding-left:20px;color:var(--sub)}.steps li{margin:3px 0}
 #adv{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}#adv summary{cursor:pointer;font-weight:600;color:var(--sub);padding:4px 0}
 .agent{border:1px dashed var(--acc);border-radius:10px;padding:10px;margin-top:8px}
-.agent code{display:block;background:#080a10;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
+.agent code{display:block;background:#0e0f12;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
 .ov{position:absolute;pointer-events:none;z-index:4;background:rgba(5,7,12,.55)}.ov[hidden]{display:none}
 .ov .safe{position:absolute;border:1.5px dashed rgba(255,196,0,.85);border-radius:4px}
 .ov .col{position:absolute;right:0;bottom:0;background:rgba(239,68,68,.22);border-left:1.5px dashed rgba(239,68,68,.8)}
@@ -77,10 +77,10 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 <main>
   <div class="top">
     <button onclick="location.href='/video-editor.html'">‹</button>
-    <h1 id="title">กำลังโหลด…</h1>
-    <button class="pri" id="bAuto" title="ถอดเสียง ตัดเงียบ ซับ ภาพประกอบ เพลง เอฟเฟกต์ ให้ครบในครั้งเดียว">⚡ ทำให้ครบ</button>
-    <button id="bCover">🏷️ ปก</button>
-    <button id="bExport" class="pri">🎬 ส่งออก</button>
+    <h1 id="title" translate="no">กำลังโหลด…</h1>
+    <button class="pri" id="bAuto" title="ถอดเสียง ตัดเงียบ ซับ ภาพประกอบ เพลง เอฟเฟกต์ ให้ครบในครั้งเดียว">ทำให้ครบ</button>
+    <button id="bCover">ปก</button>
+    <button id="bExport" class="pri">ส่งออก</button>
     <button id="bCapcut" title="เกลาต่อในแอป CapCut">แก้ต่อใน CapCut</button>
     <span class="busy" id="busy"></span>
   </div>
@@ -97,7 +97,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
       <span class="hint">คลิกชิ้นไหนเพื่อแก้ทางขวา · ลากภาพประกอบเพื่อเลื่อน ลากขอบขวาเพื่อยืด · Space เล่น/หยุด · Delete ลบ</span></div>
     <div class="tracks" id="tracks">
       <div><div style="height:18px"></div><div class="lab">ข้อความ</div><div class="lab media">ภาพประกอบ</div><div class="lab">ข้อความใหญ่</div><div class="lab media">เพลง</div></div>
-      <div class="scroll" id="scroll"><div class="inner" id="inner"></div></div>
+      <div class="scroll" id="scroll"><div class="inner" id="inner" translate="no"></div></div>
     </div>
   </div>
 </main>
@@ -244,7 +244,7 @@ function back() { return '<button onclick="SEL=null;drawTL();side()">‹ ตั�
 function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
   s.innerHTML = `<h3>ตั้งค่าทั้งคลิป</h3>
-    <div class="steps"><b>ทำคลิปใน 3 ขั้น</b><ol><li>กด <b>⚡ ทำให้ครบ</b> ด้านบน แล้วรอ ระบบตัด ใส่ซับ ใส่หัวคลิปให้เอง</li><li>ดูคลิปทางซ้าย ซับผิดตรงไหน กดข้อความบนแถบล่างแล้วแก้ทางขวา</li><li>กด <b>🎬 ส่งออก</b> ได้ไฟล์วิดีโอพร้อมโพสต์</li></ol></div>
+    <div class="steps"><b>ทำคลิปใน 3 ขั้น</b><ol><li>กด <b>ทำให้ครบ</b> ด้านบน แล้วรอ ระบบตัด ใส่ซับ ใส่หัวคลิปให้เอง</li><li>ดูคลิปทางซ้าย ซับผิดตรงไหน กดข้อความบนแถบล่างแล้วแก้ทางขวา</li><li>กด <b>ส่งออก</b> ได้ไฟล์วิดีโอพร้อมโพสต์</li></ol></div>
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <h4>หัวคลิป (4 วินาทีแรก)</h4>
     ${[0, 1].map(n => `<div class="row"><input id="hk${n}" style="flex:1" placeholder="${n ? 'บรรทัด 2 (ไม่ใส่ก็ได้)' : 'บรรทัด 1 เช่น ธุรกิจสะดุด'}">
