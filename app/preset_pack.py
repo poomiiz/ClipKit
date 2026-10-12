@@ -1,8 +1,8 @@
-"""Preset packs: one .clipkit file (a zip) holding subtitle presets, covers and motion templates, so a team
+"""Preset packs: one .editorkrab file (a zip) holding subtitle presets, covers and motion templates, so a team
 can hand looks to each other by dropping a file. The format is the one a future preset store will sell
 (spec: "ClipKit Preset Pack - สเปค v0.1"); tiers and their minimums live here so the app and the store agree.
 
-    my-pack.clipkit
+    my-pack.editorkrab              (packs made before the rename end in .clipkit; same format, still install)
       manifest.json
       subtitles/<id>.json            -> presets/<id>.json
       covers/<cover-id>/...          -> motion/<cover-id>/      (ids start with "cover-")
@@ -75,14 +75,14 @@ def _plan(m: dict) -> list[tuple[str, Path]]:
 
 
 def read_pack(path: str | Path) -> dict[str, Any]:
-    """The manifest of a .clipkit file, checked, plus what installing it would add or clash with."""
+    """The manifest of a pack file (.editorkrab, or an older .clipkit), checked, plus what installing it would add or clash with."""
     p = Path(path)
     if not p.is_file():
         raise PackError(f"file not found: {p}")
     try:
         z = zipfile.ZipFile(p)
     except zipfile.BadZipFile as exc:
-        raise PackError(f"{p.name} is not a .clipkit pack (not a zip): {exc}") from exc
+        raise PackError(f"{p.name} is not an EditorKrab pack (not a zip): {exc}") from exc
     with z:
         names = set(z.namelist())
         if "manifest.json" not in names:
@@ -115,7 +115,7 @@ def read_pack(path: str | Path) -> dict[str, Any]:
 
 
 def install_pack(path: str | Path) -> dict[str, Any]:
-    """Unpack a checked .clipkit into presets/, motion/ and fonts/. Refuses (changes nothing) when any of its
+    """Unpack a checked pack into presets/, motion/ and fonts/. Refuses (changes nothing) when any of its
     names is already taken, so a pack never overwrites someone's own look."""
     info = read_pack(path)
     if info["clash"]:
@@ -147,7 +147,7 @@ def items() -> dict[str, list[str]]:
 
 
 def make_pack(out_dir: str | Path, manifest: dict) -> Path:
-    """Write <out_dir>/<id>.clipkit from this machine's presets, covers, motion and fonts."""
+    """Write <out_dir>/<id>.editorkrab from this machine's presets, covers, motion and fonts."""
     m = check_manifest({"format": FORMAT, **manifest})
     have = items()
     for key in ("subtitles", "covers", "motion"):
@@ -162,7 +162,7 @@ def make_pack(out_dir: str | Path, manifest: dict) -> Path:
     out = Path(out_dir)
     if not out.is_dir():
         raise PackError(f"folder not found: {out}")
-    dest = out / f"{m['id']}.clipkit"
+    dest = out / f"{m['id']}.editorkrab"
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("manifest.json", json.dumps(m, ensure_ascii=False, indent=1))
         for src, dst in _plan(m):
