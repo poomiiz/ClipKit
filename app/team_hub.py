@@ -189,7 +189,7 @@ def google_callback(request: Request, state: str = "", code: str = "", error: st
         if not _remember(data, response):
             raise HTTPException(401, "เข้าสู่ระบบ Google ไม่สำเร็จ")
     except HTTPException:
-        response.headers["location"] = "/team.html?login_error=1"
+        response.headers["location"] = "/login.html?login_error=1"
     return response
 
 
