@@ -10,12 +10,13 @@
 <details><summary>บัญชีเดิมที่ใช้รหัสผ่าน</summary>
 <form id="login"><label>อีเมล<input name="email" type="email" required autocomplete="username"></label><label>รหัสผ่าน<input name="password" type="password" required autocomplete="current-password"></label><button class="primary">เข้าสู่ระบบ</button></form></details>
 </section>
+<div id="invitationChoices"></div>
 <section id="signedIn" hidden><div class="row"><span id="userName"></span><button id="logout">ออกจากระบบ</button></div>
 <div class="panel"><label>องค์กร<select id="organization"><option value="">เลือกองค์กร</option></select></label><p class="muted" id="role"></p></div>
 <form id="createOrg"><h2>สร้างองค์กรของคุณ</h2><label>ชื่อองค์กร<input name="name" required maxlength="120"></label><button>สร้างองค์กร</button><span class="muted">ผู้สร้างเป็นผู้ดูแลองค์กรและมีสิทธิ์ตรวจงาน</span></form>
 <section id="organizationContent" hidden>
 <div id="ownerControls" hidden>
-<details><summary>เพิ่มสมาชิก / สิทธิ์</summary><form id="addMember"><h2>เพิ่มสมาชิกที่สมัครแล้ว</h2><label>อีเมลสมาชิก<input name="email" type="email" required></label><label>สิทธิ์<select name="role"><option value="editor">✂️ คนตัด</option><option value="lead">🔎 หัวหน้าตรวจงาน</option></select></label><p class="muted">สมาชิกสมัครและยืนยันอีเมลก่อน ผู้ดูแลแชร์โฟลเดอร์ซิงก์ให้สมาชิกด้วยเครื่องมือที่องค์กรเลือก</p><button>เพิ่ม / เปลี่ยนสิทธิ์สมาชิก</button></form></details>
+<details><summary>เพิ่มสมาชิก / สิทธิ์</summary><form id="addMember"><h2>เพิ่มสมาชิก / เชิญเข้าทีม</h2><label>อีเมลสมาชิก<input name="email" type="email" required></label><label>สิทธิ์<select name="role"><option value="editor">✂️ คนตัด</option><option value="lead">🔎 หัวหน้าตรวจงาน</option></select></label><p class="muted">ระบุอีเมล Google ที่สมาชิกจะใช้เข้าแอป คำเชิญมีอายุ 7 วัน ไม่ส่งอีเมลอัตโนมัติ ผู้ดูแลแชร์โฟลเดอร์ซิงก์ให้สมาชิกเอง</p><button>เชิญ / เปลี่ยนสิทธิ์สมาชิก</button></form><div id="pendingInvitations"></div></details>
 
 </div>
 <details class="panel"><summary>สมาชิกในองค์กร</summary><div id="members"></div></details>
