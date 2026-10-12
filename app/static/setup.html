@@ -36,7 +36,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 <div class="wrap">
   <div class="brand"><img class="logo" src="/logo.svg" alt="">
     <div><b>เริ่มใช้ EditorKrab</b><span>ตั้งค่าครั้งเดียว ประมาณ 5 นาที</span></div></div>
-  <div class="steps" id="bar"><i></i><i></i><i></i></div>
+  <div class="steps" id="bar"><i></i><i></i></div>
 
   <!-- 1. machine -->
   <div class="card step" data-n="0">
@@ -55,17 +55,9 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="row"><div class="path" id="ws">ยังไม่ได้เลือก</div><button class="ghost" id="bWs">เลือกโฟลเดอร์</button></div>
     <div class="row" style="margin-top:12px"><div class="path" id="cc">โปรเจกต์ CapCut: กำลังหา…</div><button class="ghost" id="bCc">เปลี่ยน</button></div>
     <div class="msg" id="m1"></div>
-    <div class="foot"><button class="ghost" data-back>ย้อนกลับ</button><button id="n1" disabled>ถัดไป</button></div>
+    <div class="foot"><button class="ghost" data-back>ย้อนกลับ</button><button id="n1" disabled>เสร็จ เริ่มทำงาน</button></div>
   </div>
 
-  <!-- 3. envato -->
-  <div class="card step" data-n="2">
-    <h1>3. ล็อกอิน Envato <span style="font-size:13px;color:var(--mut);font-weight:400">(ข้ามได้)</span></h1>
-    <p>ใช้หาภาพประกอบ ล็อกอินบัญชีบริษัทครั้งเดียวในหน้าต่างที่เปิดขึ้น แล้วปิดหน้าต่างนั้น</p>
-    <button id="bLogin">เปิดหน้าล็อกอิน Envato</button>
-    <div class="msg" id="m2"></div>
-    <div class="foot"><button class="ghost" data-back>ย้อนกลับ</button><button id="n2">เสร็จ เริ่มทำงาน</button></div>
-  </div>
 </div>
 <script>
 const $ = id => document.getElementById(id);
@@ -139,14 +131,8 @@ $('bCc').onclick = async () => {
   try { await api('config', {method: 'POST', body: {values: {capcut_drafts: r.path}}}); loadFolders(); }
   catch (e) { say('m1', '❌ ' + ckErr(e), false); }
 };
-$('n1').onclick = () => show(2);
+$('n1').onclick = () => location.href = '/video-editor.html';
 
-// 3. envato
-$('bLogin').onclick = async () => {
-  try { await api('envato-login', {method: 'POST'}); say('m2', 'เปิดหน้าต่างแล้ว ล็อกอินให้เสร็จแล้วปิดหน้าต่าง'); }
-  catch (e) { say('m2', '❌ ' + ckErr(e), false); }
-};
-$('n2').onclick = () => location.href = '/video-editor.html';
 
 show(0); check();
 </script>
