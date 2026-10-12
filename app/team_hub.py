@@ -240,7 +240,16 @@ def identity(request: Request) -> dict:
 
 @router.get("/organizations")
 def organizations(request: Request) -> Any:
-    return _provider("/rest/v1/clipkit_organizations?select=*,clipkit_members(*)&order=created_at", token=session(request)["access_token"])
+    token = session(request)["access_token"]
+    path = "/rest/v1/clipkit_organizations?select=*,clipkit_members(*)&order=created_at"
+    found = _provider(path, token=token)
+    if not found:
+        invitations = rpc(request, "clipkit_pending_invitations", {})
+        # A single invitation opens the team on first login; multiple invitations need a choice.
+        if len(invitations) == 1:
+            rpc(request, "clipkit_accept_invitation", {"org": invitations[0]["organization_id"]})
+            found = _provider(path, token=token)
+    return found
 
 
 def owner_organization(org: UUID,request: Request) -> dict:
@@ -280,3 +289,29 @@ def member_directory(org: UUID, request: Request) -> Any:
 @router.get("/organizations/{org}/activity")
 def activity(org: UUID, request: Request) -> Any:
     return _provider("/rest/v1/clipkit_activity?organization_id=eq." + str(org) + "&select=*&order=created_at.desc&limit=100", token=session(request)["access_token"])
+
+
+@router.get("/invitations")
+def invitations(request: Request) -> Any:
+    return rpc(request, "clipkit_pending_invitations", {})
+
+
+@router.post("/invitations/{org}/accept")
+def accept_invitation(org: UUID, request: Request) -> dict:
+    return {"id": rpc(request, "clipkit_accept_invitation", {"org": str(org)})}
+
+
+@router.get("/organizations/{org}/invitations")
+def organization_invitations(org: UUID, request: Request) -> Any:
+    owner_organization(org, request)
+    return _provider("/rest/v1/clipkit_invitations?organization_id=eq." + str(org) + "&select=email,role,expires_at&order=expires_at.desc", token=session(request)["access_token"])
+
+
+class InvitationEmail(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+@router.post("/organizations/{org}/invitations/cancel")
+def cancel_invitation(org: UUID, body: InvitationEmail, request: Request) -> dict:
+    rpc(request, "clipkit_cancel_invitation", {"org": str(org), "member_email": body.email.strip()})
+    return {"cancelled": True}
