@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: An idea for ClipKit
+about: An idea for EditorKrab
 labels: enhancement
 ---
 

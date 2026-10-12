@@ -1,4 +1,4 @@
-// ClipKit app shell: draws the sidebar on every page and marks where you are.
+// EditorKrab app shell: draws the sidebar on every page and marks where you are.
 (() => {
   if (window !== window.top) return;   // embedded inside the editor: no second sidebar
   const I = {
@@ -11,7 +11,7 @@
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>',
   };
   window.CLIPKIT_ICONS = I;
-  document.head.insertAdjacentHTML('beforeend', '<link rel="icon" href="/logo.svg" type="image/svg+xml">');
+  document.head.insertAdjacentHTML('beforeend', '<link rel="icon" href="/logo.svg?v=editorkrab1" type="image/svg+xml">');
   const svg = k => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
   const NAV = [
     // starting or continuing a clip lives on the home tiles; the sidebar only moves between pages
@@ -21,13 +21,13 @@
   const isOn = href => href === here || (href === location.pathname && !location.hash && !href.includes('#'));
   const aside = document.createElement('nav');
   aside.className = 'sb';
-  aside.innerHTML = `<a class="sb-brand" href="/video-editor.html"><img class="sb-logo" src="/logo.svg" alt="">
-      <span class="sb-name">ClipKit<small>Video → CapCut</small></span></a>` +
+  aside.innerHTML = `<a class="sb-brand" href="/video-editor.html"><img class="sb-logo" src="/logo.svg?v=editorkrab1" alt="">
+      <span class="sb-name">EditorKrab<small>ตัดคลิป · จัดงานทีม</small></span></a>` +
     '<button class="sb-fold" id="sbFold" title="ย่อ / ขยายแถบซ้าย"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>' +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}" title="${label}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
     '<button type="button" class="sb-item" id="ckCreateProject" title="สร้างโปรเจกต์ใหม่">➕<span>สร้างโปรเจกต์</span></button>' +
-    '<div class="sb-foot" id="sbVer">ClipKit</div>';
+    '<div class="sb-foot" id="sbVer">EditorKrab</div>';
   aside.querySelector('a[href="/styles.html"]').after(aside.querySelector('#ckCreateProject'));
   document.body.prepend(aside);
   const openPicked = picked => {
@@ -77,8 +77,8 @@
   // Manual system controls: closing a page no longer owns the server lifetime.
   const controls = document.createElement('div');
   controls.className = 'sb-controls';
-  controls.innerHTML = '<div class="sb-control-buttons"><button type="button" id="ckRestart" title="รีสตาร์ต ClipKit">🔄</button>' +
-    '<button type="button" id="ckShutdown" title="ปิดระบบ ClipKit (หน่วง 1 นาที)">⏻</button>' +
+  controls.innerHTML = '<div class="sb-control-buttons"><button type="button" id="ckRestart" title="รีสตาร์ต EditorKrab">🔄</button>' +
+    '<button type="button" id="ckShutdown" title="ปิดระบบ EditorKrab (หน่วง 1 นาที)">⏻</button>' +
     '<button type="button" id="ckCancelShutdown" title="ยกเลิกการปิด" hidden>↩</button></div>' +
     '<div id="ckSystemStatus" role="status" aria-live="polite"></div>';
   aside.insertBefore(controls, document.getElementById('sbVer'));
@@ -87,14 +87,14 @@
   const health = () => fetch('/api/window/health', {cache: 'no-store', signal: AbortSignal.timeout(2000)})
     .then(async r => r.ok ? r.json() : null).catch(() => null);
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-  // the server is gone: close the window (the ClipKit icon opens a fresh one); a window the browser
+  // the server is gone: close the window (the EditorKrab icon opens a fresh one); a window the browser
   // will not let a script close shows one plain line instead of a page whose lists and covers fail
   const stopped = () => {
     window.ckLoadProjects = () => {};
     window.close();
     document.body.innerHTML = '<div style="position:fixed;inset:0;display:grid;place-items:center;background:#0b0e16;' +
-      'color:#c5cde0;font-size:16px;text-align:center;padding:24px">ปิด ClipKit แล้ว<br>' +
-      '<span style="color:#828ca4;font-size:14px">เปิดอีกครั้งจากไอคอน ClipKit หรือ widget MoonRacle</span></div>';
+      'color:#c5cde0;font-size:16px;text-align:center;padding:24px">ปิด EditorKrab แล้ว<br>' +
+      '<span style="color:#828ca4;font-size:14px">เปิดอีกครั้งจากไอคอน EditorKrab หรือ widget MoonRacle</span></div>';
   };
   async function systemControl(action) {
     if ([...systemButtons].some(b => b.disabled)) return;
@@ -102,7 +102,7 @@
     try {
       const before = await health();
       if ((!before || before.busy) && !confirm((action === 'restart' ? 'รีสตาร์ต' : 'ปิด') +
-          ' ClipKit? งานที่กำลังประมวลผลจะหยุดเมื่อครบ 1 นาที')) return;
+          ' EditorKrab? งานที่กำลังประมวลผลจะหยุดเมื่อครบ 1 นาที')) return;
       systemStatus.textContent = action === 'restart' ? 'กำลังรีสตาร์ต…' : 'กำลังตั้งเวลาปิด · ยกเลิกได้ใน 1 นาที';
       let accepted, queued;
       try {
@@ -276,7 +276,7 @@
       bar.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;background:#1d2236;' +
         'border:1px solid #7c5cff;border-radius:12px;padding:10px 14px;display:flex;gap:12px;align-items:center;' +
         'color:#f1f4fb;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.5);max-width:92vw';
-      bar.innerHTML = '<span>มี ClipKit เวอร์ชันใหม่ (' + u.count + ' รายการ)</span>' +
+      bar.innerHTML = '<span>มี EditorKrab เวอร์ชันใหม่ (' + u.count + ' รายการ)</span>' +
         '<button style="background:#7c5cff;color:#fff;border:0;border-radius:8px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer">อัปเดต</button>' +
         '<button style="background:none;border:0;color:#828ca4;cursor:pointer;font:inherit">ภายหลัง</button>';
       bar.title = (u.changes || []).join('\n');
@@ -291,7 +291,7 @@
           do { await new Promise(x => setTimeout(x, 1500)); j = await fetch('/api/kit/job/update').then(x => x.json()); }
           while (j.status === 'running');
           if (j.status !== 'done') throw new Error((j.log || '').trim().split('\n').pop());
-          bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด ClipKit ใหม่ให้ครบทุกส่วน';
+          bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด EditorKrab ใหม่ให้ครบทุกส่วน';
           go.remove(); later.textContent = 'ปิด';
         } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
       };

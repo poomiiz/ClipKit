@@ -786,7 +786,7 @@ def report_bug(text: str, page: str = "", errors: list[str] | None = None, auto:
                      *report["errors"], "```"])
     md = md.replace(str(Path.home()), "~")   # the issue is public: no machine name or user folder in it
     title = report["text"].splitlines()[0][:80]
-    url = "https://github.com/poomiiz/ClipKit/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
+    url = "https://github.com/poomiiz/EditorKrab/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
     return {"saved": str(f), "sent": False, "issue_url": url}
 
 
