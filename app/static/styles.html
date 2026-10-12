@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>คลังสไตล์</title>
 <style>
-:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:1200px;margin:0 auto;padding:22px 18px 60px}
@@ -40,7 +40,7 @@ h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 
   <div class="box">
     <b>ถอดจาก</b>
-    <select id="proj"><option value="">โปรเจกต์ CapCut ล่าสุด…</option></select>
+    <select id="proj" aria-label="ถอดจากโปรเจกต์"><option value="">โปรเจกต์ CapCut ล่าสุด…</option></select>
     <button id="pick">เลือกไฟล์วิดีโอ / โฟลเดอร์โปรเจกต์</button>
     <button class="go" id="go" disabled>ถอดสไตล์</button>
     <span class="msg" id="startMsg"></span>
@@ -52,7 +52,7 @@ h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
   <h2>คอลเลกชันของฉัน</h2>
   <div class="box" id="mixBox">
     <b>ประกอบสไตล์ใหม่</b>
-    <select id="mMain"></select><select id="mCaption"></select><select id="mSecond"></select>
+    <select id="mMain" aria-label="สไตล์หลัก"></select><select id="mCaption" aria-label="สไตล์คำบรรยาย"></select><select id="mSecond" aria-label="สไตล์รอง"></select>
     <input type="text" id="mName" placeholder="ชื่อ preset ใหม่">
     <button class="go" id="mGo">สร้าง preset</button>
     <span class="msg" id="mMsg"></span>

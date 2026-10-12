@@ -27,7 +27,7 @@
   .ck-dlg .ck-dlg-row{display:flex;flex-direction:row-reverse;justify-content:flex-start;gap:8px}  /* ok first in the DOM: Enter submits ok */
   .ck-dlg button{font:inherit;font-size:13.5px;font-weight:600;min-height:34px;padding:6px 14px;border-radius:8px;cursor:pointer;
     border:1px solid #2a2c33;background:#1d1f24;color:#ececf1}
-  .ck-dlg button[value=ok]{background:#7c5cff;border-color:#7c5cff;color:#fff}
+  .ck-dlg button[value=ok]{background:#6c4cf0;border-color:#6c4cf0;color:#fff}
   .ck-dlg.danger button[value=ok]{background:#dc2626;border-color:#dc2626}
   .ck-dlg button:focus-visible{outline:2px solid #b9a8ff;outline-offset:2px}`;
   document.head.insertAdjacentHTML('beforeend', `<style>${css}</style>`);
@@ -63,7 +63,7 @@
 (() => {
   let lang = null;
   try { lang = localStorage.getItem('ck_lang'); } catch (e) { /* private window: follow the browser */ }
-  lang = lang === 'th' || lang === 'en' ? lang : (/^th\b/i.test(navigator.language || '') ? 'th' : 'en');
+  lang = lang === 'th' || lang === 'en' ? lang : ((navigator.languages || [navigator.language]).some(l => /^th\b/i.test(l || '')) ? 'th' : 'en');
   window.ckLang = lang;
   window.ckSetLang = next => { try { localStorage.setItem('ck_lang', next); } catch (e) { /* not kept */ } location.reload(); };
   if (lang !== 'en') return;

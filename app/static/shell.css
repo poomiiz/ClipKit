@@ -6,7 +6,7 @@
   --sb-txt: #9a9ca6;
   --sb-hover: #17181c;
   --sb-on: #1f2026;
-  --brand: #7c5cff;
+  --brand: #6c4cf0;
   --ui-font: "Inter", "Segoe UI Variable Text", "Segoe UI", "Leelawadee UI", "Noto Sans Thai", system-ui, sans-serif;
 }
 body.shell { padding-left: var(--sb-w); font-family: var(--ui-font); -webkit-font-smoothing: antialiased; font-feature-settings: "cv11", "ss01"; }
@@ -22,8 +22,8 @@ body.dropping::after { content: 'วางไฟล์วิดีโอหร�
 .sb-brand { display: flex; align-items: center; gap: 9px; padding: 2px 8px 16px; color: #fff; text-decoration: none; }
 .sb-logo { width: 26px; height: 26px; display: block; }
 .sb-name { font-weight: 650; font-size: 14.5px; letter-spacing: -.1px; }
-.sb-name small { display: block; font-weight: 400; font-size: 11px; color: #6b6e78; letter-spacing: 0; }
-.sb-group { font-size: 10.5px; color: #5c5f69; text-transform: uppercase; letter-spacing: .8px; padding: 14px 10px 6px; }
+.sb-name small { display: block; font-weight: 400; font-size: 11px; color: #82858f; letter-spacing: 0; }
+.sb-group { font-size: 10.5px; color: #82858f; text-transform: uppercase; letter-spacing: .8px; padding: 14px 10px 6px; }
 .sb .sb-item {
   display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin: 1px 0;
   border-radius: 7px; color: var(--sb-txt); text-decoration: none; font-size: 13.5px; font-weight: 500;
@@ -34,8 +34,8 @@ body.dropping::after { content: 'วางไฟล์วิดีโอหร�
 .sb .sb-item.on svg { color: #a48dff; }
 /* the one call to action in the sidebar: new project */
 .sb #ckCreateProject { margin: 10px 0 6px; justify-content: center; color: #fff; background: var(--brand); font-weight: 600; }
-.sb #ckCreateProject:hover { background: #8f73ff; color: #fff; }
-.sb-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--sb-line); font-size: 11px; color: #5c5f69; }
+.sb #ckCreateProject:hover { background: #7a5cf8; color: #fff; }
+.sb-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--sb-line); font-size: 11px; color: #82858f; }
 .sb-foot b { color: #8b8d98; font-weight: 600; }
 .ck-top { display: flex; gap: 2px; align-items: center; }
 .ck-top.float { position: fixed; top: 10px; right: 14px; z-index: 60; }

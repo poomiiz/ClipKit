@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ทำตัวหนังสือเคลื่อนไหว</title>
 <style>
-:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:980px;margin:0 auto;padding:24px 16px 60px;display:grid;grid-template-columns:1fr 340px;gap:20px}
@@ -37,13 +37,13 @@ button:disabled{opacity:.5;cursor:wait}
 <main>
   <div class="top"><h1>ตัวหนังสือเคลื่อนไหว</h1></div>
   <div class="card">
-    <label>แบบ</label>
+    <label for="tpl">แบบ</label>
     <select id="tpl"></select>
     <div id="fields"></div>
 
-    <label>ความเร็ว <span class="hint">(2 = เร็วกว่าต้นฉบับ CapCut เท่าตัว · 1 = เท่าต้นฉบับ)</span></label>
+    <label for="speed">ความเร็ว <span class="hint">(2 = เร็วกว่าต้นฉบับ CapCut เท่าตัว · 1 = เท่าต้นฉบับ)</span></label>
     <input id="speed" type="number" min="0.5" max="5" step="0.5" value="2">
-    <label>ชื่อไฟล์</label><input id="name" placeholder="เช่น ep07_hook">
+    <label for="name">ชื่อไฟล์</label><input id="name" placeholder="เช่น ep07_hook">
     <button class="big" id="go">ทำไฟล์พื้นใส (.mov) ไปวางใน CapCut</button>
     <div class="msg" id="msg"></div>
   </div>
