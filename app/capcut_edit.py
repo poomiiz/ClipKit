@@ -1158,7 +1158,7 @@ def _music_meta(path: Path) -> dict[str, Any]:
     import subprocess
     out = subprocess.run([FFPROBE, "-v", "error", "-show_entries",
                           "format=duration", "-of", "csv=p=0", str(path)],
-                         capture_output=True, creationflags=NO_WINDOW, text=True)
+                         capture_output=True, creationflags=NO_WINDOW, text=True, timeout=60)
     try:
         duration = round(float(out.stdout.strip()), 1)
     except ValueError as exc:

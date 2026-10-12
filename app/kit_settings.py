@@ -205,7 +205,7 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
         part = root / f"{slug}-source{src.suffix}"
         cut = subprocess.run([FFMPEG, "-y", "-ss", str(body.start), "-to", str(body.end), "-i", str(src),
                               "-c", "copy", str(part)], capture_output=True, text=True, encoding="utf-8",
-                             errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                             errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=600)
         if cut.returncode != 0 or not part.is_file():
             raise HTTPException(500, "cutting the story failed: " + cut.stderr.strip()[-400:])
         src = part
@@ -282,7 +282,7 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     else:
         cmd = ["ffmpeg", "-v", "error", "-y", "-ss", str(body.at), "-i", str(src), "-frames:v", "1",
                "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", str(bg)]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if p.returncode != 0 or not bg.is_file():
         raise HTTPException(500, "could not read the background: " + p.stderr.strip()[-300:])
     page = (work / "index.html").read_text(encoding="utf-8")
@@ -707,7 +707,7 @@ def _stop_studio() -> None:
     # npx starts node underneath: kill the whole tree, or the studio keeps the project files open
     old = _hf_preview.get("proc")
     if old and old.poll() is None:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(old.pid)], capture_output=True)
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(old.pid)], capture_output=True, timeout=60)
         old.wait(timeout=10)
     # studios left from earlier runs (the old code stopped only npx, so node kept running and kept the files
     # open): stop every HyperFrames preview process, nothing else
@@ -916,7 +916,7 @@ def hf_projects() -> dict[str, Any]:
 
 
 def _capcut_running() -> bool:
-    r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"], capture_output=True, text=True)
+    r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"], capture_output=True, text=True, timeout=60)
     return "CapCut.exe" in r.stdout
 
 
@@ -1083,7 +1083,7 @@ def update_check() -> dict[str, Any]:
 def version() -> dict[str, Any]:
     meta = json.loads((KIT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     commit = subprocess.run(["git", "-C", str(KIT), "log", "-1", "--format=%h %cs"], capture_output=True,
-                            text=True).stdout.strip()
+                            text=True, timeout=60).stdout.strip()
     return {"version": meta.get("version"), "commit": commit}
 
 

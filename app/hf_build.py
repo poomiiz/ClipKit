@@ -56,7 +56,7 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
         r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
                             "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
                             "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                            str(dst)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                            str(dst)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
         if r.returncode or not dst.is_file():
             raise render.VideoEditError("could not prepare the footage: " + r.stderr[-300:])
     return "media/" + dst.name
