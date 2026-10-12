@@ -43,6 +43,7 @@ body.dropping::after { content: 'วางไฟล์วิดีโอหร�
   border-radius: 7px; background: none; color: #9a9ca6; font: inherit; font-size: 14px; text-decoration: none; cursor: pointer; }
 .ck-top svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .ck-top a:hover, .sb-control-buttons button:hover { color: #ececf1; }
+.ck-top .ck-lang { width: auto; padding: 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .4px; }
 .ck-top a:hover, .sb-control-buttons button:hover, .ck-top a.on { background: var(--sb-hover); border-color: var(--sb-line); }
 .sb-controls { position: relative; }
 .sb-control-buttons { display: flex; gap: 4px; }

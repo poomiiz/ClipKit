@@ -17,7 +17,7 @@ def main():
             assert result.status_code == 303 and result.headers['location'] == '/login.html', page
         for method, path in [('GET', '/api/video/drafts'), ('POST', '/api/kit/locate'), ('GET', '/api/team/setup'), ('POST', '/api/team/setup'), ('GET', '/docs'), ('GET', '/openapi.json')]:
             assert client.request(method, path).status_code == 401, path
-        for asset in ('/login.html', '/login.js', '/login.css', '/logo.svg'):
+        for asset in ('/login.html', '/login.js', '/login.css', '/logo.svg', '/ui.js', '/i18n/en.json'):
             assert client.get(asset).status_code == 200, asset
         assert client.get('/api/team/session').json()['signed_in'] is False
         assert client.get('/api/window/health').status_code == 200

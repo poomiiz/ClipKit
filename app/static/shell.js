@@ -81,7 +81,9 @@
   const top = document.createElement('div');
   top.className = 'ck-top';
   top.innerHTML = `<a href="#" id="sbBug" title="แจ้งปัญหา">${svg('bug')}</a>` +
-    `<a href="/settings.html" title="ตั้งค่า"${isOn('/settings.html') ? ' class="on"' : ''}>${svg('settings')}</a>`;
+    `<a href="/settings.html" title="ตั้งค่า"${isOn('/settings.html') ? ' class="on"' : ''}>${svg('settings')}</a>` +
+    `<a href="#" id="ckLang" class="ck-lang" translate="no" title="${window.ckLang === 'en' ? 'ภาษาไทย' : 'English'}">${window.ckLang === 'en' ? 'TH' : 'EN'}</a>`;
+  top.querySelector('#ckLang').onclick = e => { e.preventDefault(); window.ckSetLang(window.ckLang === 'en' ? 'th' : 'en'); };
   const pageTop = document.querySelector('.top');   // a page header: sit at its right end, else float top right
   (pageTop || document.body).append(top);
   top.classList.toggle('float', !pageTop);
