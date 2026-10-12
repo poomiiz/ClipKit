@@ -1,6 +1,12 @@
 // EditorKrab app shell: draws the sidebar on every page and marks where you are.
 (() => {
   if (window !== window.top) return;   // embedded inside the editor: no second sidebar
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const response = await originalFetch(...args);
+    if (response.status === 401) location.replace('/login.html');
+    return response;
+  };
   const I = {
     home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
     clip: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',

@@ -20,7 +20,7 @@
   "_envato_backend_note": "local = this machine's Chrome via scripts/envato.py (run: python scripts/envato.py login once); bot = team bot on the bot host",
   "bot_api_url": "http://127.0.0.1:8765",
   "supabase_url": "https://wqyjsewitmctlgmiznxz.supabase.co",
-  "supabase_anon_key": "",
+  "supabase_anon_key": "sb_publishable_kYo4Xi2y_fAa39FMZCCl9Q_yrYQ8S8Q",
   "_supabase_note": "team hub. The anon key is public by design (RLS guards every table); the database password and service key never go in this file",
   "auto_bug_report": true,
   "_auto_bug_report_note": "send errors the app hits to the team hub on its own (text, page, version, last errors; no machine name, user folder shown as ~)",

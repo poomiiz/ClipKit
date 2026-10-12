@@ -39,7 +39,7 @@ def main():
    if case=='reject':provider.return_value={}
    result=client.get(callback+('&error=access_denied' if case=='cancel' else '&code=code'),follow_redirects=False)
    assert result.status_code==(400 if case=='expired' else 303)
-   if case!='expired':assert result.headers['location']=='/team.html?login_error=1'
+   if case!='expired':assert result.headers['location']=='/login.html?login_error=1'
    assert state not in hub._oauth
  print('PASS Google PKCE, browser binding, expiry, replay, cancellation and token boundary')
 if __name__=='__main__':main()
