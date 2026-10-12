@@ -112,7 +112,12 @@ async def no_cache_html(request, call_next):
     oauth_return = (request.method == "GET" and request.url.path == "/api/team/google/callback"
                     and request.headers.get("sec-fetch-mode") == "navigate"
                     and request.headers.get("sec-fetch-dest") == "document")
-    if foreign and not (widget_navigation or widget_health or widget_control or oauth_return):
+    # OAuth redirects retain cross-site Fetch Metadata through the landing page.
+    page_navigation = (request.method == "GET" and is_page
+                       and request.headers.get("sec-fetch-mode") == "navigate"
+                       and request.headers.get("sec-fetch-dest") == "document"
+                       and (origin is None or origin == f"{request.url.scheme}://{request.url.netloc}"))
+    if foreign and not (widget_navigation or widget_health or widget_control or oauth_return or page_navigation):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
     # Gate pages, files and editing APIs before they can read local projects.
     public = request.url.path in {

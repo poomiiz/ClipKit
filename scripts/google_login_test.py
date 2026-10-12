@@ -30,8 +30,15 @@ def main():
   assert result.status_code==303 and result.headers['location']=='/team.html'
   provider.assert_called_once_with('/auth/v1/token?grant_type=pkce','POST',{'auth_code':'provider-code','code_verifier':verifier})
   assert 'private-access' not in result.text and 'private-refresh' not in result.text
-  assert 'samesite=strict' in result.headers['set-cookie'].lower()
+  assert 'samesite=lax' in result.headers['set-cookie'].lower()
   assert client.get('/api/team/session').json()['user']['display_name']=='Google Owner'
+  assert client.get('/team.html',headers=headers).status_code==200
+  assert client.get('/team.html',headers={**headers,'Origin':'https://evil.example'}).status_code==403
+  assert client.get('/api/team/session',headers=headers).status_code==403
+  assert client.post('/api/team/logout',headers=headers).status_code==403
+  with TestClient(app,base_url='http://127.0.0.1:8770') as anonymous:
+   assert anonymous.get('/team.html',headers=headers,follow_redirects=False).headers['location']=='/login.html'
+   assert anonymous.get('/login.html',headers=headers).status_code==200
   assert client.get(callback+'&code=provider-code',follow_redirects=False).status_code==400
   for case in ('expired','cancel','reject'):
    start=client.post('/api/team/google',json={});callback=parse_qs(urlsplit(start.json()['url']).query)['redirect_to'][0];state=parse_qs(urlsplit(callback).query)['state'][0]
