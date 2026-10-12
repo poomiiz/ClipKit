@@ -56,3 +56,63 @@
   window.ckPrompt = (text, value = '') => ask(text, {input: value});
   window.ckAlert = text => ask(text, {cancel: ''});
 })();
+
+// Language: the pages are written in Thai; English comes from a phrase table (/i18n/en.json, Thai fragment -> English)
+// applied to the rendered page, so text the code builds later (toasts, lists, dialogs) is translated too.
+// People's own text is left alone: typed fields, translate="no", and any text still holding Thai after the swap.
+(() => {
+  let lang = null;
+  try { lang = localStorage.getItem('ck_lang'); } catch (e) { /* private window: follow the browser */ }
+  lang = lang === 'th' || lang === 'en' ? lang : (/^th\b/i.test(navigator.language || '') ? 'th' : 'en');
+  window.ckLang = lang;
+  window.ckSetLang = next => { try { localStorage.setItem('ck_lang', next); } catch (e) { /* not kept */ } location.reload(); };
+  if (lang !== 'en') return;
+  const root = document.documentElement;
+  root.lang = 'en';
+  root.classList.add('ck-i18n-wait');   // hide the Thai page for the moment the table takes to load
+  document.head.insertAdjacentHTML('beforeend', '<style>html.ck-i18n-wait body{visibility:hidden}' +
+    'body.dropping::after{content:"Drop video files or folders here"!important}</style>');
+  const reveal = () => root.classList.remove('ck-i18n-wait');
+  const TH = /[฀-๿]/, ATTRS = ['title', 'placeholder', 'aria-label'];
+  const SKIP = 'script,style,textarea,[contenteditable],[translate=no]';
+  fetch('/i18n/en.json').then(r => { if (!r.ok) throw new Error('i18n ' + r.status); return r.json(); }).then(dict => {
+    const keys = Object.keys(dict).filter(k => k.length >= 3).sort((a, b) => b.length - a.length);
+    const re = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+    // all or nothing: if Thai is left after the swap, the text holds someone's own Thai words (a subtitle, a name), keep it whole
+    // Thai runs words together, English needs a space where two swapped pieces meet
+    const tr = s => {
+      if (!TH.test(s)) return s;
+      const t = s.replace(re, m => '\u0001' + dict[m] + '\u0001');
+      if (TH.test(t)) return s;
+      return t.replace(/([\w.,)!?])\u0001+(?=[\w(])|\u0001+([\w(])/g, (x, a, b) => a ? a + ' ' : x).replace(/\u0001/g, '')
+        .replace(/\b(\d+) Projects?\b/g, (x, n) => n + (n === '1' ? ' project' : ' projects'));
+    };
+    const el = n => n.nodeType === 1 ? n : n.parentElement;
+    const doNode = n => {
+      const e = el(n);
+      if (!e || e.closest(SKIP)) return;
+      if (n.nodeType === 3) { const t = tr(n.nodeValue); if (t !== n.nodeValue) n.nodeValue = t; return; }
+      for (const a of ATTRS) if (n.hasAttribute(a)) { const v = n.getAttribute(a), t = tr(v); if (t !== v) n.setAttribute(a, t); }
+      if ((n.tagName === 'INPUT' && (n.type === 'button' || n.type === 'submit'))) n.value = tr(n.value);
+    };
+    const doTree = top => {
+      doNode(top);
+      if (top.nodeType !== 1) return;
+      const w = document.createTreeWalker(top, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      while (w.nextNode()) doNode(w.currentNode);
+    };
+    const start = () => {
+      document.title = tr(document.title);
+      doTree(document.body);
+      reveal();
+      new MutationObserver(list => {
+        for (const m of list) {
+          if (m.type === 'childList') m.addedNodes.forEach(doTree);
+          else doNode(m.target);
+        }
+      }).observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRS});
+    };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }).catch(e => { reveal(); console.error(e); });   // no table: the page stays Thai rather than blank
+  setTimeout(reveal, 3000);
+})();
