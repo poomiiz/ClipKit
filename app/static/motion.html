@@ -32,7 +32,7 @@ button:disabled{opacity:.5;cursor:wait}
 [hidden]{display:none!important}
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <main>
   <div class="top"><h1>ตัวหนังสือเคลื่อนไหว</h1></div>
@@ -116,14 +116,14 @@ $('go').onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.detail || r.statusText);
     $('msg').className = 'msg ok'; $('msg').textContent = '✅ บันทึกแล้ว: ' + j.file;
-  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + e.message; }
+  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + ckErr(e); }
   b.disabled = false;
 };
 Promise.all([fetch('/api/kit/motion-templates').then(r => r.json()), fontsReady]).then(([j]) => {
   SPECS = j.templates;
   $('tpl').innerHTML = Object.entries(SPECS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
   drawFields(); refresh();
-}).catch(e => { $('msg').className = 'msg bad'; $('msg').textContent = '❌ โหลดรายชื่อเอฟเฟกต์ไม่ได้: ' + e.message; });
+}).catch(e => { $('msg').className = 'msg bad'; $('msg').textContent = '❌ โหลดรายชื่อเอฟเฟกต์ไม่ได้: ' + ckErr(e); });
 </script>
 <script src="/shell.js?v=11"></script>
 </body>

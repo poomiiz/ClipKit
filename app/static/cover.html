@@ -31,7 +31,7 @@ button:disabled{opacity:.5;cursor:wait}
 .sw input{width:44px;height:32px;padding:2px;border-radius:8px}
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <main>
   <div class="top"><h1>ทำปก</h1></div>
@@ -88,7 +88,7 @@ $('suggest').onclick = async () => {
       box.appendChild(im);
     });
     if (r.frames[0]) box.querySelector('img').click();
-  } catch (e) { box.innerHTML = '<div class="msg bad">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.innerHTML = '<div class="msg bad">❌ ' + ckErr(e) + '</div>'; }
   b.disabled = false; b.textContent = '🔎 หาภาพสวย 6 ภาพให้เลือก';
 };
 // installed fonts for the font pickers; the last choice is remembered on this machine
@@ -134,7 +134,7 @@ $('go').onclick = async () => {
     const r = await post('cover', body);
     $('pvTag').textContent = '✅ ไฟล์จริงที่บันทึกแล้ว';
     $('msg').className = 'msg ok'; $('msg').textContent = '✅ บันทึกแล้ว: ' + r.file;
-  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + e.message; }
+  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + ckErr(e); }
   b.disabled = false;
 };
 const q = new URLSearchParams(location.search);   // filled from the clip flow: cover.html?src=&l1=&l2=

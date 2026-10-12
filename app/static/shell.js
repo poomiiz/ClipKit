@@ -52,7 +52,7 @@
       const picked = await response.json();
       if (!response.ok) throw new Error(picked.detail || 'เลือกไฟล์ไม่ได้');
       if (picked.path) openPicked(picked);
-    } catch (e) { alert(e.message); }
+    } catch (e) { ckAlert(ckErr(e)); }
   };
   // One page-wide drop handler serves home, styles and team pages.
   let innerDrag = false;
@@ -75,7 +75,7 @@
       const picked = await response.json();
       if (!response.ok) throw new Error(picked.detail || 'หาไฟล์ที่วางไม่พบ');
       openPicked(picked);
-    } catch (e) { alert(e.message); }
+    } catch (e) { ckAlert(ckErr(e)); }
   });
   // app-style icon bar, top right: report a bug, settings, restart, shut down
   const top = document.createElement('div');
@@ -112,7 +112,7 @@
     systemButtons.forEach(b => b.disabled = true);
     try {
       const before = await health();
-      if ((!before || before.busy) && !confirm((action === 'restart' ? 'รีสตาร์ต' : 'ปิด') +
+      if ((!before || before.busy) && !await ckConfirm((action === 'restart' ? 'รีสตาร์ต' : 'ปิด') +
           ' EditorKrab? งานที่กำลังประมวลผลจะหยุดเมื่อครบ 1 นาที')) return;
       systemStatus.textContent = action === 'restart' ? 'กำลังรีสตาร์ต…' : 'กำลังตั้งเวลาปิด · ยกเลิกได้ใน 1 นาที';
       let accepted, queued;
@@ -157,7 +157,7 @@
       }
       throw new Error('ยังยืนยันผลไม่ได้ ลองอีกครั้งหรือใช้ปุ่มบนหน้า MoonRacle');
     } catch (error) {
-      systemStatus.textContent = 'ไม่สำเร็จ: ' + error.message;
+      systemStatus.textContent = 'ไม่สำเร็จ: ' + ckErr(error);
     } finally {
       systemButtons.forEach(b => b.disabled = false);
     }
@@ -170,7 +170,7 @@
       if (!response.ok) throw new Error('ยกเลิกไม่สำเร็จ');
       cancelShutdown.hidden = true;
       systemStatus.textContent = 'ยกเลิกการปิดแล้ว';
-    } catch (error) { systemStatus.textContent = error.message; }
+    } catch (error) { systemStatus.textContent = ckErr(error); }
   };
   document.getElementById('ckShutdown').onclick = () => systemControl('shutdown');
   // End manual system controls.
@@ -268,7 +268,7 @@
         res.innerHTML = '✅ บันทึกในเครื่องแล้ว · <a target="_blank" style="color:#9fb0ff">ส่งเข้า GitHub ของทีม</a> (กดแล้วกด Submit)';
         res.querySelector('a').href = j.issue_url;
         window.open(j.issue_url, '_blank');
-      } catch (err) { res.textContent = '❌ ' + err.message; }
+      } catch (err) { res.textContent = '❌ ' + ckErr(err); }
     };
   };
   document.body.classList.add('shell');
@@ -304,7 +304,7 @@
           if (j.status !== 'done') throw new Error((j.log || '').trim().split('\n').pop());
           bar.firstChild.textContent = '✅ อัปเดตแล้ว · ปิดแล้วเปิด EditorKrab ใหม่ให้ครบทุกส่วน';
           go.remove(); later.textContent = 'ปิด';
-        } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + e.message; go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
+        } catch (e) { bar.firstChild.textContent = '❌ อัปเดตไม่สำเร็จ: ' + ckErr(e); go.disabled = false; go.textContent = 'ลองอีกครั้ง'; }
       };
       document.body.appendChild(bar);
     }).catch(() => {});

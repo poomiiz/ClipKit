@@ -39,7 +39,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 .card[data-tab]{display:none}.card[data-tab].show{display:block}
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <main>
   <div class="top">
@@ -137,7 +137,7 @@ function renderTree(folders) {
     try {
       const r = await api('browse?start=' + encodeURIComponent(folders[k] || ''), {method:'POST'});
       if (r.path) { await api('config', {method:'POST', body:{values:{[k]: r.path}}}); say('mWs', '✅ เปลี่ยน' + FOLDER_LABELS[k] + 'แล้ว', true); await loadConfig(); return; }
-    } catch (e) { say('mWs', '❌ ' + e.message, false); }
+    } catch (e) { say('mWs', '❌ ' + ckErr(e), false); }
     b.disabled = false; b.textContent = 'แก้ไข';
   });
 }
@@ -148,7 +148,7 @@ async function loadTeamStatus() {
     if (!response.ok) throw new Error('ตรวจระบบทีมไม่ได้ กรุณาลองใหม่');
     const result = await response.json();
     say('mTeam', result.configured ? 'ระบบบัญชีพร้อม · เข้าสู่ระบบได้จากหน้าทีม' : 'บริการทีมยังไม่เปิดใช้งาน · ผู้ดูแล EditorKrab กำลังตั้งค่าระบบ', result.configured);
-  } catch (e) { say('mTeam', e.message, false); }
+  } catch (e) { say('mTeam', ckErr(e), false); }
 }
 loadTeamStatus();
 async function api(path, opt={}) {
@@ -173,7 +173,7 @@ async function runDoctor(asr) {
     const bad = r.checks.some(c => c.state === 'FAIL');
     $('bSetup').style.display = bad ? '' : 'none';
     say('mDoctor', bad ? '⚠ มีรายการที่ต้องแก้' : '✅ เครื่องพร้อมใช้งาน', !bad);
-  } catch (e) { say('mDoctor', '❌ ' + e.message, false); }
+  } catch (e) { say('mDoctor', '❌ ' + ckErr(e), false); }
   b1.disabled = b2.disabled = false;
 }
 
@@ -193,7 +193,7 @@ async function watchJob(name, btn, msgId, logId) {
 }
 async function startJob(path, btn, msgId, logId, busyText) {
   try { await api(path, {method:'POST'}); say(msgId, busyText); return await watchJob(path, btn, msgId, logId); }
-  catch (e) { say(msgId, '❌ ' + e.message, false); btn.disabled = false; }
+  catch (e) { say(msgId, '❌ ' + ckErr(e), false); btn.disabled = false; }
 }
 
 async function loadConfig() {
@@ -212,13 +212,13 @@ $('bStockTest').onclick = async () => {
       body: JSON.stringify({query: 'office', count: 2})}).then(async x => { const j = await x.json(); if (!x.ok) throw new Error(j.detail); return j; });
     const got = s => r.items.filter(i => i.source === s).length;
     say('mStock', r.items.length ? '✅ ใช้ได้ (เจอ ' + r.items.length + ' คลิป)' : '❌ รหัสใช้ได้แต่ไม่เจอผลลัพธ์', !!r.items.length);
-  } catch (e) { say('mStock', '❌ ' + e.message, false); }
+  } catch (e) { say('mStock', '❌ ' + ckErr(e), false); }
 };
 async function saveConfig() {
   const values = {};
   ['envato_backend', 'whisper_device', 'whisper_model', 'stock_source', 'pixabay_key'].forEach(k => values[k] = $('o_' + k).value.trim());
   try { await api('config', {method:'POST', body:{values}}); say('mSave', '✅ บันทึกแล้ว (ปิดแล้วเปิดโปรแกรมใหม่ให้ค่าใหม่มีผลทั้งหมด)', true); }
-  catch (e) { say('mSave', '❌ ' + e.message, false); }
+  catch (e) { say('mSave', '❌ ' + ckErr(e), false); }
 }
 
 // pick the main folder and apply it at once (creates the standard sub-folders)
@@ -229,7 +229,7 @@ $('bWsPick').onclick = async () => {
     const w = await api('workspace', {method:'POST', body:{root: r.path}});
     say('mWs', '✅ ใช้ ' + r.path + ' แล้ว' + (w.capcut_drafts ? '' : ' · ยังหาโฟลเดอร์ CapCut ไม่เจอ กดแก้ไขที่แถว CapCut'), true);
     await loadConfig();
-  } catch (e) { say('mWs', '❌ ' + e.message, false); }
+  } catch (e) { say('mWs', '❌ ' + ckErr(e), false); }
 };
 $('bDoctor').onclick = () => runDoctor(false);
 $('bDoctorAsr').onclick = () => runDoctor(true);
@@ -249,19 +249,19 @@ $('bPackPick').onclick = async () => {
     const c = await api('pack/check', {method:'POST', body:{path:f}});
     if (c.clash.length) return say('mPack', 'ชื่อซ้ำกับที่มีอยู่: ' + c.clash.join(', '), false);
     const m = c.manifest;
-    if (!confirm(`ลงแพ็ก "${m.name}"?\nซับ ${m.subtitles.length} · ปก ${m.covers.length} · โมชั่น ${m.motion.length}`)) return;
+    if (!await ckConfirm(`ลงแพ็ก "${m.name}"?\nซับ ${m.subtitles.length} · ปก ${m.covers.length} · โมชั่น ${m.motion.length}`)) return;
     const r = await api('pack/install', {method:'POST', body:{path:f}});
     say('mPack', `ลงแล้ว: ${r.added.join(', ')}`, true); loadPackItems();
-  } catch (e) { say('mPack', e.message, false); }
+  } catch (e) { say('mPack', ckErr(e), false); }
 };
 $('bPackMake').onclick = async () => {
   const body = {id: $('pkId').value.trim(), name: $('pkName').value.trim(), author: $('pkAuthor').value.trim(),
                 subtitles: [], covers: [], motion: []};
   document.querySelectorAll('#pkItems input:checked').forEach(c => body[c.dataset.k].push(c.value));
   try { say('mPackMake', 'ไฟล์อยู่ที่ ' + (await api('pack/make', {method:'POST', body})).path, true); }
-  catch (e) { say('mPackMake', e.message, false); }
+  catch (e) { say('mPackMake', ckErr(e), false); }
 };
-loadPackItems().catch(e => say('mPack', e.message, false));
+loadPackItems().catch(e => say('mPack', ckErr(e), false));
 </script>
 <script src="/shell.js?v=11"></script>
 </body>

@@ -72,7 +72,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   body.simple .media { display: none !important; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <main>
   <div class="top">
@@ -132,14 +132,14 @@ async function live() {
     v.setAttribute('src', r.url + '?t=' + Date.now());
     v.style.display = 'block'; $('empty').style.display = 'none';
     v.addEventListener('ready', () => { try { v.seek(at); } catch {} }, {once: true});
-  }).catch(e => { $('empty').style.display = ''; $('empty').textContent = '❌ ' + e.message; })
+  }).catch(e => { $('empty').style.display = ''; $('empty').textContent = '❌ ' + ckErr(e); })
     .finally(() => { building = null; if (again) { again = false; live(); } });
   return building;
 }
 // one save for b-roll / music / effects (the export follows this list exactly)
 async function savePL() {
   try { await api('draft/placed', {path: PATH, ...PL, broll: PL.broll.filter(b => b.file)}); say(''); live(); }
-  catch (e) { say('❌ ' + e.message); }
+  catch (e) { say('❌ ' + ckErr(e)); }
 }
 
 // ── timeline ──
@@ -218,7 +218,7 @@ function dragLine(d, p) {
       const start = resize ? sub.start : Math.max(0, +(sub.start + dt).toFixed(2));
       const end = resize ? Math.max(sub.start + 0.3, +(sub.end + dt).toFixed(2)) : +(sub.end + (start - sub.start)).toFixed(2);
       try { await api('draft/line-time', {path: PATH, line: p.line, start, end}); await reload(); say(''); }
-      catch (err) { say('❌ ' + err.message); drawTL(); }
+      catch (err) { say('❌ ' + ckErr(err)); drawTL(); }
       setTimeout(() => d._moved = false, 0);
     };
     d.addEventListener('pointermove', move); d.addEventListener('pointerup', up);
@@ -297,16 +297,16 @@ function sideClip(s) {
   else if (T.hook.length === 1) $('hc1').value = (st.hook_colors || [])[1] || 'orange';
   $('hks').onclick = async () => {
     const lines = [0, 1].map(n => ({text: $('hk' + n).value.trim(), color: $('hc' + n).value})).filter(x => x.text);
-    try { await api('draft/hook', {path: PATH, lines}); say('บันทึกหัวคลิปแล้ว'); await reload(); live(); } catch (e) { say('❌ ' + e.message); }
+    try { await api('draft/hook', {path: PATH, lines}); say('บันทึกหัวคลิปแล้ว'); await reload(); live(); } catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('tsave').onclick = async () => {
-    const name = prompt('ชื่อเทมเพลต (เช่น ชื่อลูกค้า หรือ สไตล์)', st.template || '');
+    const name = await ckPrompt('ชื่อเทมเพลต (เช่น ชื่อลูกค้า หรือ สไตล์)', st.template || '');
     if (!name) return;
     try { await api('template/save', {path: PATH, name}); T.style.template = name; say('บันทึกเทมเพลต "' + esc(name) + '" แล้ว · เลือกใช้ได้ตอนสร้างโปรเจกต์ใหม่'); side(); }
-    catch (e) { say('❌ ' + e.message); }
+    catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('uncut').onclick = async () => {
-    try { const r = await api('draft/uncut', {path: PATH}); say('ย้อนแล้ว · เหลือย้อนได้อีก ' + r.undo + ' ครั้ง'); await reload(); live(); } catch (e) { say('❌ ' + e.message); }
+    try { const r = await api('draft/uncut', {path: PATH}); say('ย้อนแล้ว · เหลือย้อนได้อีก ' + r.undo + ' ครั้ง'); await reload(); live(); } catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('zc').onchange = async e => { await api('draft/look', {path: PATH, style: {zoomcut: e.target.checked}}); T.style.zoomcut = e.target.checked; live(); };
   s.querySelectorAll('[data-c]').forEach(r => r.onchange = async () => {
@@ -347,20 +347,20 @@ function sidePhrase(s, p) {
     try {
       if ($('pc').value.trim() !== ((T.caption_en || {})[p.line] || '')) await api('draft/caption', {path: PATH, line: p.line, text: $('pc').value});
       await api('draft/phrases', {path: PATH, line: p.line, pairs}); await reload(); say('บันทึกแล้ว');
-    } catch (e) { say('❌ ' + e.message); }
+    } catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('pcut').onclick = async () => {
     const sub = (T.subs || []).find(x => x.text === p.line);
     if (!sub) return say('❌ หาประโยคนี้ในซับไม่เจอ');
-    if (!confirm('ตัดประโยคนี้ออกจากคลิป?\n' + p.line)) return;
+    if (!await ckConfirm('ตัดประโยคนี้ออกจากคลิป?\n' + p.line)) return;
     say('<span class="spin"></span> กำลังตัด…');
     try { const r = await api('draft/cut', {path: PATH, start: sub.start, end: sub.end}); SEL = null; await reload(); live(); say('ตัดแล้ว · คลิปยาว ' + mm(r.length)); }
-    catch (e) { say('❌ ' + e.message); }
+    catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('pm').onclick = async () => {
     say('<span class="spin"></span> กำลังทำข้อความใหญ่… (ราว 30 วิ)');
     try { await api('draft/overlay', {path: PATH, template: 'hook-title', start: p.start, end: p.end, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว'); }
-    catch (e) { say('❌ ' + e.message); }
+    catch (e) { say('❌ ' + ckErr(e)); }
   };
 }
 function sideBroll(s, b, i) {
@@ -386,7 +386,7 @@ function sideBroll(s, b, i) {
           Object.assign(b, {file: d.path, thumb: x.thumb, query: $('bq').value.trim()}); savePL(); drawTL(); side(); };
         g.appendChild(im); });
       if (!r.items.length) g.textContent = 'ไม่เจอ ลองคำอื่น';
-    } catch (e) { g.textContent = '❌ ' + e.message; }
+    } catch (e) { g.textContent = '❌ ' + ckErr(e); }
   };
 }
 function sideMotion(s, m) {
@@ -436,7 +436,7 @@ $('bAddBr').onclick = () => {
 async function run(btn, text, fn) {
   document.querySelectorAll('.top button').forEach(b => b.disabled = true);
   say('<span class="spin"></span> ' + text);
-  try { await fn(); } catch (e) { say('❌ ' + e.message); }
+  try { await fn(); } catch (e) { say('❌ ' + ckErr(e)); }
   document.querySelectorAll('.top button').forEach(b => b.disabled = false);
 }
 $('bAuto').onclick = () => run($('bAuto'), 'กำลังทำทุกขั้น… (1–3 นาที)', async () => {
@@ -511,7 +511,7 @@ async function textPanel(st) {
       TC = await api('draft/text-check?path=' + encodeURIComponent(PATH)); showProb(TC);
       await live();
       if (!timer) $('ov').hidden = true;  // the rebuilt preview now shows the real thing
-    } catch (e) { $('tProb').innerHTML = '<div class="prob">❌ ' + esc(e.message) + '</div>'; }
+    } catch (e) { $('tProb').innerHTML = '<div class="prob">❌ ' + esc(ckErr(e)) + '</div>'; }
   }
   $('tMode').onchange = async () => { label(); await api('draft/look', {path: PATH, style: {tidy: $('tMode').value}}); T.style.tidy = $('tMode').value; };
   $('tTidy').onclick = async () => {
@@ -519,7 +519,7 @@ async function textPanel(st) {
       const r = await api('draft/tidy', {path: PATH, mode: $('tMode').value});
       say(`จัดซับแล้ว: 2 บรรทัด ${r.two_lines} · แยกใหม่ ${r.split} · ย่อ ${r.shrunk} · ย้ายคำเชื่อม ${r.moved_words}`);
       await reload(); live();
-    } catch (e) { say('❌ ' + e.message); }
+    } catch (e) { say('❌ ' + ckErr(e)); }
   };
 }
 // before an export: long lines tidied the chosen way, then a last look at lines outside the safe zone
@@ -528,7 +528,7 @@ async function checkText(label) {
   if (!c.look) return true;
   await api('draft/tidy', {path: PATH, mode: (T.style || {}).tidy || 'lines'});
   const c2 = await api('draft/text-check?path=' + encodeURIComponent(PATH));
-  if (!c2.problems.length || confirm(`ยังมี ${c2.problems.length} บรรทัดโดนปุ่มหรือแคปชันของแอป\n\n${c2.problems.slice(0, 5).map(p => p.replace(/[a-z][a-z /]+[a-z]/g, w => WHERE[w] || w)).join('\n')}\n\nกด OK เพื่อ${label}ต่อ · Cancel เพื่อไปแก้ที่ ตั้งค่าทั้งคลิป > ข้อความ`)) return true;
+  if (!c2.problems.length || await ckConfirm(`ยังมี ${c2.problems.length} บรรทัดโดนปุ่มหรือแคปชันของแอป\n\n${c2.problems.slice(0, 5).map(p => p.replace(/[a-z][a-z /]+[a-z]/g, w => WHERE[w] || w)).join('\n')}\n\nกด OK เพื่อ${label}ต่อ · Cancel เพื่อไปแก้ที่ ตั้งค่าทั้งคลิป > ข้อความ`)) return true;
   SEL = null; drawTL(); side(); $('adv').open = true; setTimeout(() => $('txtH') && $('txtH').scrollIntoView({behavior: 'smooth'}), 300);
   return false;
 }
@@ -549,7 +549,7 @@ document.addEventListener('keydown', e => {
     const b = PL.broll[SEL.i]; b.start = Math.max(0, +(b.start + (e.key === 'ArrowLeft' ? -0.1 : 0.1)).toFixed(2)); drawTL(); clearTimeout(window._sv); window._sv = setTimeout(savePL, 400);
   }
 });
-if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(e => say('❌ ' + e.message));
+if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(e => say('❌ ' + ckErr(e)));
 </script>
 <script src="/hyperframes-player.js"></script>
 <script src="/shell.js?v=11"></script>
