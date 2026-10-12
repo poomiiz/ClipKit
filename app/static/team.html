@@ -4,8 +4,11 @@
 <h1>👥 ทีมตัดต่อ</h1><p class="muted">ฟุตและโปรเจกต์ร่วมกันขององค์กร · สถานะและเจ้าของอยู่ในระบบบัญชี · ซิงก์เฉพาะฟุตและ MP4</p>
 <div id="message" role="status" aria-live="polite"></div>
 <section id="auth" hidden>
-<form id="login"><h2>เข้าสู่ระบบ</h2><label>อีเมล<input name="email" type="email" required autocomplete="username"></label><label>รหัสผ่าน<input name="password" type="password" required autocomplete="current-password"></label><button class="primary">เข้าสู่ระบบ</button></form>
-<details><summary>สมัครบัญชีใหม่</summary><form id="signup"><label>ชื่อที่แสดง<input name="display_name" required maxlength="120" autocomplete="name"></label><label>อีเมล<input name="email" type="email" required autocomplete="username"></label><label>รหัสผ่านอย่างน้อย 8 ตัว<input name="password" type="password" required minlength="8" autocomplete="new-password"></label><button class="primary">สมัครบัญชี</button></form></details>
+<h2>เข้าสู่ระบบ / สมัครบัญชี</h2>
+<button id="googleLogin" type="button" class="primary">เข้าสู่ระบบด้วย Google</button>
+<p class="muted">เลือกบัญชี Google ของคุณ ไม่ต้องตั้งรหัสผ่าน · บัญชีใหม่สร้างองค์กรหรือรอผู้ดูแลเพิ่มเข้าทีมได้</p>
+<details><summary>บัญชีเดิมที่ใช้รหัสผ่าน</summary>
+<form id="login"><label>อีเมล<input name="email" type="email" required autocomplete="username"></label><label>รหัสผ่าน<input name="password" type="password" required autocomplete="current-password"></label><button class="primary">เข้าสู่ระบบ</button></form></details>
 </section>
 <section id="signedIn" hidden><div class="row"><span id="userName"></span><button id="logout">ออกจากระบบ</button></div>
 <div class="panel"><label>องค์กร<select id="organization"><option value="">เลือกองค์กร</option></select></label><p class="muted" id="role"></p></div>

@@ -36,3 +36,19 @@ ClipKit ตรวจว่าโฟลเดอร์มีอยู่และ
 เจ้าของเปลี่ยนชื่อเรื่องจากหน้าทีม ข้อมูลชื่ออยู่ใน Supabase โฟลเดอร์โปรเจกต์ส่วนตัวใช้ชื่อเดิมเพื่อรักษาการผูกสิทธิ์ หน้าทีมอ่านสถานะล่าสุดทุก 15 วินาทีขณะว่าง โดยไม่ทับแบบฟอร์ม การเลือกโอนงาน หรือไฟล์ที่กำลังเลือกอยู่ ตรวจผ่าน `node scripts/team_refresh_test.js`
 
 หน้าแรกอ่านสถานะจาก Supabase สำหรับโปรเจกต์ที่ผูกกับทีม สถานะเก่าของงานที่ยังไม่ผูกถูกระบุเป็นประวัติ หากยังไม่เข้าสู่ระบบหรือผู้ให้บริการขัดข้องจะแสดงเหตุผลแทนการใช้สถานะเก่าแทน หน้าตรวจงานตรวจสิทธิ์ admin/lead ที่เซิร์ฟเวอร์ก่อนแสดงหน้า ฟุตที่ซิงก์ครบมีปุ่มสร้างโปรเจกต์และการลากไฟล์ค้นหาในโฟลเดอร์ footage ของทีมได้
+
+
+## Google login: ผู้ดูแลตั้งครั้งเดียว
+
+1. ใช้บัญชี Google ของผู้ดูแลเปิด Google Cloud Console สร้างหรือเลือกโครงการ ClipKit แล้วเปิด Google Auth Platform
+2. ตั้ง Audience สำหรับผู้ใช้ภายนอก และเริ่มด้วยบัญชีทดสอบของผู้ดูแล ระบุเฉพาะ scopes openid, email, profile ไม่ขอสิทธิ์ Drive
+3. สร้าง OAuth Client ชนิด Web application ใส่ Authorized redirect URI ที่คัดลอกจาก Supabase → Authentication → Sign In / Providers → Google (เป็น https://<project-ref>.supabase.co/auth/v1/callback)
+4. นำ Client ID และ Client Secret ไปใส่ที่ Google provider ใน Supabase แล้วเปิดใช้งาน Secret อยู่ใน Supabase เท่านั้น ไม่ใส่ใน ClipKit และไม่ส่งในแชต
+5. Supabase → Authentication → URL Configuration เพิ่ม Redirect URL สำหรับแอปเครื่องนี้: http://127.0.0.1:8770/api/team/google/callback** ถ้าเปิดแอปผ่าน localhost ให้เพิ่ม http://localhost:8770/api/team/google/callback** ด้วย เครื่องที่ใช้ port อื่นต้องระบุ port นั้นแทน suffix รองรับ state ที่แอปสุ่มในคำขอ
+6. ผู้ดูแล ClipKit ตั้ง supabase_url และ supabase_anon_key ของโครงการเดิมในชุดติดตั้ง และติดตั้ง migrations ตามหัวข้อด้านบน ผู้ใช้ทั่วไปไม่กรอกเอง
+7. เปิดหน้าทีม กดเข้าสู่ระบบด้วย Google ในเบราว์เซอร์เดิม เมื่อ Google กลับมา ClipKit จะแลกรหัสด้วย PKCE แล้วสร้าง session บนเครื่องนี้ รหัสคำขอหมดอายุใน 10 นาทีและใช้ซ้ำไม่ได้
+8. ก่อนแจกให้ทีม ให้ผู้ดูแลเปลี่ยน Google Audience จาก Testing เป็น Production ตามเงื่อนไข Google และตรวจจริงสองบัญชีว่า editor ไม่ได้สิทธิ์ lead/admin และอ่านองค์กรอื่นไม่ได้
+
+ไม่ต้องใช้ Resend หรือโดเมนส่งอีเมลสำหรับ Google login บัญชีเดิมที่ใช้รหัสผ่านยังเข้าสู่ระบบได้จากส่วนบัญชีเดิม Google login ไม่ได้ให้สิทธิ์ในองค์กรโดยอัตโนมัติ ผู้สร้างองค์กรใหม่เป็น admin ขององค์กรที่ตัวเองสร้างตามสเปคเดิม
+
+ตรวจขอบเขตในเครื่องด้วย python scripts/google_login_test.py ครอบคลุม PKCE, cookie ผูกเบราว์เซอร์, คำขอจากเว็บอื่น, หมดอายุ, ใช้ซ้ำ, ยกเลิก และไม่ส่ง token ให้หน้าจอ ยังต้องตรวจ Google และ Supabase โครงการจริงก่อนรับรองการเข้าสู่ระบบ
