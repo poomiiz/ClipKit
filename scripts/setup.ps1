@@ -1,4 +1,4 @@
-# ClipKit one-time machine setup (Windows). Safe to re-run.
+﻿# ClipKit one-time machine setup (Windows). Safe to re-run.
 #   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent

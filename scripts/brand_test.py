@@ -20,3 +20,15 @@ assert not sync_team.names_in(b'https://github.com/poomiiz/EditorKrab')
 assert not sync_team.names_in(b'https://github.com/poomiiz/ClipKit')
 assert sync_team.names_in(b'private client poomi')
 print('PASS EditorKrab assets, visible brand and legacy identifier compatibility')
+
+# Windows PowerShell 5 reads non-BOM UTF-8 as an ANSI code page.
+import os,subprocess
+if os.name=='nt':
+ shell=Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
+ for name in ('app/start.ps1','scripts/setup.ps1'):
+  script=root/name
+  assert script.read_bytes().startswith(b'\xef\xbb\xbf'),name
+  escaped=str(script).replace("'","''")
+  command="$errors=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('"+escaped+"',[ref]$null,[ref]$errors);if($errors.Count){$errors | ForEach-Object {$_.Message};exit 1}"
+  subprocess.run([str(shell),'-NoProfile','-Command',command],check=True,capture_output=True)
+ print('PASS Windows PowerShell desktop launcher and setup parse Thai strings')
