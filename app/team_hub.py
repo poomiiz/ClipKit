@@ -83,7 +83,7 @@ def _remember(data: dict, response: Response) -> bool:
     session_id = secrets.token_urlsafe(32)
     with _session_lock:
         _sessions[session_id] = {**data, "expires_at": time.time() + data.get("expires_in", 3600), "ends_at": time.time() + 86400}
-    response.set_cookie(COOKIE, session_id, httponly=True, samesite="strict", max_age=86400, path="/")
+    response.set_cookie(COOKIE, session_id, httponly=True, samesite="lax", max_age=86400, path="/")
     return True
 
 

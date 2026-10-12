@@ -24,7 +24,7 @@ def main():
         response = client.post("/api/team/login", json={"email": user["email"], "password": "password"})
         assert response.status_code == 200
         cookie = response.headers["set-cookie"].lower()
-        assert "httponly" in cookie and "samesite=strict" in cookie
+        assert "httponly" in cookie and "samesite=lax" in cookie
         assert "provider-access" not in response.text and "provider-refresh" not in response.text
         assert client.get("/api/team/session").json()["user"] == {"id": user["id"], "email": user["email"], "display_name": "Editor"}
         provider.return_value = "new-org"
