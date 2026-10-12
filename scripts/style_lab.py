@@ -125,6 +125,19 @@ def start(source: str) -> dict:
     return item(folder)
 
 
+def _sig(r: dict) -> str:
+    """One subtitle line as the eye sees it: fill, outline and size to the nearest point."""
+    return f"{r['color'].lower()}/{r['outline'].lower()}/{round(float(r['size']))}"
+
+
+def looks(style: dict) -> tuple[str, str]:
+    """(family, look) of a style. Projects whose normal line matches are one family on the style page; each
+    different look inside it (emphasis, caption or second line) is a variant the person can keep on its own."""
+    have = [r for r in ROLES if style.get(r)]
+    look = " ".join(f"{r}:{_sig(style[r])}" for r in have)
+    return (_sig(style["normal"]) if style.get("normal") else look), look
+
+
 def item(folder: Path) -> dict:
     folder = Path(folder)
     meta = json.loads((folder / "source.json").read_text(encoding="utf-8"))
@@ -135,6 +148,8 @@ def item(folder: Path) -> dict:
            "style": json.loads((folder / "style.json").read_text(encoding="utf-8")) if has("style.json") else None,
            "png": str(folder / "preview.png") if has("preview.png") else None,
            "gif": str(folder / "preview.gif") if has("preview.gif") else None}
+    if status == "ready":   # its style passed check() when the preview was made
+        out["family"], out["look"] = looks(out["style"])
     if status == "waiting_agent":
         out["command"] = f'ClipKit: ถอดสไตล์ "{folder}"'
     return out

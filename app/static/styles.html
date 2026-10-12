@@ -30,6 +30,7 @@ code{display:block;padding:8px 10px;background:#080a10;border-radius:8px;font-si
 .empty{color:var(--mut);font-size:14px}
 h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 .parts{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--sub)}.parts label{display:flex;gap:4px;align-items:center}
+.family{grid-column:1/-1;border:1px solid var(--line);border-radius:14px;padding:2px 12px 12px}.family h3{margin:10px 0}
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
 <script src="/ui.js?v=2"></script></head>
@@ -143,7 +144,27 @@ async function load() {
   try {
     const j = await api('/api/style/items');
     $('lab').innerHTML = j.items.length ? '' : '<div class="empty">ยังไม่มี · เลือกโปรเจกต์หรือวิดีโอด้านบน</div>';
-    j.items.forEach(x => $('lab').appendChild(card(x)));
+    // projects whose normal line matches are one style; each different look inside it is a variant to keep or skip
+    const groups = new Map();
+    j.items.forEach(x => { const k = x.family ? 'f:' + x.family : 'i:' + x.folder; groups.set(k, [...(groups.get(k) || []), x]); });
+    groups.forEach(rows => {
+      if (rows.length === 1) return $('lab').appendChild(card(rows[0]));
+      const variants = new Map();
+      rows.forEach(x => variants.set(x.look, [...(variants.get(x.look) || []), x]));
+      const box = document.createElement('div'), h = document.createElement('h3'), g = document.createElement('div');
+      box.className = 'family'; g.className = 'grid';
+      h.textContent = `สไตล์เดียวกันจาก ${rows.length} โปรเจกต์ · ${variants.size} แบบย่อย`;
+      variants.forEach(same => {
+        const el = card(same[0]);
+        if (same.length > 1) {
+          const n = document.createElement('span'); n.className = 'msg';
+          n.textContent = 'หน้าตาเหมือนกัน: ' + same.slice(1).map(x => x.name).join(', ');
+          el.querySelector('.tag').after(n);
+        }
+        g.appendChild(el);
+      });
+      box.append(h, g); $('lab').appendChild(box);
+    });
     const c = j.collection;
     $('mine').innerHTML = '';
     [['พร้อมใช้ตัดคลิป (preset)', c.presets, true], ['สไตล์ทีม (อนุมัติแล้ว)', c.team], ...Object.keys(CATS).map(k => [CATS[k], c.parts[k]])].forEach(([title, rows, shareable]) => {
