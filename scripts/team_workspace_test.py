@@ -70,6 +70,10 @@ def main():
    item['status']='editing'
    assert client.post(path+'/export',json={'expected_revision':2,'name':'cut.mp4','size_bytes':3}).status_code==200
    assert rpc.call_args.args[1]=='clipkit_project_action'
+   assert client.post(path+'/share-link',json={'link':'https://evil.example/drive.google.com/x'}).status_code==400
+   assert client.post(path+'/share-link',json={'link':' https://drive.google.com/file/d/abc/view '}).json()=={'share_url':'https://drive.google.com/file/d/abc/view'}
+   assert rpc.call_args.args[1:]==('clipkit_set_share_link',{'org':str(org),'project':str(project),'link':'https://drive.google.com/file/d/abc/view'})
+   assert client.post(path+'/share-link',json={'link':''}).json()=={'share_url':None}
    assert client.post(path+'/export',json={'expected_revision':2,'name':'missing.mp4','size_bytes':3}).status_code==409
    item.update(status='awaiting_review',updated_by=owner,updated_at='2026-10-11T00:00:00Z')
    historical={str((local/'mine').resolve()).lower():{'status':'approved'},str((local/'unbound').resolve()).lower():{'status':'editing'}}

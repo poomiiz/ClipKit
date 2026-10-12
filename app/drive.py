@@ -241,7 +241,8 @@ def disconnect(request: Request) -> dict[str, bool]:
 
 @router.post("/organizations/{org}/projects/{project}/share")
 def share_export(org: UUID, project: UUID, request: Request) -> dict[str, Any]:
-    """The project's submitted MP4 (from the team exports folder) to Drive, with a link anyone can open."""
+    """The project's submitted MP4 (from the team exports folder) to Drive, with a link anyone can open,
+    saved on the project so reviewers see it."""
     hub._same_origin(request)
     item = next((p for p in workspace.projects(org, request) if p["id"] == str(project)), None)
     if not item:
@@ -251,4 +252,6 @@ def share_export(org: UUID, project: UUID, request: Request) -> dict[str, Any]:
     path = workspace.file_at(workspace.workspace(org) / "exports", item["export_name"], item.get("export_size"))
     if not path:
         raise HTTPException(409, "MP4 ยังไม่ได้ sync มาเครื่องนี้")
-    return share_file(path)
+    result = share_file(path)
+    hub.rpc(request, "clipkit_set_share_link", {"org": str(org), "project": str(project), "link": result["link"]})
+    return result

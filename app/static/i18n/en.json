@@ -1,4 +1,10 @@
 {
+"เปิดลิงก์ Drive": "Open Drive link",
+"แก้ลิงก์ Drive": "Edit Drive link",
+"วางลิงก์ Drive": "Paste Drive link",
+"วางลิงก์แชร์จาก Google Drive (ลบให้ว่าง = เอาลิงก์ออก)": "Paste a Google Drive share link (leave empty to remove it)",
+"ส่งตรวจด้วยลิงก์": "Submit with the link",
+"วางลิงก์แชร์จาก Google Drive (ขึ้นต้นด้วย https://drive.google.com/)": "Paste a Google Drive share link (starting with https://drive.google.com/)",
 "Google Drive สำหรับแชร์ลิงก์": "Google Drive share links",
 "เชื่อมแล้ว": "connected",
 "ยังไม่ได้เชื่อม": "not connected",
