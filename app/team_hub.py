@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import base64
+import hashlib
 import secrets
 import threading
 import time
@@ -13,6 +14,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, SecretStr
 
 import kit_settings
@@ -21,6 +23,8 @@ router = APIRouter(prefix="/api/team", tags=["editing-team"])
 _sessions: dict[str, dict[str, Any]] = {}
 _session_lock = threading.RLock()
 COOKIE = "clipkit_session"
+OAUTH_COOKIE = "clipkit_oauth"
+_oauth: dict[str, dict] = {}
 
 
 def _config() -> tuple[str, str]:
@@ -143,6 +147,52 @@ def save_setup(body: Setup,request: Request) -> dict:
     return {"saved":True,"note":"บันทึกแล้ว กรุณาเข้าสู่ระบบใหม่"}
 
 
+@router.post("/google")
+def google_login(request: Request, response: Response) -> dict:
+    _same_origin(request)
+    url, _ = _config()
+    state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    with _session_lock:
+        for key in list(_oauth):
+            if _oauth[key]["expires_at"] <= time.time():
+                del _oauth[key]
+        _oauth.pop(request.cookies.get(OAUTH_COOKIE, ""), None)
+        _oauth[state] = {"verifier": verifier, "expires_at": time.time() + 600, "provider": url,
+                         "origin": str(request.base_url).rstrip("/")}
+    # Lax permits Google's top-level return; the login session itself stays Strict.
+    response.set_cookie(OAUTH_COOKIE, state, httponly=True, samesite="lax", max_age=600, path="/api/team/google/callback")
+    callback = str(request.base_url).rstrip("/") + "/api/team/google/callback?state=" + state
+    return {"url": url + "/auth/v1/authorize?" + urllib.parse.urlencode({"provider": "google", "redirect_to": callback,
+            "code_challenge": challenge, "code_challenge_method": "s256"})}
+
+
+@router.get("/google/callback")
+def google_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+    cookie = request.cookies.get(OAUTH_COOKIE, "")
+    if not state or not cookie or not secrets.compare_digest(state, cookie):
+        raise HTTPException(400, "คำขอเข้าสู่ระบบไม่ตรงกับเครื่องนี้ กรุณาเริ่มใหม่")
+    with _session_lock:
+        pending = _oauth.pop(state, None)
+    if not pending or pending["expires_at"] <= time.time() or pending["origin"] != str(request.base_url).rstrip("/"):
+        raise HTTPException(400, "คำขอเข้าสู่ระบบหมดอายุ กรุณาเริ่มใหม่")
+    response = RedirectResponse("/team.html", status_code=303)
+    response.delete_cookie(OAUTH_COOKIE, path="/api/team/google/callback")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    try:
+        if error or not code:
+            raise HTTPException(400, "ยกเลิกการเข้าสู่ระบบ Google กรุณาลองใหม่")
+        if pending["provider"] != _config()[0]:
+            raise HTTPException(400, "ระบบบัญชีเปลี่ยน กรุณาเข้าสู่ระบบใหม่")
+        data = _provider("/auth/v1/token?grant_type=pkce", "POST", {"auth_code": code, "code_verifier": pending["verifier"]})
+        if not _remember(data, response):
+            raise HTTPException(401, "เข้าสู่ระบบ Google ไม่สำเร็จ")
+    except HTTPException:
+        response.headers["location"] = "/team.html?login_error=1"
+    return response
+
+
 @router.post("/signup")
 def signup(body: Signup, request: Request, response: Response) -> dict:
     _same_origin(request)
@@ -185,7 +235,7 @@ def identity(request: Request) -> dict:
     data = session(request)
     user = data["user"]
     return {"configured": True, "signed_in": True, "user": {"id": user["id"], "email": user.get("email"),
-            "display_name": user.get("user_metadata", {}).get("display_name", "")}}
+            "display_name": user.get("user_metadata", {}).get("display_name") or user.get("user_metadata", {}).get("full_name", "")}}
 
 
 @router.get("/organizations")

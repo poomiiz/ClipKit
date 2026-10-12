@@ -109,7 +109,10 @@ async def no_cache_html(request, call_next):
                       {"/api/window/restart", "/api/window/shutdown", "/api/window/cancel-shutdown"} and origin in WIDGET_ORIGINS)
     foreign = ((origin is not None and origin != f"{request.url.scheme}://{request.url.netloc}")
                or request.headers.get("sec-fetch-site") == "cross-site")
-    if foreign and not (widget_navigation or widget_health or widget_control):
+    oauth_return = (request.method == "GET" and request.url.path == "/api/team/google/callback"
+                    and request.headers.get("sec-fetch-mode") == "navigate"
+                    and request.headers.get("sec-fetch-dest") == "document")
+    if foreign and not (widget_navigation or widget_health or widget_control or oauth_return):
         return JSONResponse({"detail": "Cross-origin requests are not allowed"}, status_code=403)
     if request.method=='GET' and os.path.normpath('/'+request.url.path.replace('\\','/').lstrip('/')).replace('\\','/').lower()=='/review.html':
         from fastapi import HTTPException
