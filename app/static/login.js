@@ -35,3 +35,6 @@ document.getElementById('login').onsubmit = async event => {
   catch (error) { say(error.message, true); button.disabled = false; }
 };
 connect();
+const lang = document.getElementById('lang');
+lang.textContent = window.ckLang === 'en' ? 'ภาษาไทย' : 'English';
+lang.onclick = () => window.ckSetLang(window.ckLang === 'en' ? 'th' : 'en');

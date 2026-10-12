@@ -6,7 +6,7 @@
 <title>เริ่มใช้ EditorKrab</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif;display:grid;place-items:center;padding:24px 16px}
 .wrap{width:100%;max-width:640px}
@@ -17,8 +17,8 @@ body{margin:0;min-height:100vh;background:var(--bg);color:var(--txt);font:15px/1
 .steps i{flex:1;height:4px;border-radius:4px;background:var(--line)}
 .steps i.done{background:var(--acc)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px}
-.card h1{font-size:21px;margin:0 0 4px}.card p{color:var(--mut);margin:0 0 18px;font-size:14px}
-button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+.card h1{font-size:18px;font-weight:600;margin:0 0 4px}.card p{color:var(--mut);margin:0 0 18px;font-size:14px}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:7px 14px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 button.ghost{background:var(--card2);color:var(--sub);border:1px solid var(--line)}
 button:disabled{opacity:.5;cursor:wait}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -31,7 +31,7 @@ button:disabled{opacity:.5;cursor:wait}
 pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10px;max-height:200px;overflow:auto;font-size:12px;white-space:pre-wrap;display:none}
 .step{display:none}.step.on{display:block}
 </style>
-</head>
+<script src="/ui.js?v=2"></script></head>
 <body>
 <div class="wrap">
   <div class="brand"><img class="logo" src="/logo.svg" alt="">
@@ -97,7 +97,7 @@ async function check() {
     const bad = rows.some(c => c.state === 'FAIL');
     $('bInstall').style.display = bad ? '' : 'none';
     say('m0', bad ? 'มีโปรแกรมที่ขาด กดติดตั้งที่ขาด' : '✅ เครื่องพร้อม', !bad);
-  } catch (e) { say('m0', '❌ ' + e.message, false); }
+  } catch (e) { say('m0', '❌ ' + ckErr(e), false); }
 }
 $('bRecheck').onclick = check;
 $('bInstall').onclick = async () => {
@@ -109,7 +109,7 @@ $('bInstall').onclick = async () => {
       if (j.status !== 'running') break;
       await new Promise(r => setTimeout(r, 1500));
     }
-  } catch (e) { say('m0', '❌ ' + e.message, false); }
+  } catch (e) { say('m0', '❌ ' + ckErr(e), false); }
   b.disabled = false; check();
 };
 $('n0').onclick = () => show(1);
@@ -131,20 +131,20 @@ $('bWs').onclick = async () => {
     say('m1', '✅ สร้างโฟลเดอร์ย่อยแล้ว', true);
     if (!w.capcut_drafts) say('m1', '✅ สร้างโฟลเดอร์แล้ว · ยังหาโฟลเดอร์โปรเจกต์ CapCut ไม่เจอ กดเปลี่ยน', false);
     loadFolders();
-  } catch (e) { say('m1', '❌ ' + e.message, false); }
+  } catch (e) { say('m1', '❌ ' + ckErr(e), false); }
 };
 $('bCc').onclick = async () => {
   const r = await api('browse', {method: 'POST'});
   if (!r.path) return;
   try { await api('config', {method: 'POST', body: {values: {capcut_drafts: r.path}}}); loadFolders(); }
-  catch (e) { say('m1', '❌ ' + e.message, false); }
+  catch (e) { say('m1', '❌ ' + ckErr(e), false); }
 };
 $('n1').onclick = () => show(2);
 
 // 3. envato
 $('bLogin').onclick = async () => {
   try { await api('envato-login', {method: 'POST'}); say('m2', 'เปิดหน้าต่างแล้ว ล็อกอินให้เสร็จแล้วปิดหน้าต่าง'); }
-  catch (e) { say('m2', '❌ ' + e.message, false); }
+  catch (e) { say('m2', '❌ ' + ckErr(e), false); }
 };
 $('n2').onclick = () => location.href = '/video-editor.html';
 

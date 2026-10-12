@@ -5,19 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ทำปก</title>
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--acc2:#38bdf8;--ok:#10b981;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.6 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:980px;margin:0 auto;padding:24px 16px 60px;display:grid;grid-template-columns:1fr 340px;gap:20px}
 @media (max-width:760px){main{grid-template-columns:1fr}}
 .top{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center}
-h1{font-size:24px;margin:0}
+h1{font-size:18px;font-weight:600;margin:0}
 a{color:var(--acc2);text-decoration:none}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
 label{display:block;color:var(--sub);font-size:14px;margin:12px 0 4px}
-input,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 11px;font:inherit}
+input,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 10px;font:inherit}
 .row{display:flex;gap:8px}
-button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:7px 14px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 button.ghost{background:var(--card2);color:var(--sub);border:1px solid var(--line);flex:none}
 button:disabled{opacity:.5;cursor:wait}
 .big{width:100%;margin-top:16px;padding:14px;font-size:16px}
@@ -30,8 +30,8 @@ button:disabled{opacity:.5;cursor:wait}
 .sw{display:flex;align-items:center;gap:6px;margin:0}
 .sw input{width:44px;height:32px;padding:2px;border-radius:8px}
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
-</head>
+<link rel="stylesheet" href="/shell.css?v=8">
+<script src="/ui.js?v=2"></script></head>
 <body>
 <main>
   <div class="top"><h1>ทำปก</h1></div>
@@ -41,15 +41,15 @@ button:disabled{opacity:.5;cursor:wait}
     <label>ถ้าเป็นวิดีโอ: เลือกภาพ</label>
     <button class="ghost" id="suggest" style="width:100%">🔎 หาภาพสวย 6 ภาพให้เลือก</button>
     <div id="frames" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px"></div>
-    <label>หรือใส่วินาทีเอง</label>
+    <label for="at">หรือใส่วินาทีเอง</label>
     <input id="at" type="number" min="0" step="0.5" value="1">
-    <label>หัวข้อบรรทัด 1 (ใหญ่)</label>
+    <label for="l1">หัวข้อบรรทัด 1 (ใหญ่)</label>
     <input id="l1" placeholder="เช่น ธุรกิจสมัยนี้">
-    <label>หัวข้อบรรทัด 2 (รอง)</label>
+    <label for="l2">หัวข้อบรรทัด 2 (รอง)</label>
     <input id="l2" placeholder="เช่น ไม่ต้องแย่งทำเลอีกแล้ว">
-    <label>ฟอนต์</label>
+    <label for="font">ฟอนต์</label>
     <select id="font"></select>
-    <label>แบบปก</label>
+    <label for="layout">แบบปก</label>
     <select id="layout"><option value="cover-a">A · ตัวหนา 2 สี</option></select>
     <label>สี (เลือกเองได้ หรือกดชุดสำเร็จรูป)</label>
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
@@ -88,7 +88,7 @@ $('suggest').onclick = async () => {
       box.appendChild(im);
     });
     if (r.frames[0]) box.querySelector('img').click();
-  } catch (e) { box.innerHTML = '<div class="msg bad">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.innerHTML = '<div class="msg bad">❌ ' + ckErr(e) + '</div>'; }
   b.disabled = false; b.textContent = '🔎 หาภาพสวย 6 ภาพให้เลือก';
 };
 // installed fonts for the font pickers; the last choice is remembered on this machine
@@ -134,13 +134,13 @@ $('go').onclick = async () => {
     const r = await post('cover', body);
     $('pvTag').textContent = '✅ ไฟล์จริงที่บันทึกแล้ว';
     $('msg').className = 'msg ok'; $('msg').textContent = '✅ บันทึกแล้ว: ' + r.file;
-  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + e.message; }
+  } catch (e) { $('msg').className = 'msg bad'; $('msg').textContent = '❌ ' + ckErr(e); }
   b.disabled = false;
 };
 const q = new URLSearchParams(location.search);   // filled from the clip flow: cover.html?src=&l1=&l2=
 for (const k of ['src', 'l1', 'l2']) if (q.get(k)) $(k).value = q.get(k);
 refresh();
 </script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 </body>
 </html>
