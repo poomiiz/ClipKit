@@ -1,4 +1,4 @@
-# Start the Video -> CapCut tool hidden on 8770 and open the page.
+﻿# Start the Video -> CapCut tool hidden on 8770 and open the page.
 # Already running = only open the page. Logs: app\video_editor.log / .out.log
 $app = $PSScriptRoot
 # the team edition runs on its own port, so it never opens the other ClipKit on the same machine
