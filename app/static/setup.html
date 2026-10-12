@@ -31,7 +31,7 @@ button:disabled{opacity:.5;cursor:wait}
 pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10px;max-height:200px;overflow:auto;font-size:12px;white-space:pre-wrap;display:none}
 .step{display:none}.step.on{display:block}
 </style>
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <div class="wrap">
   <div class="brand"><img class="logo" src="/logo.svg" alt="">
@@ -97,7 +97,7 @@ async function check() {
     const bad = rows.some(c => c.state === 'FAIL');
     $('bInstall').style.display = bad ? '' : 'none';
     say('m0', bad ? 'มีโปรแกรมที่ขาด กดติดตั้งที่ขาด' : '✅ เครื่องพร้อม', !bad);
-  } catch (e) { say('m0', '❌ ' + e.message, false); }
+  } catch (e) { say('m0', '❌ ' + ckErr(e), false); }
 }
 $('bRecheck').onclick = check;
 $('bInstall').onclick = async () => {
@@ -109,7 +109,7 @@ $('bInstall').onclick = async () => {
       if (j.status !== 'running') break;
       await new Promise(r => setTimeout(r, 1500));
     }
-  } catch (e) { say('m0', '❌ ' + e.message, false); }
+  } catch (e) { say('m0', '❌ ' + ckErr(e), false); }
   b.disabled = false; check();
 };
 $('n0').onclick = () => show(1);
@@ -131,20 +131,20 @@ $('bWs').onclick = async () => {
     say('m1', '✅ สร้างโฟลเดอร์ย่อยแล้ว', true);
     if (!w.capcut_drafts) say('m1', '✅ สร้างโฟลเดอร์แล้ว · ยังหาโฟลเดอร์โปรเจกต์ CapCut ไม่เจอ กดเปลี่ยน', false);
     loadFolders();
-  } catch (e) { say('m1', '❌ ' + e.message, false); }
+  } catch (e) { say('m1', '❌ ' + ckErr(e), false); }
 };
 $('bCc').onclick = async () => {
   const r = await api('browse', {method: 'POST'});
   if (!r.path) return;
   try { await api('config', {method: 'POST', body: {values: {capcut_drafts: r.path}}}); loadFolders(); }
-  catch (e) { say('m1', '❌ ' + e.message, false); }
+  catch (e) { say('m1', '❌ ' + ckErr(e), false); }
 };
 $('n1').onclick = () => show(2);
 
 // 3. envato
 $('bLogin').onclick = async () => {
   try { await api('envato-login', {method: 'POST'}); say('m2', 'เปิดหน้าต่างแล้ว ล็อกอินให้เสร็จแล้วปิดหน้าต่าง'); }
-  catch (e) { say('m2', '❌ ' + e.message, false); }
+  catch (e) { say('m2', '❌ ' + ckErr(e), false); }
 };
 $('n2').onclick = () => location.href = '/video-editor.html';
 

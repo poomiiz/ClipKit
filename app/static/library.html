@@ -40,7 +40,7 @@ code{display:block;margin-top:8px;padding:8px 10px;background:#080a10;border-rad
 .count{color:var(--mut);font-size:13px}
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <main>
   <h1>คลังอนิเมชัน</h1>
@@ -112,11 +112,11 @@ $('selNo').onclick = () => { SEL.clear(); selbar(); draw(); };
 $('selDel').onclick = async () => {
   const rows = ALL.filter(x => SEL.has(KEY(x)));
   const own = rows.filter(x => x.own), hide = rows.filter(x => !x.own);
-  if (!confirm(`ลบ ${rows.length} ชิ้น?` + (own.length ? `\nสไตล์ของฉัน ${own.length} ชิ้นจะถูกลบไฟล์ทิ้ง กู้คืนไม่ได้` : ''))) return;
+  if (!await ckConfirm(`ลบ ${rows.length} ชิ้น?` + (own.length ? `\nสไตล์ของฉัน ${own.length} ชิ้นจะถูกลบไฟล์ทิ้ง กู้คืนไม่ได้` : ''), {ok: 'ลบ', danger: true})) return;
   try {
     for (const x of own) await post('/api/style/remove', {preset: x.name});
     if (hide.length) await post('/api/kit/library/hide', {keys: hide.map(KEY)});
-  } catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
+  } catch (e) { ckAlert('ลบไม่สำเร็จ: ' + ckErr(e)); }
   SEL.clear(); selbar(); load();
 };
 $('unhide').onclick = () => post('/api/kit/library/hide', {keys: [], restore: true}).then(load);
@@ -171,7 +171,7 @@ function load() {
     ALL = [...j.ours, ...(j.styles || []), ...j.hyperframes];
     $('unhide').style.display = j.hidden ? '' : 'none'; $('unhide').textContent = `แสดงที่ซ่อนไว้ (${j.hidden})`;
     draw();
-  }).catch(e => { $('grid').textContent = '❌ ' + e.message; });
+  }).catch(e => { $('grid').textContent = '❌ ' + ckErr(e); });
 }
 load();
 </script>

@@ -32,7 +32,7 @@ h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 .parts{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--sub)}.parts label{display:flex;gap:4px;align-items:center}
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <main>
   <h1>คลังสไตล์</h1>
@@ -82,7 +82,7 @@ function card(x) {
   el.querySelector('.t').textContent = x.name;
   el.querySelector('.t').title = x.source;
   const msg = el.querySelector('.msg'), act = el.querySelector('.act');
-  const fail = e => { msg.textContent = '❌ ' + e.message; msg.className = 'msg bad'; };
+  const fail = e => { msg.textContent = '❌ ' + ckErr(e); msg.className = 'msg bad'; };
   if (x.gif) {
     const img = el.querySelector('img.pv'); let still = false;
     img.src = pic(x.gif); img.title = 'คลิกสลับ ภาพนิ่ง / ภาพเคลื่อนไหว';
@@ -133,7 +133,7 @@ function mineCard(x, shareable) {
         const j = await api('/api/style/share', {preset: x.name});
         window.open(j.url, '_blank');
         tip.textContent = 'เปิดหน้า GitHub แล้ว ลากไฟล์นี้ใส่ก่อนกดส่ง: ' + j.gif; tip.className = 'msg ok';
-      } catch (e) { tip.textContent = '❌ ' + e.message; tip.className = 'msg bad'; }
+      } catch (e) { tip.textContent = '❌ ' + ckErr(e); tip.className = 'msg bad'; }
     };
     el.querySelector('.b').append(b, tip);
   }
@@ -157,7 +157,7 @@ async function load() {
     $('mMain').innerHTML = c.parts.main.length ? opts('main') : '<option value="">ยังไม่มีซับปกติ + คำเน้น</option>';
     $('mCaption').innerHTML = opts('caption', 'ไม่มีซับสำหรับอ่าน');
     $('mSecond').innerHTML = opts('second', 'ไม่มีประโยคเอียง');
-  } catch (e) { $('lab').textContent = '❌ ' + e.message; }
+  } catch (e) { $('lab').textContent = '❌ ' + ckErr(e); }
 }
 $('mGo').onclick = async () => {
   const m = $('mMsg');
@@ -167,11 +167,11 @@ $('mGo').onclick = async () => {
     const j = await api('/api/style/compose', {name: $('mName').value.trim(), main: $('mMain').value,
       caption: $('mCaption').value || null, second: $('mSecond').value || null});
     m.textContent = '✓ สร้างแล้ว ' + j.preset; m.className = 'msg ok'; load();
-  } catch (e) { m.textContent = '❌ ' + e.message; m.className = 'msg bad'; }
+  } catch (e) { m.textContent = '❌ ' + ckErr(e); m.className = 'msg bad'; }
 };
 $('proj').onchange = () => setSrc($('proj').value);
 $('pick').onclick = async () => {
-  try { const j = await api('/api/kit/pick', {}); if (j.path) { $('proj').value = ''; setSrc(j.path); } } catch (e) { $('startMsg').textContent = '❌ ' + e.message; }
+  try { const j = await api('/api/kit/pick', {}); if (j.path) { $('proj').value = ''; setSrc(j.path); } } catch (e) { $('startMsg').textContent = '❌ ' + ckErr(e); }
 };
 $('go').onclick = async () => {
   $('go').disabled = true; $('startMsg').textContent = 'กำลังถอด…'; $('startMsg').className = 'msg';
@@ -179,12 +179,12 @@ $('go').onclick = async () => {
     const j = await api('/api/style/start', {source: SRC});
     $('startMsg').textContent = j.status === 'ready' ? '✓ ถอดแล้ว ดูพรีวิวด้านล่าง' : '✓ ดึงเฟรมแล้ว คัดลอกคำสั่งให้ Claude ถอดต่อ';
     $('startMsg').className = 'msg ok'; load();
-  } catch (e) { $('startMsg').textContent = '❌ ' + e.message; $('startMsg').className = 'msg bad'; }
+  } catch (e) { $('startMsg').textContent = '❌ ' + ckErr(e); $('startMsg').className = 'msg bad'; }
   $('go').disabled = !SRC;
 };
 api('/api/style/capcut-projects').then(j => j.projects.forEach(p => {
   const o = document.createElement('option'); o.value = p.path; o.textContent = p.name; $('proj').appendChild(o);
-})).catch(e => { $('startMsg').textContent = '❌ ' + e.message; $('startMsg').className = 'msg bad'; });
+})).catch(e => { $('startMsg').textContent = '❌ ' + ckErr(e); $('startMsg').className = 'msg bad'; });
 load();
 </script>
 <script src="/shell.js?v=11"></script>

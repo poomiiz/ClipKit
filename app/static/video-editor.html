@@ -541,7 +541,7 @@
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-</head>
+<script src="/ui.js?v=1"></script></head>
 <body>
 <div class="app">
 
@@ -1024,7 +1024,7 @@ async function doUpdate() {
     b.textContent = r.updated ? '✅ ' + r.note : '✅ ' + r.note;
     if (r.updated) setTimeout(() => location.reload(), 6000);
     else setTimeout(() => { b.disabled = false; b.textContent = '⬆️ อัปเดต EditorKrab'; }, 3000);
-  } catch (e) { b.textContent = '❌ ' + e.message; b.disabled = false; }
+  } catch (e) { b.textContent = '❌ ' + ckErr(e); b.disabled = false; }
 }
 
 api('config').then(c => {
@@ -1099,7 +1099,7 @@ async function openPicker() {
     const r = await fetch('/api/kit/pick?start=' + encodeURIComponent(localStorage.getItem('ve_last') || ''), {method: 'POST'})
       .then(x => x.json());
     if (r.path) openPicked(r);
-  } catch (e) { toast('❌ เปิดหน้าต่างเลือกไฟล์ไม่ได้: ' + e.message); }
+  } catch (e) { toast('❌ เปิดหน้าต่างเลือกไฟล์ไม่ได้: ' + ckErr(e)); }
 }
 function openPicked(r) {
   if (r.kind === 'file') {
@@ -1145,7 +1145,7 @@ async function loadPicker(path) {
       list.appendChild(div);
     });
   } catch (e) {
-    list.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    list.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1210,7 +1210,7 @@ async function scanFolder(path, autoName) {
     const auto = autoName && data.files.find(f => f.name === autoName && !f.error);
     if (auto) pickFile(auto);   // a single file was picked or dropped: open it straight away
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1237,7 +1237,7 @@ async function planProjects(path, box) {
       box.appendChild(div);
     });
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1251,7 +1251,7 @@ async function startTranscription(path, button) {
     refreshTranscription(path);
   } catch (e) {
     button.disabled = false;
-    document.getElementById('transcribeStatus').textContent = '❌ ' + e.message;
+    document.getElementById('transcribeStatus').textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1312,7 +1312,7 @@ async function findFocus(range) {
     const f = await api('focus', {file: state.file.path, ...(range || {})});
     state.focus = {x: f.x, y: f.y};
     note.textContent = f.found ? '· กรอบอยู่ที่ใบหน้าคนพูดแล้ว ลากปรับได้' : '· ไม่เจอใบหน้า วางกลางภาพ ลากปรับได้';
-  } catch (e) { note.textContent = '❌ หาใบหน้าไม่ได้: ' + e.message; }
+  } catch (e) { note.textContent = '❌ หาใบหน้าไม่ได้: ' + ckErr(e); }
   drawCrop();
 }
 // the box shows the part of the frame that stays in the clip, drawn over the picture inside the player
@@ -1425,7 +1425,7 @@ async function loadSubs(suggest) {
     countEmphasis();
     busy.textContent = 'แก้ข้อความได้เลย · กดปุ่มขวาเพื่อสลับธรรมดา/เน้น';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1456,7 +1456,7 @@ async function saveSubs() {
     state.draft.subtitles = d.subtitles;
     busy.textContent = '✅ บันทึกแล้ว ' + d.added + ' บรรทัด — เปิด CapCut ดูได้เลย';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
   btn.disabled = false;
 }
@@ -1499,7 +1499,7 @@ async function suggestTerms() {
     });
     busy.textContent = 'กดคำค้นที่อยากใช้ได้เลย';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1518,7 +1518,7 @@ async function runStockSearch() {
       busy.textContent = 'เจอ ' + r.items.length + ' คลิปฟรี' + (r.missing_keys.length ? ' · ยังไม่ใส่รหัส ' + r.missing_keys.join(', ') + ' (ตั้งค่า)' : '') +
         (r.errors.length ? ' · ⚠️ ' + r.errors.join(' · ') : '');
       renderFree(r.items);
-    } catch (e) { busy.textContent = '❌ ' + e.message; }
+    } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
     return;
   }
   busy.innerHTML = '<span class="spin"></span> ส่งงานให้บอท…';
@@ -1538,7 +1538,7 @@ async function runStockSearch() {
     }
     busy.textContent = 'บอทยังไม่ตอบ — เช็คว่าตัวบอทเปิดอยู่ไหม';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1557,7 +1557,7 @@ function renderFree(items) {
     d.querySelector('button').onclick = async e => {
       const b = e.currentTarget; b.disabled = true; b.textContent = 'กำลังโหลด…';
       try { const r = await api('stock/free-download', {source: it.source, id: it.id, file: it.file}); b.textContent = '✅ เก็บแล้ว'; b.title = r.path; }
-      catch (err) { b.textContent = '❌ ' + err.message; b.disabled = false; }
+      catch (err) { b.textContent = '❌ ' + ckErr(err); b.disabled = false; }
     };
     out.appendChild(d);
   });
@@ -1619,7 +1619,7 @@ function loadMusic() {
   });
   }).catch(e => {
     musicLoad = null;
-    sel.replaceChildren(new Option('อ่านคลังเพลงไม่ได้: ' + (e.message || e)));
+    sel.replaceChildren(new Option('อ่านคลังเพลงไม่ได้: ' + ckErr(e)));
   });
 }
 
@@ -1648,7 +1648,7 @@ async function applyMusic() {
       (d.looped ? '<br>⚠ เพลงสั้นกว่าคลิป ช่วงท้ายจะเงียบ' : ''), 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1709,7 +1709,7 @@ async function applyAnimation() {
     draftSays(note, 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1723,7 +1723,7 @@ async function clearSounds() {
     draftSays('ลบแทร็กเสียงที่ใส่ไว้แล้ว ' + d.removed_tracks + ' แทร็ก', 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1737,7 +1737,7 @@ async function clearAnimation() {
     draftSays('เอาอนิเมชันออกแล้ว ' + d.removed + ' จุด', 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1769,7 +1769,7 @@ async function loadDrafts() {
     document.getElementById('draftsHint').textContent =
       'พบ ' + drafts.length + ' โปรเจกต์ · ใหม่สุดอยู่บน';
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1809,7 +1809,7 @@ const WZ = [
      draftSays('<span class="spin"></span> กำลังส่งออก MP4… (คลิป 1–2 นาที ราว 1 นาที)', '');
      try { const r = await api('draft/export', {path: state.draft.path});
        draftSays('✅ ได้ไฟล์แล้ว: ' + r.file + (r.skipped_tracks ? ` · ⚠️ ข้าม ${r.skipped_tracks} แทร็กที่เพิ่มใน CapCut (ภาพประกอบ/เพลง) รอบนี้ยังไม่รวม` : ''), 'ok');
-     } catch (e) { draftSays('❌ ' + e.message, 'err'); throw e; } }],
+     } catch (e) { draftSays('❌ ' + ckErr(e), 'err'); throw e; } }],
           ['🎞️ เปิดใน CapCut', async () => { await kit('draft-open', state.draft.path); }, 'ghost']]},
 ];
 let wzAt = 0;
@@ -1889,7 +1889,7 @@ async function makeDraft(open = true) {
     if (open) openDraft(i);
     return drafts[i];
   } catch (e) {
-    out.textContent = '❌ ' + e.message;
+    out.textContent = '❌ ' + ckErr(e);
     if (!open) throw e;
   } finally {
     main.disabled = false;
@@ -1909,7 +1909,7 @@ async function planStories(saved) {
     let job;
     if (!saved) job = await api('story-plan', {file});
     else try { job = await api('story-plan?file=' + encodeURIComponent(file)); }
-    catch (e) { if (e.message === 'no plan started for this file') return; throw e; }
+    catch (e) { if (ckErr(e) === 'no plan started for this file') return; throw e; }
     while (job.status === 'running' || job.status === 'waiting') {
       if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
       else if (!box.querySelector('.agent-cmd')) box.innerHTML = webAiBox('stories', file, 'ถอดเสียงเสร็จแล้ว · กดปุ่มเพื่อเอาไฟล์ไปให้ AI แบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
@@ -1950,7 +1950,7 @@ async function planStories(saved) {
     storyNotes();
     markMade();
   } catch (e) {
-    box.textContent = '❌ ' + e.message;
+    box.textContent = '❌ ' + ckErr(e);
   } finally {
     document.getElementById('planStoriesBtn').disabled = false;
   }
@@ -2025,7 +2025,7 @@ async function makeChosen(kind) {
       ? `✅ ได้ตัวอย่าง ${made.length} เรื่อง (เรื่อง ${done.join(', ')}) รอรีวิว · เปิดแต่ละโปรเจกต์จากแถบซ้าย แท็บ 📤 ส่งออก ดูแล้วกดส่งออกตัวจริง`
       : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
   } catch (e) {
-    document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
+    document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${ckErr(e)}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
   } finally { state.range = null; nameBox.value = base; markMade(); loadHomeDrafts(); }
 }
@@ -2043,7 +2043,7 @@ async function makeHyperframes(open = true) {
     if (!r.ok) throw new Error(j.detail || r.status);
     out.innerHTML = '✅ เปิด Studio แล้ว: <a href="' + j.url + '" target="_blank">' + j.url + '</a> · โฟลเดอร์ ' + j.project;
     if (open) window.open(j.url, '_blank');
-  } catch (e) { out.textContent = '❌ ' + e.message; if (!open) throw e; }
+  } catch (e) { out.textContent = '❌ ' + ckErr(e); if (!open) throw e; }
 }
 
 function openDraft(i, tools) {
@@ -2171,7 +2171,7 @@ async function fillGaps(apply) {
     }
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2205,7 +2205,7 @@ async function loadFilmstrip() {
     note.textContent = clips.length + ' ท่อน · ซับ ' + (d.subtitles || []).length +
       ' บรรทัด · ' + d.duration + ' วินาที';
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -2230,7 +2230,7 @@ async function draftTranscribe() {
       '</b><br>เปิด CapCut ดูได้เลย คำไหนผิดแก้ในโปรแกรมได้', 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2247,7 +2247,7 @@ async function draftTrim(apply) {
       (apply ? '<br>ซับเลื่อนตามให้แล้ว' : '<br>กด "ตัดเลย" ถ้าโอเค'), 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2263,7 +2263,7 @@ async function draftStyle() {
     });
     draftSays('✅ เปลี่ยนสไตล์ซับแล้ว ' + d.restyled + ' บรรทัด', 'ok');
   } catch (e) {
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2274,7 +2274,7 @@ async function draftGrade() {
     const d = await api('draft/grade', {source: from, target: state.draft.path});
     draftSays('✅ ก๊อปสีจาก <b>' + d.from + '</b> มาใส่ครบ ' + d.clips + ' ท่อน', 'ok');
   } catch (e) {
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2314,7 +2314,7 @@ async function loadHomeDrafts() {
     if (want) ckOpenProject(want);
     if (raw) ckOpenRaw(raw);
     if (folder) openPicked({kind: 'folder', path: folder});
-  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>'; }
 }
 // sidebar click / ?open=<path>: open that project here (CapCut = workbench, HyperFrames = Studio)
 window.ckOpenRaw = path => openPicked({kind: 'file', path});
@@ -2363,7 +2363,7 @@ function footCard(g) {
           body: JSON.stringify({path: g.raw, name: input.value})});
         if (!r.ok) throw new Error((await r.json()).detail || r.status);
         await loadHomeDrafts();
-      } catch (e) { toast('❌ ตั้งชื่อไม่ได้: ' + e.message); }
+      } catch (e) { toast('❌ ตั้งชื่อไม่ได้: ' + ckErr(e)); }
       finally { rename.disabled = false; }
     };
   }
@@ -2393,13 +2393,13 @@ function projCard(d) {
   };
   el.querySelector('[data-a=open]').onclick = open;
   el.querySelector('[data-a=ren]').onclick = async () => {
-    const name = prompt('ชื่อโปรเจกต์ใหม่', d.name);
+    const name = await ckPrompt('ชื่อโปรเจกต์ใหม่', d.name);
     if (!name || name.trim() === d.name) return;
     const r = await kit('draft-rename', d.path, {name: name.trim()});
     if (r) { toast('เปลี่ยนชื่อเป็น ' + r.name + ' แล้ว'); loadHomeDrafts(); }
   };
   el.querySelector('[data-a=del]').onclick = async () => {
-    if (!confirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)')) return;
+    if (!await ckConfirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? กู้คืนได้จากถังขยะของเครื่อง', {ok: 'ย้ายไปถังขยะ', danger: true})) return;
     if (await kit('draft-delete', d.path)) { toast('ย้าย ' + d.name + ' ไปถังขยะแล้ว'); loadHomeDrafts(); }
   };
   return el;
@@ -2415,7 +2415,7 @@ function showSel() {
 function clearSel() { selSet.clear(); showSel(); }
 async function delSelected() {
   const list = [...selSet].map(el => el._d);
-  if (!list.length || !confirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)\n\n' + list.map(d => '• ' + d.name).join('\n'))) return;
+  if (!list.length || !await ckConfirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? กู้คืนได้จากถังขยะของเครื่อง\n\n' + list.map(d => '• ' + d.name).join('\n'), {ok: 'ย้ายไปถังขยะ', danger: true})) return;
   let ok = 0;
   for (const d of list) if (await kit('draft-delete', d.path)) ok++;
   toast('ย้ายไปถังขยะแล้ว ' + ok + '/' + list.length + ' โปรเจกต์');
@@ -2488,7 +2488,7 @@ async function spellAsk() {
   try {
     const r = await api('draft/spelling-request', {path: state.draft.path});
     box.innerHTML = agentBox(r.command, `ปิด CapCut ก่อน แล้วส่งคำสั่งนี้ให้ Claude ในแชต (${r.lines} บรรทัด) · ประโยคที่ขาด Claude จะฟังช่วงนั้นซ้ำแล้วเติม · คำที่แก้จะถูกจำไว้ ถอดเสียงครั้งหน้าแก้ให้เอง`);
-  } catch (e) { box.textContent = '❌ ' + e.message; }
+  } catch (e) { box.textContent = '❌ ' + ckErr(e); }
 }
 // the punch words that carry each phrase: the agent picks them (plugin model), the export uses them
 async function punchAsk() {
@@ -2498,7 +2498,7 @@ async function punchAsk() {
     box.innerHTML = webAiBox('clip', state.draft.path, r.picked === r.lines
       ? `เลือกคำเน้นครบ ${r.lines} บรรทัดแล้ว · กดส่งออก MP4 ได้เลย (ส่งไฟล์ให้ AI ซ้ำได้ถ้าแก้ซับ)`
       : `กดปุ่มเพื่อเอาไฟล์ไปให้ AI เลือกคำเน้น (เลือกแล้ว ${r.picked}/${r.lines} บรรทัด) · บรรทัดที่ยังไม่ได้เลือก ระบบเน้นคำท้ายช่วงให้แทน`);
-  } catch (e) { box.textContent = '❌ ' + e.message; }
+  } catch (e) { box.textContent = '❌ ' + ckErr(e); }
 }
 // one button: subtitles, trim, look, zoom cut, b-roll, music, effects -> a preview to review
 // the libraries this work pulls from / saves into, changeable right here (same values as Settings > folders)
@@ -2538,7 +2538,7 @@ async function plLoad() {
 }
 async function plSave() {
   try { await api('draft/placed', {path: state.draft.path, ...PL}); document.getElementById('rvDirty').style.display = ''; }
-  catch (e) { toast('❌ ' + e.message); }
+  catch (e) { toast('❌ ' + ckErr(e)); }
 }
 function plDraw() {
   const box = document.getElementById('rvEdit');
@@ -2583,7 +2583,7 @@ function plDraw() {
           alt.appendChild(im);
         });
         if (!r.items.length) alt.textContent = 'ไม่เจอ ลองคำอื่น';
-      } catch (e) { alt.textContent = '❌ ' + e.message; }
+      } catch (e) { alt.textContent = '❌ ' + ckErr(e); }
     };
     box.appendChild(row);
   });
@@ -2639,10 +2639,10 @@ async function rePreview() {
     v.src = '/api/kit/media?path=' + encodeURIComponent(r.file) + '&t=' + Date.now(); v.style.display = 'block';
     busy.textContent = '✅ ตัวอย่างใหม่พร้อมแล้ว';
     document.getElementById('rvDirty').style.display = 'none';
-  } catch (e) { busy.textContent = '❌ ' + e.message; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 async function plReset() {
-  if (!confirm('ล้างที่แก้ไว้ทั้งหมด แล้วให้ระบบเลือกภาพประกอบและเพลงใหม่?')) return;
+  if (!await ckConfirm('ล้างที่แก้ไว้ทั้งหมด แล้วให้ระบบเลือกภาพประกอบและเพลงใหม่?')) return;
   await api('draft/placed', {path: state.draft.path, broll: [], music: {file: '', volume: 0.12}, sfx: {on: true, volume: 1}, reset: true});
   await autoRun();
 }
@@ -2663,7 +2663,7 @@ async function autoRun() {
       agentBox(r.agent_command, 'อยากได้คำเน้นที่ตรงใจความ + ภาพประกอบ ส่งคำสั่งนี้ให้ Claude แล้วกด "ทำให้ครบ" อีกครั้ง');
     renderGuide(state.draft);
     plLoad();
-  } catch (e) { busy.textContent = '❌ ' + e.message; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 async function saLoad(pick) {
   const p = state.draft.path;
@@ -2708,14 +2708,14 @@ async function ovLoad() {
           busy.innerHTML = '<span class="spin"></span> กำลังทำโมชั่น "' + label + '"…';
           box.querySelectorAll('button').forEach(x => x.disabled = true);
           try { await api('draft/overlay', {path: state.draft.path, template: k, start: s.start, end: s.end, text: s.text}); busy.textContent = '✅ วางแล้ว · กดส่งออก MP4 เพื่อดูผล'; }
-          catch (e) { busy.textContent = '❌ ' + e.message; }
+          catch (e) { busy.textContent = '❌ ' + ckErr(e); }
           ovLoad();
         };
         row.appendChild(b);
       });
       box.appendChild(row);
     });
-  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>'; }
 }
 async function kit(path, draftPath, extra) {
   try {
@@ -2724,7 +2724,7 @@ async function kit(path, draftPath, extra) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.detail || r.statusText);
     return j;
-  } catch (e) { toast('❌ ' + e.message); return null; }
+  } catch (e) { toast('❌ ' + ckErr(e)); return null; }
 }
 // first run: no footage or CapCut folder yet -> the step-by-step setup comes first
 fetch('/api/kit/config').then(r => r.json()).then(c => {
@@ -2845,7 +2845,7 @@ function webAiBox(step, target, note) {
       try {
         const r = await api('web-ai/import', {step, target, answer: ''});
         if (!r.waiting) { polling = false; return done(r); }
-      } catch (e) { el('msg').textContent = '❌ ' + e.message; }
+      } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
       setTimeout(poll, 3000);
     };
     el('dl').onclick = async () => {
@@ -2857,11 +2857,11 @@ function webAiBox(step, target, note) {
         navigator.clipboard.writeText('อ่านไฟล์นี้แล้วทำตาม: "' + r.file + '"').catch(() => {});
         el('msg').textContent = 'บันทึกไว้ที่ ' + r.file + ' · Claude บนเครื่อง: วางข้อความที่คัดลอกให้แล้วในแชต หน้านี้จะนำเข้าเอง · AI บนเว็บ: อัปโหลดไฟล์นี้แล้ววางคำตอบ JSON ด้านล่าง';
         if (!polling) { polling = true; setTimeout(poll, 3000); }
-      } catch (e) { el('msg').textContent = '❌ ' + e.message; }
+      } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
     };
     el('in').onclick = async () => {
       try { await done(await api('web-ai/import', {step, target, answer: el('ta').value})); }
-      catch (e) { el('msg').textContent = '❌ ' + e.message; }
+      catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
     };
   });
   return '<div class="agent-cmd"><div class="hint">' + note + '</div>'
@@ -2885,7 +2885,7 @@ async function subsLang(lang) {
     if (!res.ok) throw new Error(typeof r.detail === 'string' ? r.detail : res.statusText);
     busy.textContent = '✅ ใส่ซับ' + (lang === 'en' ? 'อังกฤษ' : 'ไทย') + ' ' + r.lines + ' บรรทัดแล้ว · กดจัดอัตโนมัติเพื่อย่อบรรทัดที่ยาวเกิน';
     await layoutLoad();
-  } catch (e) { busy.textContent = '❌ ' + e.message; throw e; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); throw e; }
 }
 async function layoutSave() {
   if (!LY.length || !state.draft) return;
@@ -2895,7 +2895,7 @@ async function layoutSave() {
     const r = await api('draft/layout', {path: state.draft.path,
       items: LY.map(t => ({id: t.id, x: t.x, y: t.y, rotation: t.rotation, size: t.size}))});
     busy.textContent = '✅ บันทึกตำแหน่ง ' + r.placed + ' ข้อความลง CapCut แล้ว';
-  } catch (e) { busy.textContent = '❌ ' + e.message; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 </script>
 <script src="/shell.js?v=11"></script>

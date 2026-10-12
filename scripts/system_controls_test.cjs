@@ -12,7 +12,7 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
   vm.runInNewContext(code, {
     document: {createElement: () => ({querySelectorAll: () => buttons}), getElementById: id => ids[id], body},
     window: {close: () => { closed = true; }},
-    aside: {insertBefore(){}}, svg: () => '<svg></svg>', AbortSignal: {timeout: () => ({})}, crypto:{randomUUID: () => 'test-id'},
+    aside: {insertBefore(){}}, svg: () => '<svg></svg>', ckErr: e => e.message, ckConfirm: async () => true, AbortSignal: {timeout: () => ({})}, crypto:{randomUUID: () => 'test-id'},
     location:{port:'8770',reload:()=>{reloaded=true}}, confirm:()=>true,
     Date:{now:()=>now}, setTimeout:(fn,ms)=>{now+=ms; fn()},
     fetch:async (url,opts={})=>{
