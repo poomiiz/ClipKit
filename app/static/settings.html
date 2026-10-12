@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ตั้งค่า ClipKit</title>
+<title>ตั้งค่า EditorKrab</title>
 <style>
 :root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--acc2:#38bdf8;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
@@ -54,7 +54,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 
   <div class="card" data-tab="team">
     <h2>👥 บัญชีและองค์กร</h2>
-    <p class="sub">ใช้บริการกลางของ ClipKit สมัครบัญชีและสร้างองค์กรได้จากหน้าทีม</p>
+    <p class="sub">ใช้บริการกลางของ EditorKrab สมัครบัญชีและสร้างองค์กรได้จากหน้าทีม</p>
     <p id="mTeam" class="msg" role="status" aria-live="polite">กำลังตรวจระบบทีม…</p>
     <p class="sub">แต่ละทีมตั้งค่า Drive หรือ Syncthing กันเอง แล้วเลือกโฟลเดอร์ทีมในหน้าทีม</p>
     <a class="back" href="/team.html">เข้าสู่ระบบ / สมัครบัญชี →</a>
@@ -147,7 +147,7 @@ async function loadTeamStatus() {
     const response = await fetch('/api/team/session');
     if (!response.ok) throw new Error('ตรวจระบบทีมไม่ได้ กรุณาลองใหม่');
     const result = await response.json();
-    say('mTeam', result.configured ? 'ระบบบัญชีพร้อม · เข้าสู่ระบบได้จากหน้าทีม' : 'บริการทีมยังไม่เปิดใช้งาน · ผู้ดูแล ClipKit กำลังตั้งค่าระบบ', result.configured);
+    say('mTeam', result.configured ? 'ระบบบัญชีพร้อม · เข้าสู่ระบบได้จากหน้าทีม' : 'บริการทีมยังไม่เปิดใช้งาน · ผู้ดูแล EditorKrab กำลังตั้งค่าระบบ', result.configured);
   } catch (e) { say('mTeam', e.message, false); }
 }
 loadTeamStatus();

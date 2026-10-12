@@ -15,7 +15,7 @@ labels: bug
 
 ```
 
-**ClipKit version / commit, Windows version, CapCut version**
+**EditorKrab version / commit, Windows version, CapCut version**
 
 
 Remove client names, file paths with your user name, and any footage before posting.

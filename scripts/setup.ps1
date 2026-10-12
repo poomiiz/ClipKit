@@ -38,12 +38,13 @@ if (-not (Test-Path "$root\config.json")) {
 }
 
 # Desktop icon for the Video -> CapCut app
-$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) "ClipKit - Video to CapCut.lnk"
+$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) "EditorKrab.lnk"
 $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 $s.TargetPath = "powershell.exe"
 $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$root\app\start.ps1`""
 $s.WorkingDirectory = $root
-$s.IconLocation = "$root\app\static\clipkit.ico"
+$s.IconLocation = "$root\app\static\editorkrab.ico"
+$s.Description = "EditorKrab — ตัดคลิป จัดงาน จบในทีม"
 $s.Save()
 Write-Host "Desktop icon created: $lnk"
 

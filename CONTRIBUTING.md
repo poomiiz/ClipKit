@@ -1,4 +1,4 @@
-# Contributing to ClipKit
+# Contributing to EditorKrab
 
 Thanks for helping. Issues and pull requests may be written in Thai or English.
 
