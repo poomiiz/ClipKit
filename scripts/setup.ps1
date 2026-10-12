@@ -26,12 +26,6 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     python -m pip install nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"
 }
 
-$chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $chrome) {
-    Write-Host "Installing Google Chrome (needed for Envato search/download)..."
-    winget install --id Google.Chrome -e --silent --accept-source-agreements --accept-package-agreements
-}
-
 if (-not (Test-Path "$root\config.json")) {
     Copy-Item "$root\config.example.json" "$root\config.json"
     Write-Host "Created config.json - open it and set your folders, then run the check below."
@@ -50,4 +44,3 @@ Write-Host "Desktop icon created: $lnk"
 
 python "$root\scripts\fetch_model.py"
 python "$root\scripts\doctor.py"
-Write-Host "Envato: run 'python scripts\envato.py login' once and sign in (each download uses a licence on that account)."

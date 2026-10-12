@@ -176,12 +176,6 @@ class TermsRequest(BaseModel):
     per_line: int = Field(default=2, ge=1, le=4)
 
 
-class StockSearchRequest(BaseModel):
-    query: str
-    count: int = Field(default=4, ge=1, le=8)
-    kind: str = Field(default="stock-video")
-
-
 def _clip_end(file: str, end: float | None) -> float:
     return float(end) if end is not None else video_edit.probe(file)["duration"]
 
@@ -706,23 +700,6 @@ def terms(req: TermsRequest) -> dict[str, Any]:
     """English stock-footage search terms for Thai subtitle lines."""
     try:
         return {"terms": video_edit.search_terms(req.lines, req.per_line)}
-    except VideoEditError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.post("/stock/search")
-def stock_search(req: StockSearchRequest) -> dict[str, Any]:
-    """Ask the browser bot to search Envato in the logged-in Chrome."""
-    try:
-        return video_edit.stock_search(req.query, req.count, req.kind)
-    except VideoEditError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/stock/result/{job_id}")
-def stock_result(job_id: int) -> dict[str, Any]:
-    try:
-        return video_edit.stock_result(job_id)
     except VideoEditError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
