@@ -88,6 +88,7 @@ def main():
                 patch.object(drive.kit, "_read_config", lambda: json.loads(config.read_text(encoding="utf-8"))), \
                 patch.object(drive.workspace, "projects", return_value=[item]), \
                 patch.object(drive.workspace, "workspace", return_value=root / "team"), \
+                patch.object(drive.hub, "rpc") as rpc, \
                 patch("urllib.request.urlopen", google), TestClient(app) as client:
             assert client.get("/api/drive/status").json() == {"configured": False, "connected": False, "client_id": ""}
             assert client.post("/api/drive/connect").status_code == 409
@@ -124,6 +125,8 @@ def main():
             assert first == {"id": "file-1", "link": "https://drive.google.com/file/d/file-1/view", "uploaded": True}, first
             assert any(c[3].get("Authorization") == "Bearer at-2" for c in calls), "the refreshed token was not used"
             assert any(c[1].endswith("/files/file-1/permissions") for c in calls), "the link was never opened to anyone"
+            rpc.assert_called_with(rpc.call_args.args[0], "clipkit_set_share_link",
+                                   {"org": ORG, "project": PROJECT, "link": first["link"]})
             count = len(calls)
             again = client.post(share).json()
             assert again["link"] == first["link"] and again["uploaded"] is False and len(calls) == count, "uploaded twice"
