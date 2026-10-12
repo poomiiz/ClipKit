@@ -6,17 +6,17 @@
 <title>EditorKrab · ตัดคลิปและจัดงานทีม</title>
 <style>
   :root {
-    --bg: #0c0f17;
-    --card: #141824;
-    --card2: #1b2030;
-    --card-hover: #22283c;
-    --line: #262d40;
+    --bg: #0e0f12;
+    --card: #16171b;
+    --card2: #1d1f24;
+    --card-hover: #25272e;
+    --line: #2a2c33;
     --line-light: rgba(255, 255, 255, 0.08);
-    --txt: #f1f4fb;
-    --txt-sub: #c5cde0;
-    --mut: #828ca4;
-    --acc: #7c5cff;
-    --acc-hover: #9073ff;
+    --txt: #ececf1;
+    --txt-sub: #c9cbd3;
+    --mut: #8b8d98;
+    --acc: #6c4cf0;
+    --acc-hover: #7a5cf8;
     --acc-glow: rgba(124, 92, 255, 0.25);
     --acc2: #38bdf8;
     --ok: #10b981;
@@ -24,13 +24,13 @@
     --warn: #f59e0b;
     --warn-bg: rgba(245, 158, 11, 0.12);
     --danger: #ef4444;
-    --radius: 16px;
-    --radius-sm: 10px;
+    --radius: 12px;
+    --radius-sm: 8px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
     margin: 0; background: var(--bg); color: var(--txt);
-    font-family: "Segoe UI", -apple-system, Tahoma, sans-serif; font-size: 15px;
+    font-family: "Inter", "Segoe UI Variable Text", "Segoe UI", -apple-system, Tahoma, sans-serif; font-size: 14px;
     line-height: 1.5;
   }
   .app {
@@ -41,21 +41,21 @@
   /* Top App Bar */
   .top {
     position: sticky; top: 0; z-index: 20;
-    background: rgba(12, 15, 23, 0.94); backdrop-filter: blur(12px);
+    background: rgba(14, 15, 18, 0.9); backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--line);
-    padding: 12px 18px; display: flex; align-items: center; gap: 12px;
+    padding: 0 16px; height: 48px; display: flex; align-items: center; gap: 10px;
   }
-  .top h1 { font-size: 17px; margin: 0; font-weight: 700; flex: 1; letter-spacing: -0.2px; }
+  .top h1 { font-size: 14.5px; margin: 0; font-weight: 600; flex: 1; letter-spacing: -0.1px; }
   .back {
     background: var(--card2); border: 1px solid var(--line); color: var(--txt);
-    font-size: 20px; width: 36px; height: 36px; border-radius: 10px;
+    font-size: 18px; width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center; cursor: pointer;
     min-height: auto; padding: 0; transition: all .15s ease;
   }
   .back:hover { background: var(--card-hover); border-color: var(--acc); }
   .chip {
-    font-size: 11.5px; color: var(--txt-sub); background: var(--card2);
-    border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+    font-size: 11.5px; color: var(--mut); background: transparent;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
     display: inline-flex; align-items: center; gap: 6px; font-weight: 500;
   }
   .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
@@ -70,8 +70,7 @@
   /* Generic Card */
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 18px; display: flex; flex-direction: column; gap: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    padding: 16px; display: flex; flex-direction: column; gap: 12px;
   }
   .card.hit {
     border-color: var(--acc);
@@ -89,28 +88,26 @@
   .text-center { text-align: center; }
 
   button {
-    font-family: inherit; font-size: 14.5px; border-radius: 12px; border: 1px solid var(--line);
-    background: var(--card2); color: var(--txt); padding: 11px 16px; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    font-weight: 600; min-height: 44px; transition: all .15s ease;
+    font-family: inherit; font-size: 13.5px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--txt); padding: 7px 14px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    font-weight: 500; min-height: 34px; transition: background .12s, border-color .12s, color .12s;
   }
   button:hover { background: var(--card-hover); border-color: rgba(255,255,255,0.15); }
   button:active { transform: scale(0.985); }
   button.primary {
-    background: linear-gradient(135deg, var(--acc), #6366f1);
-    border: 1px solid rgba(255,255,255,0.2); color: #fff;
-    box-shadow: 0 4px 14px var(--acc-glow);
+    background: var(--acc); border: 1px solid transparent; color: #fff; font-weight: 600;
   }
-  button.primary:hover { background: linear-gradient(135deg, var(--acc-hover), #4f46e5); box-shadow: 0 6px 18px var(--acc-glow); }
+  button.primary:hover { background: var(--acc-hover); border-color: transparent; }
   button.ghost { background: transparent; border-color: transparent; }
   button.ghost:hover { background: var(--card2); border-color: var(--line); }
-  button.small { min-height: 38px; padding: 7px 13px; font-size: 13.5px; border-radius: 10px; }
+  button.small { min-height: 28px; padding: 4px 10px; font-size: 12.5px; border-radius: 7px; }
   button.wide { width: 100%; }
   button:disabled { opacity: .45; cursor: not-allowed; }
 
   input, select, textarea {
-    font-family: inherit; font-size: 14.5px; color: var(--txt); background: var(--card2);
-    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+    font-family: inherit; font-size: 13.5px; color: var(--txt); background: var(--card2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
     transition: border-color .15s ease;
   }
   input:focus, select:focus, textarea:focus {
@@ -395,22 +392,24 @@
     border-top-color: transparent; border-radius: 50%; animation: sp .8s linear infinite; vertical-align: -2px;
   }
   @keyframes sp { to { transform: rotate(360deg); } }
-  .proj-head { display: flex; align-items: baseline; gap: 10px; margin: 16px 0 8px; }
-  .proj-head b { font-size: 17px; } .proj-head span { color: #828ca4; font-size: 13px; }
-  .foot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; align-items: start; }
+  .proj-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin: 4px 0 2px; }
+  .proj-head b { font-size: 15px; font-weight: 600; } .proj-head span { color: var(--mut); font-size: 12.5px; }
+  .foot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 10px; align-items: start; }
   @media (min-width: 1800px) { .foot-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .foot { display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 10px; padding: 10px; background: #141824; border: 1px solid #262d40; border-radius: 12px; overflow: hidden; min-width: 0; }
-  .foot .ft-th { grid-column: 1; grid-row: 1 / 3; width: 56px; height: 100px; align-self: start; background: #1b2030; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 28px; cursor: pointer; }
+  .foot { display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 12px; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-width: 0; transition: border-color .12s; }
+  .foot:hover { border-color: #3a3c45; }
+  .foot .ft-th { grid-column: 1; grid-row: 1 / 3; width: 56px; height: 100px; align-self: start; background: var(--card2); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #5c5f69; cursor: pointer; }
+  .foot .ft-th svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .foot .ft-th img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; display: block; }
-  .foot .ft-info { grid-column: 2; min-width: 0; padding-bottom: 8px; }
+  .foot .ft-info { grid-column: 2; min-width: 0; padding: 1px 0 6px; }
   .foot .ft-title { display: flex; align-items: center; gap: 8px; }
   .foot .ft-title .ft-nm { flex: 1; min-width: 0; }
   .foot .ft-nm input { width: 100%; min-width: 0; padding: 3px 6px; font-size: 14px; }
   .foot .ft-rename { min-height: 28px; padding: 3px 8px; font-size: 12px; border-radius: 6px; }
   .foot .ft-rename[hidden] { display: none; }
-  .foot .ft-nm { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .foot .ft-nm span { color: #828ca4; font-weight: 400; font-size: 12.5px; margin-left: 6px; }
-  .foot .ft-path { font-size: 11.5px; color: #6b7590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+  .foot .ft-nm { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot .ft-nm span { color: var(--mut); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .foot .ft-path { font-size: 11px; color: #82858f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
   .foot .ft-ps { grid-column: 2; min-width: 0; max-height: 224px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; color-scheme: dark; display: flex; flex-direction: column; gap: 2px; }
   .foot .ft-ps .proj { flex-shrink: 0; }
   @media (max-width: 600px) {
@@ -419,22 +418,31 @@
     .foot .ft-ps { grid-column: 1 / -1; margin-top: 4px; }
     .foot .ft-th { grid-row: 1; }
   }
-  .proj { display: flex; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; }
-  .proj:hover { background: #1b2030; }
-  .proj .pr-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 6px; align-items: center; flex: 1; min-width: 0; }
-  .proj .nm { flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-  .proj .nm:hover { color: #fff; text-decoration: underline; }
-  .proj .delivery { grid-column: 1 / -1; width: 100%; min-width: 0; font-size: 11px; padding: 2px 4px; border: 1px solid #343d55; border-radius: 5px; background: #1b2030; color: #c5cde0; }
-  .proj .delivery[data-status="awaiting_review"] { color: #f4ce79; }
-  .proj .delivery[data-status="approved"] { color: #6ee7b7; }
-  .proj .delivery[data-status="changes_requested"] { color: #fda4af; }
-  .proj .acts { display: flex; gap: 2px; opacity: 1; }
-  .proj:hover .acts, .proj.sel .acts { opacity: 1; }
-  .proj .acts button { min-height: 0; height: auto; padding: 2px 6px; font-size: 13px; border-radius: 6px; cursor: pointer;
-    background: none; color: #c5cde0; border: 1px solid transparent; }
-  .proj .acts button:hover { border-color: #7c5cff; color: #fff; }
-  .proj .acts .del:hover { border-color: #ef4444; color: #ef4444; }
-  .proj .badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: #0f9d76; color: #fff; }
+  /* one project = one dense row: badge · name · delivery status · actions (shown on hover) */
+  .proj { position: relative; display: flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 6px; padding: 0 4px 0 6px; min-height: 30px; }
+  .proj:hover { background: var(--card2); }
+  .proj .pr-top { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0; }
+  .proj .nm { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; color: var(--txt-sub); }
+  .proj .nm:hover { color: #fff; }
+  .proj .delivery::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+  .proj .delivery { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 999px; background: rgba(255,255,255,.05); color: var(--mut); }
+  .proj .delivery[data-status="editing"] { background: rgba(56,189,248,.12); color: #7dd3fc; }
+  .proj .delivery[data-status="awaiting_review"] { background: rgba(245,158,11,.13); color: #fcd34d; }
+  .proj .delivery[data-status="approved"] { background: rgba(16,185,129,.13); color: #6ee7b7; }
+  .proj .delivery[data-status="changes_requested"] { background: rgba(244,63,94,.13); color: #fda4af; }
+  .proj .acts { display: flex; gap: 0; }
+  /* mouse: actions float over the row end on hover, so names get the full width */
+  @media (hover: hover) {
+    .proj .acts { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); padding-left: 16px; opacity: 0; pointer-events: none;
+      background: linear-gradient(90deg, transparent, var(--card2) 16px); }
+    .proj:hover .acts, .proj:focus-within .acts { opacity: 1; pointer-events: auto; }
+  }
+  .proj .acts button { min-height: 0; width: 24px; height: 24px; padding: 0; border-radius: 5px; cursor: pointer;
+    background: none; color: var(--mut); border: 0; }
+  .proj .acts button svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .proj .acts button:hover { background: var(--card-hover); color: #fff; }
+  .proj .acts .del:hover { color: #f87171; }
+  .proj .badge { flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .3px; line-height: 16px; padding: 0 5px; border-radius: 4px; background: #0f9d76; color: #fff; }
   .clip-layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 1.15fr); gap: 14px; max-width: 1200px; margin: 0 auto; align-items: start; }
   @media (max-width: 900px) { .clip-layout { grid-template-columns: 1fr; } }
   .clip-right #storyPlan .story .hint { display: none; }
@@ -490,11 +498,14 @@
   .marquee { position: fixed; z-index: 50; border: 1px solid #7c5cff; background: rgba(124,92,255,.15); pointer-events: none; border-radius: 4px; }
   #selBar { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 12px; font-size: 14px; }
   #selDelivery { width: auto; font-size: 13px; padding: 6px 8px; }
-  #selHint { margin-left: 12px; font-size: 12.5px; }
-  .proj-tabs { display: inline-flex; gap: 6px; margin-left: 12px; }
-  .proj-tabs button.on { background: #7c5cff; color: #fff; border-color: #7c5cff; }
-  .proj .badge.capcut { background: #2a3150; color: #c9d3ff; }
-  .proj .badge.clipkit { background: #7c5cff; color: #fff; }
+  #selHint { margin-left: auto; font-size: 12px; }
+  /* filter = segmented control */
+  .proj-tabs { display: inline-flex; gap: 2px; padding: 2px; margin-left: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  .proj-tabs button { min-height: 24px; padding: 2px 10px; font-size: 12px; border: 0; border-radius: 6px; background: none; color: var(--mut); }
+  .proj-tabs button:hover { background: none; color: var(--txt); }
+  .proj-tabs button.on { background: var(--card-hover); color: var(--txt); }
+  .proj .badge.capcut { background: #2b2d35; color: #c9cbd3; }
+  .proj .badge.clipkit { background: var(--acc); color: #fff; }
   .ov-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   .ov-row { display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 8px; background: var(--card2, #1b2030); font-size: 13.5px; }
   .ov-row .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -529,8 +540,8 @@
   body.simple .media { display: none !important; }
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
-</head>
+<link rel="stylesheet" href="/shell.css?v=8">
+<script src="/ui.js?v=2"></script></head>
 <body>
 <div class="app">
 
@@ -546,7 +557,7 @@
 
   <!-- Screen 1: Home -->
   <div class="screen on" id="s-home">
-    <span class="hint">ลากไฟล์วิดีโอหรือโฟลเดอร์วางได้ทั้งหน้า · หรือกด ➕ สร้างโปรเจกต์</span>
+    <span class="hint">ลากไฟล์วิดีโอหรือโฟลเดอร์วางได้ทั้งหน้า · หรือกด สร้างโปรเจกต์</span>
     <div class="proj-head"><b>โปรเจกต์</b><span id="projCount"></span><span id="projTabs" class="proj-tabs"></span>
       <span id="selBar" style="display:none">เลือก <b id="selN"></b> โปรเจกต์
         <a href="/review.html">🔎 ตรวจงานทีม</a>
@@ -573,7 +584,7 @@
     <div class="clip-layout">
       <div class="card clip-left">
         <div class="vbox" id="vbox"><video id="clipVideo" controls preload="metadata"></video><div id="cropBox" class="crop-box" title="ลากเพื่อเลือกส่วนที่จะติดอยู่ในคลิป"></div></div>
-        <label>ชื่อโปรเจกต์</label>
+        <label for="pname">ชื่อโปรเจกต์</label>
         <input id="pname">
         <div id="clipInfo" class="hint"></div>
         <div id="clipFolder" class="hint" style="word-break:break-all"></div>
@@ -729,10 +740,10 @@
 ขนาดนี้บนจอจริง</div>
           </div>
           <div class="hint text-center">พรีวิวบนเฟรมจริงของคลิปนี้ · อัปเดตทันทีที่ปรับ</div>
-          <div class="form-row"><label>ขนาดตัวอักษร</label><input id="dSize" type="number" value="18"></div>
-          <div class="form-row"><label>ตำแหน่งแนวตั้ง (-1 ล่างสุด, 0 กลาง)</label><input id="dY" type="number" step="0.05" value="-0.6"></div>
-          <div class="form-row"><label>ความหนาขอบดำ</label><input id="dStroke" type="number" step="0.01" value="0.05"></div>
-          <div class="form-row"><label>สีตัวอักษร</label><input id="dColor" type="color" value="#ffffff" style="padding:4px;cursor:pointer"></div>
+          <div class="form-row"><label for="dSize">ขนาดตัวอักษร</label><input id="dSize" type="number" value="18"></div>
+          <div class="form-row"><label for="dY">ตำแหน่งแนวตั้ง (-1 ล่างสุด, 0 กลาง)</label><input id="dY" type="number" step="0.05" value="-0.6"></div>
+          <div class="form-row"><label for="dStroke">ความหนาขอบดำ</label><input id="dStroke" type="number" step="0.01" value="0.05"></div>
+          <div class="form-row"><label for="dColor">สีตัวอักษร</label><input id="dColor" type="color" value="#ffffff" style="padding:4px;cursor:pointer"></div>
           <div class="row">
             <button class="small primary grow" onclick="draftStyle()">💾 ใช้สไตล์นี้กับคลิป</button>
             <button class="small ghost" onclick="go('s-style')">📂 สไตล์ที่เคยทำ</button>
@@ -748,8 +759,8 @@
             <button class="small" onclick="layoutAuto()">จัดอัตโนมัติ (ย่อให้พอดีจอ)</button>
             <button class="small primary" onclick="layoutSave()">💾 บันทึกตำแหน่ง</button>
           </div>
-          <div class="form-row"><label>เอียง (องศา)</label><input id="lyRot" type="range" min="-30" max="30" step="1" value="0" oninput="layoutEdit()"><span id="lyRotV" class="hint">0°</span></div>
-          <div class="form-row"><label>ขนาด</label><input id="lySize" type="number" step="0.5" oninput="layoutEdit()"></div>
+          <div class="form-row"><label for="lyRot">เอียง (องศา)</label><input id="lyRot" type="range" min="-30" max="30" step="1" value="0" oninput="layoutEdit()"><span id="lyRotV" class="hint">0°</span></div>
+          <div class="form-row"><label for="lySize">ขนาด</label><input id="lySize" type="number" step="0.5" oninput="layoutEdit()"></div>
           <div id="lyList" class="ly-list"><div class="hint">กดโหลดข้อความ</div></div>
           <div class="busy" id="lyBusy"></div>
         </div>
@@ -775,8 +786,8 @@
               <button class="small grow" id="an-video" onclick="setAnimTarget('video')">ภาพวิดีโอ</button>
             </div>
           </div>
-          <div class="form-row"><label>เลือกอนิเมชัน</label><select id="animName" class="grow"></select></div>
-          <div class="form-row"><label>ความยาว (วินาที)</label><input id="animDur" type="number" step="0.1" value="0.5"></div>
+          <div class="form-row"><label for="animName">เลือกอนิเมชัน</label><select id="animName" class="grow"></select></div>
+          <div class="form-row"><label for="animDur">ความยาว (วินาที)</label><input id="animDur" type="number" step="0.1" value="0.5"></div>
           <div class="checkbox-row">
             <input type="checkbox" id="animSound" checked>
             <label for="animSound">ใส่เสียง Pop ตามจังหวะซับด้วย</label>
@@ -803,7 +814,7 @@
               <p>ถอดเสียงเฉพาะท่อนที่เพิ่มฟุตเทจทีหลัง โดยไม่แตะซับเดิม</p>
             </div>
           </div>
-          <div class="form-row"><label>ช่วงว่างขั้นต่ำที่นับ (วินาที)</label><input id="fillGap" type="number" step="0.5" value="1"></div>
+          <div class="form-row"><label for="fillGap">ช่วงว่างขั้นต่ำที่นับ (วินาที)</label><input id="fillGap" type="number" step="0.5" value="1"></div>
           <div class="row">
             <button class="small grow" onclick="fillGaps(false)">🔍 สแกนดูก่อน</button>
             <button class="small grow primary" onclick="fillGaps(true)">⚡ เติมซับเลย</button>
@@ -837,8 +848,8 @@
               <p>เลือกเพลงคลอจากคลังและควบคุมระดับเสียง</p>
             </div>
           </div>
-          <div class="form-row"><label>เลือกเพลง</label><select id="musicPick" class="grow" onfocus="loadMusic()"></select></div>
-          <div class="form-row"><label>ความดังเพลง (%)</label><input id="musicVol" type="number" step="1" value="10"></div>
+          <div class="form-row"><label for="musicPick">เลือกเพลง</label><select id="musicPick" class="grow" onfocus="loadMusic()"></select></div>
+          <div class="form-row"><label for="musicVol">ความดังเพลง (%)</label><input id="musicVol" type="number" step="1" value="10"></div>
           <div class="row">
             <button class="small grow" onclick="previewMusic()">▶️ ฟังตัวอย่าง</button>
             <button class="primary small grow" onclick="applyMusic()">🎵 ใส่เพลงลงคลิป</button>
@@ -856,7 +867,7 @@
               <p>ดึงโทนสีและ Color Grading จากคลิปที่แต่งแล้ว</p>
             </div>
           </div>
-          <div class="form-row"><label>เลือกโปรเจกต์ต้นทาง</label><select id="gradeFrom" class="grow"></select></div>
+          <div class="form-row"><label for="gradeFrom">เลือกโปรเจกต์ต้นทาง</label><select id="gradeFrom" class="grow"></select></div>
           <button class="small wide primary" onclick="draftGrade()">🎨 ก๊อปสีมาใส่คลิปนี้</button>
         </div>
 
@@ -873,9 +884,9 @@
   <div class="screen" id="s-subs">
     <div class="card">
       <h2>สไตล์บรรทัดเน้น</h2>
-      <div class="form-row"><label>ขนาด</label><input id="emSize" type="number" value="24"></div>
-      <div class="form-row"><label>ตำแหน่งแนวตั้ง</label><input id="emY" type="number" step="0.05" value="-0.45"></div>
-      <div class="form-row"><label>สี</label><input id="emColor" type="color" value="#ffd84d" style="padding:4px"></div>
+      <div class="form-row"><label for="emSize">ขนาด</label><input id="emSize" type="number" value="24"></div>
+      <div class="form-row"><label for="emY">ตำแหน่งแนวตั้ง</label><input id="emY" type="number" step="0.05" value="-0.45"></div>
+      <div class="form-row"><label for="emColor">สี</label><input id="emColor" type="color" value="#ffd84d" style="padding:4px"></div>
       <div class="hint">บรรทัดธรรมดาใช้สไตล์หลักของโปรเจกต์ · บรรทัดเน้นใช้ค่านี้</div>
     </div>
     <div class="row">
@@ -1013,7 +1024,7 @@ async function doUpdate() {
     b.textContent = r.updated ? '✅ ' + r.note : '✅ ' + r.note;
     if (r.updated) setTimeout(() => location.reload(), 6000);
     else setTimeout(() => { b.disabled = false; b.textContent = '⬆️ อัปเดต EditorKrab'; }, 3000);
-  } catch (e) { b.textContent = '❌ ' + e.message; b.disabled = false; }
+  } catch (e) { b.textContent = '❌ ' + ckErr(e); b.disabled = false; }
 }
 
 api('config').then(c => {
@@ -1088,7 +1099,7 @@ async function openPicker() {
     const r = await fetch('/api/kit/pick?start=' + encodeURIComponent(localStorage.getItem('ve_last') || ''), {method: 'POST'})
       .then(x => x.json());
     if (r.path) openPicked(r);
-  } catch (e) { toast('❌ เปิดหน้าต่างเลือกไฟล์ไม่ได้: ' + e.message); }
+  } catch (e) { toast('❌ เปิดหน้าต่างเลือกไฟล์ไม่ได้: ' + ckErr(e)); }
 }
 function openPicked(r) {
   if (r.kind === 'file') {
@@ -1134,7 +1145,7 @@ async function loadPicker(path) {
       list.appendChild(div);
     });
   } catch (e) {
-    list.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    list.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1199,7 +1210,7 @@ async function scanFolder(path, autoName) {
     const auto = autoName && data.files.find(f => f.name === autoName && !f.error);
     if (auto) pickFile(auto);   // a single file was picked or dropped: open it straight away
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1226,7 +1237,7 @@ async function planProjects(path, box) {
       box.appendChild(div);
     });
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1240,7 +1251,7 @@ async function startTranscription(path, button) {
     refreshTranscription(path);
   } catch (e) {
     button.disabled = false;
-    document.getElementById('transcribeStatus').textContent = '❌ ' + e.message;
+    document.getElementById('transcribeStatus').textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1301,7 +1312,7 @@ async function findFocus(range) {
     const f = await api('focus', {file: state.file.path, ...(range || {})});
     state.focus = {x: f.x, y: f.y};
     note.textContent = f.found ? '· กรอบอยู่ที่ใบหน้าคนพูดแล้ว ลากปรับได้' : '· ไม่เจอใบหน้า วางกลางภาพ ลากปรับได้';
-  } catch (e) { note.textContent = '❌ หาใบหน้าไม่ได้: ' + e.message; }
+  } catch (e) { note.textContent = '❌ หาใบหน้าไม่ได้: ' + ckErr(e); }
   drawCrop();
 }
 // the box shows the part of the frame that stays in the clip, drawn over the picture inside the player
@@ -1414,7 +1425,7 @@ async function loadSubs(suggest) {
     countEmphasis();
     busy.textContent = 'แก้ข้อความได้เลย · กดปุ่มขวาเพื่อสลับธรรมดา/เน้น';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1445,7 +1456,7 @@ async function saveSubs() {
     state.draft.subtitles = d.subtitles;
     busy.textContent = '✅ บันทึกแล้ว ' + d.added + ' บรรทัด — เปิด CapCut ดูได้เลย';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
   btn.disabled = false;
 }
@@ -1488,7 +1499,7 @@ async function suggestTerms() {
     });
     busy.textContent = 'กดคำค้นที่อยากใช้ได้เลย';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1507,7 +1518,7 @@ async function runStockSearch() {
       busy.textContent = 'เจอ ' + r.items.length + ' คลิปฟรี' + (r.missing_keys.length ? ' · ยังไม่ใส่รหัส ' + r.missing_keys.join(', ') + ' (ตั้งค่า)' : '') +
         (r.errors.length ? ' · ⚠️ ' + r.errors.join(' · ') : '');
       renderFree(r.items);
-    } catch (e) { busy.textContent = '❌ ' + e.message; }
+    } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
     return;
   }
   busy.innerHTML = '<span class="spin"></span> ส่งงานให้บอท…';
@@ -1527,7 +1538,7 @@ async function runStockSearch() {
     }
     busy.textContent = 'บอทยังไม่ตอบ — เช็คว่าตัวบอทเปิดอยู่ไหม';
   } catch (e) {
-    busy.textContent = '❌ ' + e.message;
+    busy.textContent = '❌ ' + ckErr(e);
   }
 }
 
@@ -1546,7 +1557,7 @@ function renderFree(items) {
     d.querySelector('button').onclick = async e => {
       const b = e.currentTarget; b.disabled = true; b.textContent = 'กำลังโหลด…';
       try { const r = await api('stock/free-download', {source: it.source, id: it.id, file: it.file}); b.textContent = '✅ เก็บแล้ว'; b.title = r.path; }
-      catch (err) { b.textContent = '❌ ' + err.message; b.disabled = false; }
+      catch (err) { b.textContent = '❌ ' + ckErr(err); b.disabled = false; }
     };
     out.appendChild(d);
   });
@@ -1608,7 +1619,7 @@ function loadMusic() {
   });
   }).catch(e => {
     musicLoad = null;
-    sel.replaceChildren(new Option('อ่านคลังเพลงไม่ได้: ' + (e.message || e)));
+    sel.replaceChildren(new Option('อ่านคลังเพลงไม่ได้: ' + ckErr(e)));
   });
 }
 
@@ -1637,7 +1648,7 @@ async function applyMusic() {
       (d.looped ? '<br>⚠ เพลงสั้นกว่าคลิป ช่วงท้ายจะเงียบ' : ''), 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1698,7 +1709,7 @@ async function applyAnimation() {
     draftSays(note, 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1712,7 +1723,7 @@ async function clearSounds() {
     draftSays('ลบแทร็กเสียงที่ใส่ไว้แล้ว ' + d.removed_tracks + ' แทร็ก', 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1726,7 +1737,7 @@ async function clearAnimation() {
     draftSays('เอาอนิเมชันออกแล้ว ' + d.removed + ' จุด', 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -1758,7 +1769,7 @@ async function loadDrafts() {
     document.getElementById('draftsHint').textContent =
       'พบ ' + drafts.length + ' โปรเจกต์ · ใหม่สุดอยู่บน';
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -1798,7 +1809,7 @@ const WZ = [
      draftSays('<span class="spin"></span> กำลังส่งออก MP4… (คลิป 1–2 นาที ราว 1 นาที)', '');
      try { const r = await api('draft/export', {path: state.draft.path});
        draftSays('✅ ได้ไฟล์แล้ว: ' + r.file + (r.skipped_tracks ? ` · ⚠️ ข้าม ${r.skipped_tracks} แทร็กที่เพิ่มใน CapCut (ภาพประกอบ/เพลง) รอบนี้ยังไม่รวม` : ''), 'ok');
-     } catch (e) { draftSays('❌ ' + e.message, 'err'); throw e; } }],
+     } catch (e) { draftSays('❌ ' + ckErr(e), 'err'); throw e; } }],
           ['🎞️ เปิดใน CapCut', async () => { await kit('draft-open', state.draft.path); }, 'ghost']]},
 ];
 let wzAt = 0;
@@ -1878,7 +1889,7 @@ async function makeDraft(open = true) {
     if (open) openDraft(i);
     return drafts[i];
   } catch (e) {
-    out.textContent = '❌ ' + e.message;
+    out.textContent = '❌ ' + ckErr(e);
     if (!open) throw e;
   } finally {
     main.disabled = false;
@@ -1898,7 +1909,7 @@ async function planStories(saved) {
     let job;
     if (!saved) job = await api('story-plan', {file});
     else try { job = await api('story-plan?file=' + encodeURIComponent(file)); }
-    catch (e) { if (e.message === 'no plan started for this file') return; throw e; }
+    catch (e) { if (ckErr(e) === 'no plan started for this file') return; throw e; }
     while (job.status === 'running' || job.status === 'waiting') {
       if (job.status === 'running') box.innerHTML = '<span class="spin"></span> กำลัง' + job.step + '… (ไฟล์ยาวอาจใช้หลายนาที)';
       else if (!box.querySelector('.agent-cmd')) box.innerHTML = webAiBox('stories', file, 'ถอดเสียงเสร็จแล้ว · กดปุ่มเพื่อเอาไฟล์ไปให้ AI แบ่งเรื่อง หน้านี้จะขึ้นรายการเองเมื่อเสร็จ');
@@ -1939,7 +1950,7 @@ async function planStories(saved) {
     storyNotes();
     markMade();
   } catch (e) {
-    box.textContent = '❌ ' + e.message;
+    box.textContent = '❌ ' + ckErr(e);
   } finally {
     document.getElementById('planStoriesBtn').disabled = false;
   }
@@ -2014,7 +2025,7 @@ async function makeChosen(kind) {
       ? `✅ ได้ตัวอย่าง ${made.length} เรื่อง (เรื่อง ${done.join(', ')}) รอรีวิว · เปิดแต่ละโปรเจกต์จากแถบซ้าย แท็บ 📤 ส่งออก ดูแล้วกดส่งออกตัวจริง`
       : `✅ สร้างแล้ว ${done.length} โปรเจกต์ (เรื่อง ${done.join(', ')}) · เปิดทำต่อได้จากแถบซ้าย`;
   } catch (e) {
-    document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${e.message}` +
+    document.getElementById('result').textContent = `❌ ค้างที่เรื่อง ${list[done.length] + 1}: ${ckErr(e)}` +
       (done.length ? ` · ที่เสร็จแล้ว: เรื่อง ${done.join(', ')}` : '');
   } finally { state.range = null; nameBox.value = base; markMade(); loadHomeDrafts(); }
 }
@@ -2032,7 +2043,7 @@ async function makeHyperframes(open = true) {
     if (!r.ok) throw new Error(j.detail || r.status);
     out.innerHTML = '✅ เปิด Studio แล้ว: <a href="' + j.url + '" target="_blank">' + j.url + '</a> · โฟลเดอร์ ' + j.project;
     if (open) window.open(j.url, '_blank');
-  } catch (e) { out.textContent = '❌ ' + e.message; if (!open) throw e; }
+  } catch (e) { out.textContent = '❌ ' + ckErr(e); if (!open) throw e; }
 }
 
 function openDraft(i, tools) {
@@ -2160,7 +2171,7 @@ async function fillGaps(apply) {
     }
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2194,7 +2205,7 @@ async function loadFilmstrip() {
     note.textContent = clips.length + ' ท่อน · ซับ ' + (d.subtitles || []).length +
       ' บรรทัด · ' + d.duration + ' วินาที';
   } catch (e) {
-    box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>';
+    box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>';
   }
 }
 
@@ -2219,7 +2230,7 @@ async function draftTranscribe() {
       '</b><br>เปิด CapCut ดูได้เลย คำไหนผิดแก้ในโปรแกรมได้', 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2236,7 +2247,7 @@ async function draftTrim(apply) {
       (apply ? '<br>ซับเลื่อนตามให้แล้ว' : '<br>กด "ตัดเลย" ถ้าโอเค'), 'ok');
   } catch (e) {
     busy.textContent = '';
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2252,7 +2263,7 @@ async function draftStyle() {
     });
     draftSays('✅ เปลี่ยนสไตล์ซับแล้ว ' + d.restyled + ' บรรทัด', 'ok');
   } catch (e) {
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2263,7 +2274,7 @@ async function draftGrade() {
     const d = await api('draft/grade', {source: from, target: state.draft.path});
     draftSays('✅ ก๊อปสีจาก <b>' + d.from + '</b> มาใส่ครบ ' + d.clips + ' ท่อน', 'ok');
   } catch (e) {
-    draftSays('❌ ' + e.message, 'err');
+    draftSays('❌ ' + ckErr(e), 'err');
   }
 }
 
@@ -2303,7 +2314,7 @@ async function loadHomeDrafts() {
     if (want) ckOpenProject(want);
     if (raw) ckOpenRaw(raw);
     if (folder) openPicked({kind: 'folder', path: folder});
-  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>'; }
 }
 // sidebar click / ?open=<path>: open that project here (CapCut = workbench, HyperFrames = Studio)
 window.ckOpenRaw = path => openPicked({kind: 'file', path});
@@ -2316,9 +2327,12 @@ window.ckOpenProject = async path => {
 function footCard(g) {
   const el = document.createElement('div');
   el.className = 'foot';
-  el.innerHTML = '<div class="ft-th">🎞️</div><div class="ft-info"><div class="ft-title"><div class="ft-nm"></div><button class="ft-rename" hidden>✎ แก้ชื่อ</button></div><div class="ft-path"></div></div><div class="ft-ps" tabindex="0" aria-label="รายการโปรเจกต์"></div>';
+  el.innerHTML = '<div class="ft-th"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg></div><div class="ft-info"><div class="ft-title"><div class="ft-nm"></div><button class="ft-rename" hidden>✎ แก้ชื่อ</button></div><div class="ft-path" translate="no"></div></div><div class="ft-ps" tabindex="0" aria-label="รายการโปรเจกต์"></div>';
   const th = el.querySelector('.ft-th'), nm = el.querySelector('.ft-nm'), pth = el.querySelector('.ft-path');
-  nm.textContent = g.name;
+  nm.textContent = '';
+  const nb = document.createElement('bdi');   // the footage name is the person's own text: never translated
+  nb.translate = false; nb.textContent = g.name;
+  nm.append(nb);
   nm.title = g.name + ' · ' + g.ps.length + ' โปรเจกต์';
   nm.insertAdjacentHTML('beforeend', `<span>${g.ps.length} โปรเจกต์</span>`);
   pth.title = g.raw ? (g.exists ? g.raw : g.raw + ' (ไม่พบไฟล์แล้ว)') : '';
@@ -2352,7 +2366,7 @@ function footCard(g) {
           body: JSON.stringify({path: g.raw, name: input.value})});
         if (!r.ok) throw new Error((await r.json()).detail || r.status);
         await loadHomeDrafts();
-      } catch (e) { toast('❌ ตั้งชื่อไม่ได้: ' + e.message); }
+      } catch (e) { toast('❌ ตั้งชื่อไม่ได้: ' + ckErr(e)); }
       finally { rename.disabled = false; }
     };
   }
@@ -2363,14 +2377,15 @@ function projCard(d) {
   const el = document.createElement('div');
   el.className = 'proj';
   const badge = `<span class="badge ${d.sys}">${{clipkit: 'CK', capcut: 'CC', hyperframes: 'HF'}[d.sys]}</span>`;
-  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open"></span><span class="delivery"></span></div>' +
-    '<div class="acts"><button data-a="ren" title="เปลี่ยนชื่อ">✎</button><button data-a="del" class="del" title="ลบ">🗑️</button></div>';
+  el.innerHTML = '<div class="pr-top">' + badge + '<span class="nm" data-a="open" translate="no"></span><span class="delivery"></span></div>' +
+    '<div class="acts"><button data-a="ren" title="เปลี่ยนชื่อ" aria-label="เปลี่ยนชื่อ"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button>' +
+    '<button data-a="del" class="del" title="ลบ" aria-label="ลบ"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div>';
   el.querySelector('.nm').textContent = d.name;
   el.querySelector('.nm').title = d.name + ' · คลิกเพื่อเปิด';
   el._d = d;
   const delivery = el.querySelector('.delivery');
   delivery.setAttribute('aria-label', 'สถานะส่งงาน ' + d.name);
-  const labels = {editing:'✂️ กำลังทำ',awaiting_review:'👀 รอลูกค้าตรวจ',changes_requested:'🔁 ต้องแก้',approved:'✅ อนุมัติแล้ว'};
+  const labels = {editing:'กำลังทำ',awaiting_review:'รอลูกค้าตรวจ',changes_requested:'ต้องแก้',approved:'อนุมัติแล้ว'};
   delivery.textContent = d.delivery?.error || labels[d.delivery?.status] || 'ยังไม่ระบุสถานะ';
   delivery.dataset.status = d.delivery?.status || '';
   delivery.title = d.delivery?.source === 'team' ? 'สถานะล่าสุดจากระบบทีม' : 'สถานะเดิมในเครื่อง · ยังไม่ย้ายเข้าระบบทีม';
@@ -2381,13 +2396,13 @@ function projCard(d) {
   };
   el.querySelector('[data-a=open]').onclick = open;
   el.querySelector('[data-a=ren]').onclick = async () => {
-    const name = prompt('ชื่อโปรเจกต์ใหม่', d.name);
+    const name = await ckPrompt('ชื่อโปรเจกต์ใหม่', d.name);
     if (!name || name.trim() === d.name) return;
     const r = await kit('draft-rename', d.path, {name: name.trim()});
     if (r) { toast('เปลี่ยนชื่อเป็น ' + r.name + ' แล้ว'); loadHomeDrafts(); }
   };
   el.querySelector('[data-a=del]').onclick = async () => {
-    if (!confirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)')) return;
+    if (!await ckConfirm('ย้ายโปรเจกต์ "' + d.name + '" ไปถังขยะ? กู้คืนได้จากถังขยะของเครื่อง', {ok: 'ย้ายไปถังขยะ', danger: true})) return;
     if (await kit('draft-delete', d.path)) { toast('ย้าย ' + d.name + ' ไปถังขยะแล้ว'); loadHomeDrafts(); }
   };
   return el;
@@ -2403,7 +2418,7 @@ function showSel() {
 function clearSel() { selSet.clear(); showSel(); }
 async function delSelected() {
   const list = [...selSet].map(el => el._d);
-  if (!list.length || !confirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? (กู้คืนได้จากถังขยะของ Windows)\n\n' + list.map(d => '• ' + d.name).join('\n'))) return;
+  if (!list.length || !await ckConfirm('ย้าย ' + list.length + ' โปรเจกต์ไปถังขยะ? กู้คืนได้จากถังขยะของเครื่อง\n\n' + list.map(d => '• ' + d.name).join('\n'), {ok: 'ย้ายไปถังขยะ', danger: true})) return;
   let ok = 0;
   for (const d of list) if (await kit('draft-delete', d.path)) ok++;
   toast('ย้ายไปถังขยะแล้ว ' + ok + '/' + list.length + ' โปรเจกต์');
@@ -2476,7 +2491,7 @@ async function spellAsk() {
   try {
     const r = await api('draft/spelling-request', {path: state.draft.path});
     box.innerHTML = agentBox(r.command, `ปิด CapCut ก่อน แล้วส่งคำสั่งนี้ให้ Claude ในแชต (${r.lines} บรรทัด) · ประโยคที่ขาด Claude จะฟังช่วงนั้นซ้ำแล้วเติม · คำที่แก้จะถูกจำไว้ ถอดเสียงครั้งหน้าแก้ให้เอง`);
-  } catch (e) { box.textContent = '❌ ' + e.message; }
+  } catch (e) { box.textContent = '❌ ' + ckErr(e); }
 }
 // the punch words that carry each phrase: the agent picks them (plugin model), the export uses them
 async function punchAsk() {
@@ -2486,7 +2501,7 @@ async function punchAsk() {
     box.innerHTML = webAiBox('clip', state.draft.path, r.picked === r.lines
       ? `เลือกคำเน้นครบ ${r.lines} บรรทัดแล้ว · กดส่งออก MP4 ได้เลย (ส่งไฟล์ให้ AI ซ้ำได้ถ้าแก้ซับ)`
       : `กดปุ่มเพื่อเอาไฟล์ไปให้ AI เลือกคำเน้น (เลือกแล้ว ${r.picked}/${r.lines} บรรทัด) · บรรทัดที่ยังไม่ได้เลือก ระบบเน้นคำท้ายช่วงให้แทน`);
-  } catch (e) { box.textContent = '❌ ' + e.message; }
+  } catch (e) { box.textContent = '❌ ' + ckErr(e); }
 }
 // one button: subtitles, trim, look, zoom cut, b-roll, music, effects -> a preview to review
 // the libraries this work pulls from / saves into, changeable right here (same values as Settings > folders)
@@ -2526,7 +2541,7 @@ async function plLoad() {
 }
 async function plSave() {
   try { await api('draft/placed', {path: state.draft.path, ...PL}); document.getElementById('rvDirty').style.display = ''; }
-  catch (e) { toast('❌ ' + e.message); }
+  catch (e) { toast('❌ ' + ckErr(e)); }
 }
 function plDraw() {
   const box = document.getElementById('rvEdit');
@@ -2571,7 +2586,7 @@ function plDraw() {
           alt.appendChild(im);
         });
         if (!r.items.length) alt.textContent = 'ไม่เจอ ลองคำอื่น';
-      } catch (e) { alt.textContent = '❌ ' + e.message; }
+      } catch (e) { alt.textContent = '❌ ' + ckErr(e); }
     };
     box.appendChild(row);
   });
@@ -2627,10 +2642,10 @@ async function rePreview() {
     v.src = '/api/kit/media?path=' + encodeURIComponent(r.file) + '&t=' + Date.now(); v.style.display = 'block';
     busy.textContent = '✅ ตัวอย่างใหม่พร้อมแล้ว';
     document.getElementById('rvDirty').style.display = 'none';
-  } catch (e) { busy.textContent = '❌ ' + e.message; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 async function plReset() {
-  if (!confirm('ล้างที่แก้ไว้ทั้งหมด แล้วให้ระบบเลือกภาพประกอบและเพลงใหม่?')) return;
+  if (!await ckConfirm('ล้างที่แก้ไว้ทั้งหมด แล้วให้ระบบเลือกภาพประกอบและเพลงใหม่?')) return;
   await api('draft/placed', {path: state.draft.path, broll: [], music: {file: '', volume: 0.12}, sfx: {on: true, volume: 1}, reset: true});
   await autoRun();
 }
@@ -2651,7 +2666,7 @@ async function autoRun() {
       agentBox(r.agent_command, 'อยากได้คำเน้นที่ตรงใจความ + ภาพประกอบ ส่งคำสั่งนี้ให้ Claude แล้วกด "ทำให้ครบ" อีกครั้ง');
     renderGuide(state.draft);
     plLoad();
-  } catch (e) { busy.textContent = '❌ ' + e.message; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 async function saLoad(pick) {
   const p = state.draft.path;
@@ -2696,14 +2711,14 @@ async function ovLoad() {
           busy.innerHTML = '<span class="spin"></span> กำลังทำโมชั่น "' + label + '"…';
           box.querySelectorAll('button').forEach(x => x.disabled = true);
           try { await api('draft/overlay', {path: state.draft.path, template: k, start: s.start, end: s.end, text: s.text}); busy.textContent = '✅ วางแล้ว · กดส่งออก MP4 เพื่อดูผล'; }
-          catch (e) { busy.textContent = '❌ ' + e.message; }
+          catch (e) { busy.textContent = '❌ ' + ckErr(e); }
           ovLoad();
         };
         row.appendChild(b);
       });
       box.appendChild(row);
     });
-  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + e.message + '</div>'; }
+  } catch (e) { box.innerHTML = '<div class="hint">❌ ' + ckErr(e) + '</div>'; }
 }
 async function kit(path, draftPath, extra) {
   try {
@@ -2712,7 +2727,7 @@ async function kit(path, draftPath, extra) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.detail || r.statusText);
     return j;
-  } catch (e) { toast('❌ ' + e.message); return null; }
+  } catch (e) { toast('❌ ' + ckErr(e)); return null; }
 }
 // first run: no footage or CapCut folder yet -> the step-by-step setup comes first
 fetch('/api/kit/config').then(r => r.json()).then(c => {
@@ -2833,7 +2848,7 @@ function webAiBox(step, target, note) {
       try {
         const r = await api('web-ai/import', {step, target, answer: ''});
         if (!r.waiting) { polling = false; return done(r); }
-      } catch (e) { el('msg').textContent = '❌ ' + e.message; }
+      } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
       setTimeout(poll, 3000);
     };
     el('dl').onclick = async () => {
@@ -2845,11 +2860,11 @@ function webAiBox(step, target, note) {
         navigator.clipboard.writeText('อ่านไฟล์นี้แล้วทำตาม: "' + r.file + '"').catch(() => {});
         el('msg').textContent = 'บันทึกไว้ที่ ' + r.file + ' · Claude บนเครื่อง: วางข้อความที่คัดลอกให้แล้วในแชต หน้านี้จะนำเข้าเอง · AI บนเว็บ: อัปโหลดไฟล์นี้แล้ววางคำตอบ JSON ด้านล่าง';
         if (!polling) { polling = true; setTimeout(poll, 3000); }
-      } catch (e) { el('msg').textContent = '❌ ' + e.message; }
+      } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
     };
     el('in').onclick = async () => {
       try { await done(await api('web-ai/import', {step, target, answer: el('ta').value})); }
-      catch (e) { el('msg').textContent = '❌ ' + e.message; }
+      catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
     };
   });
   return '<div class="agent-cmd"><div class="hint">' + note + '</div>'
@@ -2873,7 +2888,7 @@ async function subsLang(lang) {
     if (!res.ok) throw new Error(typeof r.detail === 'string' ? r.detail : res.statusText);
     busy.textContent = '✅ ใส่ซับ' + (lang === 'en' ? 'อังกฤษ' : 'ไทย') + ' ' + r.lines + ' บรรทัดแล้ว · กดจัดอัตโนมัติเพื่อย่อบรรทัดที่ยาวเกิน';
     await layoutLoad();
-  } catch (e) { busy.textContent = '❌ ' + e.message; throw e; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); throw e; }
 }
 async function layoutSave() {
   if (!LY.length || !state.draft) return;
@@ -2883,10 +2898,10 @@ async function layoutSave() {
     const r = await api('draft/layout', {path: state.draft.path,
       items: LY.map(t => ({id: t.id, x: t.x, y: t.y, rotation: t.rotation, size: t.size}))});
     busy.textContent = '✅ บันทึกตำแหน่ง ' + r.placed + ' ข้อความลง CapCut แล้ว';
-  } catch (e) { busy.textContent = '❌ ' + e.message; }
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 </script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

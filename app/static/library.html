@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>คลังอนิเมชัน</title>
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--ok:#10b981;--warn:#f59e0b}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:1200px;margin:0 auto;padding:22px 18px 60px}
-h1{font-size:23px;margin:0 0 4px}.sub{color:var(--mut);font-size:14px;margin:0 0 16px}
+h1{font-size:18px;font-weight:600;margin:0 0 4px}.sub{color:var(--mut);font-size:14px;margin:0 0 16px}
 .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
 .bar b{color:var(--mut);font-size:13px;font-weight:600;margin-right:4px}
 .chip{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
 .chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-input[type=search]{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px 12px;font:inherit;min-width:220px}
+input[type=search]{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 10px;font:inherit;min-width:220px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px}
 .item{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
 .item{position:relative}.item.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
@@ -39,8 +39,8 @@ button.act:hover{border-color:var(--acc);color:#fff}
 code{display:block;margin-top:8px;padding:8px 10px;background:#080a10;border-radius:8px;font-size:13px;word-break:break-all;width:100%}
 .count{color:var(--mut);font-size:13px}
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
-</head>
+<link rel="stylesheet" href="/shell.css?v=8">
+<script src="/ui.js?v=2"></script></head>
 <body>
 <main>
   <h1>คลังอนิเมชัน</h1>
@@ -112,11 +112,11 @@ $('selNo').onclick = () => { SEL.clear(); selbar(); draw(); };
 $('selDel').onclick = async () => {
   const rows = ALL.filter(x => SEL.has(KEY(x)));
   const own = rows.filter(x => x.own), hide = rows.filter(x => !x.own);
-  if (!confirm(`ลบ ${rows.length} ชิ้น?` + (own.length ? `\nสไตล์ของฉัน ${own.length} ชิ้นจะถูกลบไฟล์ทิ้ง กู้คืนไม่ได้` : ''))) return;
+  if (!await ckConfirm(`ลบ ${rows.length} ชิ้น?` + (own.length ? `\nสไตล์ของฉัน ${own.length} ชิ้นจะถูกลบไฟล์ทิ้ง กู้คืนไม่ได้` : ''), {ok: 'ลบ', danger: true})) return;
   try {
     for (const x of own) await post('/api/style/remove', {preset: x.name});
     if (hide.length) await post('/api/kit/library/hide', {keys: hide.map(KEY)});
-  } catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
+  } catch (e) { ckAlert('ลบไม่สำเร็จ: ' + ckErr(e)); }
   SEL.clear(); selbar(); load();
 };
 $('unhide').onclick = () => post('/api/kit/library/hide', {keys: [], restore: true}).then(load);
@@ -171,10 +171,10 @@ function load() {
     ALL = [...j.ours, ...(j.styles || []), ...j.hyperframes];
     $('unhide').style.display = j.hidden ? '' : 'none'; $('unhide').textContent = `แสดงที่ซ่อนไว้ (${j.hidden})`;
     draw();
-  }).catch(e => { $('grid').textContent = '❌ ' + e.message; });
+  }).catch(e => { $('grid').textContent = '❌ ' + ckErr(e); });
 }
 load();
 </script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 </body>
 </html>

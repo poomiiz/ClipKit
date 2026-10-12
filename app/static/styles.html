@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>คลังสไตล์</title>
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#6c4cf0;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:1200px;margin:0 auto;padding:22px 18px 60px}
-h1{font-size:23px;margin:0 0 4px}h2{font-size:17px;margin:26px 0 8px}.sub{color:var(--mut);font-size:14px;margin:0 0 16px}
+h1{font-size:18px;font-weight:600;margin:0 0 4px}h2{font-size:17px;margin:26px 0 8px}.sub{color:var(--mut);font-size:14px;margin:0 0 16px}
 .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 select,input[type=text]{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;min-width:220px}
 button{background:var(--card2);color:var(--sub);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font:inherit;font-size:13.5px;cursor:pointer}
@@ -31,8 +31,8 @@ code{display:block;padding:8px 10px;background:#080a10;border-radius:8px;font-si
 h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 .parts{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--sub)}.parts label{display:flex;gap:4px;align-items:center}
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
-</head>
+<link rel="stylesheet" href="/shell.css?v=8">
+<script src="/ui.js?v=2"></script></head>
 <body>
 <main>
   <h1>คลังสไตล์</h1>
@@ -40,7 +40,7 @@ h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 
   <div class="box">
     <b>ถอดจาก</b>
-    <select id="proj"><option value="">โปรเจกต์ CapCut ล่าสุด…</option></select>
+    <select id="proj" aria-label="ถอดจากโปรเจกต์"><option value="">โปรเจกต์ CapCut ล่าสุด…</option></select>
     <button id="pick">เลือกไฟล์วิดีโอ / โฟลเดอร์โปรเจกต์</button>
     <button class="go" id="go" disabled>ถอดสไตล์</button>
     <span class="msg" id="startMsg"></span>
@@ -52,7 +52,7 @@ h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
   <h2>คอลเลกชันของฉัน</h2>
   <div class="box" id="mixBox">
     <b>ประกอบสไตล์ใหม่</b>
-    <select id="mMain"></select><select id="mCaption"></select><select id="mSecond"></select>
+    <select id="mMain" aria-label="สไตล์หลัก"></select><select id="mCaption" aria-label="สไตล์คำบรรยาย"></select><select id="mSecond" aria-label="สไตล์รอง"></select>
     <input type="text" id="mName" placeholder="ชื่อ preset ใหม่">
     <button class="go" id="mGo">สร้าง preset</button>
     <span class="msg" id="mMsg"></span>
@@ -82,7 +82,7 @@ function card(x) {
   el.querySelector('.t').textContent = x.name;
   el.querySelector('.t').title = x.source;
   const msg = el.querySelector('.msg'), act = el.querySelector('.act');
-  const fail = e => { msg.textContent = '❌ ' + e.message; msg.className = 'msg bad'; };
+  const fail = e => { msg.textContent = '❌ ' + ckErr(e); msg.className = 'msg bad'; };
   if (x.gif) {
     const img = el.querySelector('img.pv'); let still = false;
     img.src = pic(x.gif); img.title = 'คลิกสลับ ภาพนิ่ง / ภาพเคลื่อนไหว';
@@ -133,7 +133,7 @@ function mineCard(x, shareable) {
         const j = await api('/api/style/share', {preset: x.name});
         window.open(j.url, '_blank');
         tip.textContent = 'เปิดหน้า GitHub แล้ว ลากไฟล์นี้ใส่ก่อนกดส่ง: ' + j.gif; tip.className = 'msg ok';
-      } catch (e) { tip.textContent = '❌ ' + e.message; tip.className = 'msg bad'; }
+      } catch (e) { tip.textContent = '❌ ' + ckErr(e); tip.className = 'msg bad'; }
     };
     el.querySelector('.b').append(b, tip);
   }
@@ -157,7 +157,7 @@ async function load() {
     $('mMain').innerHTML = c.parts.main.length ? opts('main') : '<option value="">ยังไม่มีซับปกติ + คำเน้น</option>';
     $('mCaption').innerHTML = opts('caption', 'ไม่มีซับสำหรับอ่าน');
     $('mSecond').innerHTML = opts('second', 'ไม่มีประโยคเอียง');
-  } catch (e) { $('lab').textContent = '❌ ' + e.message; }
+  } catch (e) { $('lab').textContent = '❌ ' + ckErr(e); }
 }
 $('mGo').onclick = async () => {
   const m = $('mMsg');
@@ -167,11 +167,11 @@ $('mGo').onclick = async () => {
     const j = await api('/api/style/compose', {name: $('mName').value.trim(), main: $('mMain').value,
       caption: $('mCaption').value || null, second: $('mSecond').value || null});
     m.textContent = '✓ สร้างแล้ว ' + j.preset; m.className = 'msg ok'; load();
-  } catch (e) { m.textContent = '❌ ' + e.message; m.className = 'msg bad'; }
+  } catch (e) { m.textContent = '❌ ' + ckErr(e); m.className = 'msg bad'; }
 };
 $('proj').onchange = () => setSrc($('proj').value);
 $('pick').onclick = async () => {
-  try { const j = await api('/api/kit/pick', {}); if (j.path) { $('proj').value = ''; setSrc(j.path); } } catch (e) { $('startMsg').textContent = '❌ ' + e.message; }
+  try { const j = await api('/api/kit/pick', {}); if (j.path) { $('proj').value = ''; setSrc(j.path); } } catch (e) { $('startMsg').textContent = '❌ ' + ckErr(e); }
 };
 $('go').onclick = async () => {
   $('go').disabled = true; $('startMsg').textContent = 'กำลังถอด…'; $('startMsg').className = 'msg';
@@ -179,14 +179,14 @@ $('go').onclick = async () => {
     const j = await api('/api/style/start', {source: SRC});
     $('startMsg').textContent = j.status === 'ready' ? '✓ ถอดแล้ว ดูพรีวิวด้านล่าง' : '✓ ดึงเฟรมแล้ว คัดลอกคำสั่งให้ Claude ถอดต่อ';
     $('startMsg').className = 'msg ok'; load();
-  } catch (e) { $('startMsg').textContent = '❌ ' + e.message; $('startMsg').className = 'msg bad'; }
+  } catch (e) { $('startMsg').textContent = '❌ ' + ckErr(e); $('startMsg').className = 'msg bad'; }
   $('go').disabled = !SRC;
 };
 api('/api/style/capcut-projects').then(j => j.projects.forEach(p => {
   const o = document.createElement('option'); o.value = p.path; o.textContent = p.name; $('proj').appendChild(o);
-})).catch(e => { $('startMsg').textContent = '❌ ' + e.message; $('startMsg').className = 'msg bad'; });
+})).catch(e => { $('startMsg').textContent = '❌ ' + ckErr(e); $('startMsg').className = 'msg bad'; });
 load();
 </script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 </body>
 </html>
