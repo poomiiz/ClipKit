@@ -6,6 +6,7 @@ Built from the renderer's dry run (cuts, crop, subtitle phrases, b-roll, music, 
 """
 from __future__ import annotations
 
+import atomic
 import html
 import json
 from pathlib import Path
@@ -237,7 +238,7 @@ window.__timelines["main"] = tl;
 </script>
 </body></html>
 """
-    (out / "index.html").write_text(page, encoding="utf-8")
+    atomic.write_text((out / "index.html"), page, encoding="utf-8")
     if not (out / "hyperframes.json").is_file():
-        (out / "hyperframes.json").write_text(json.dumps({"name": Path(path).name}), encoding="utf-8")
+        atomic.write_text((out / "hyperframes.json"), json.dumps({"name": Path(path).name}), encoding="utf-8")
     return out / "index.html"

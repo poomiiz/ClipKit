@@ -2,6 +2,7 @@
 pauses worth trimming, and hand the result to CapCut as a ready draft."""
 from __future__ import annotations
 
+import atomic
 import subprocess
 import sys
 import json
@@ -300,7 +301,7 @@ def _run_story_plan(file: str) -> None:
             duration = video_edit.probe(file)["duration"]
             job["step"] = "ถอดเสียง"
             phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model: video_edit.whisper_model()
-            tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+            atomic.write_text(tf, json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
         job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
                    command=video_edit.agent_command("stories", file),
                    duration=round(phrases[-1]["end"] if phrases else 0, 1),
@@ -362,7 +363,7 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # which raw file this project came from: the sidebar groups projects under it
-    (Path(result["draft_path"]) / "clipkit.json").write_text(
+    atomic.write_text((Path(result["draft_path"]) / "clipkit.json"), 
         json.dumps({"raw": req.file, "start": req.start, "end": end, "via": req.via}, ensure_ascii=False), encoding="utf-8")
     if req.template:
         apply_template(result["draft_path"], req.template)
@@ -391,7 +392,7 @@ def apply_template(path: str, name: str) -> dict[str, Any]:
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     style.update({k: v for k, v in t.items() if k in TEMPLATE_KEYS})
     style["template"] = name
-    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return style
 
 
@@ -425,7 +426,7 @@ def template_save(req: TemplateSave) -> dict[str, Any]:
     if hook.is_file():
         t["hook_colors"] = [x.get("color", "white") for x in json.loads(hook.read_text(encoding="utf-8"))][:2]
     TEMPLATES_DIR.mkdir(exist_ok=True)
-    (TEMPLATES_DIR / f"{req.name.strip()}.json").write_text(json.dumps(t, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text((TEMPLATES_DIR / f"{req.name.strip()}.json"), json.dumps(t, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"template": req.name.strip(), "settings": t}
 
 
@@ -897,7 +898,7 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     mov = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params))["file"]
     items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]  # one motion per moment
     items.append({"file": mov, "start": req.start, "duration": dur, "template": req.template, "text": req.text})
-    (Path(req.path) / OVERLAYS).write_text(json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
+    atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
                                                       indent=1), encoding="utf-8")
     return {"overlays": _overlays(req.path)}
 
@@ -910,7 +911,7 @@ class OverlayDelete(BaseModel):
 @router.post("/draft/overlay-remove")
 def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
     items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]
-    (Path(req.path) / OVERLAYS).write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"overlays": items}
 
 
@@ -925,7 +926,7 @@ def draft_sub_anim(req: SubAnimRequest) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_style.json"
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     style["anim"] = req.anim
-    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
     words = Path(req.path) / "clipkit_words.json"
     return {"anim": req.anim, "zoomcut": bool(style.get("zoomcut")), "has_word_times": words.is_file()}
 
@@ -949,7 +950,7 @@ def draft_zoomcut(req: ZoomCut) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_style.json"
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     style["zoomcut"] = req.on
-    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return {"zoomcut": req.on}
 
 
@@ -959,7 +960,7 @@ def draft_spelling_request(req: DraftPath) -> dict[str, Any]:
     lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
     if not lines:
         raise HTTPException(400, "ยังไม่มีซับ — ถอดเสียงก่อน")
-    (Path(req.path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text((Path(req.path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"command": video_edit.agent_command("spelling", req.path), "lines": len(lines)}
 
 
@@ -969,7 +970,7 @@ def draft_punch_request(req: DraftPath) -> dict[str, Any]:
     lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
     if not lines:
         raise HTTPException(400, "ยังไม่มีซับ — ถอดเสียงก่อน")
-    (Path(req.path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text((Path(req.path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     done = Path(req.path) / "clipkit_punch.json"
     picked = json.loads(done.read_text(encoding="utf-8")) if done.is_file() else {}
     return {"command": video_edit.agent_command("punch", req.path), "lines": len(lines),
@@ -1070,7 +1071,7 @@ def broll_fill(path: str) -> dict[str, Any]:
         h = hits[0]
         chosen[q] = {"file": free_stock.download(store, h["source"], h["id"], h["file"]), "source": h["source"],
                      "id": h["id"], "thumb": h["thumb"], "page": h["url"]}
-    out_file.write_text(json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(out_file, json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"broll": chosen, "not_found": missing, "queries": len(queries)}
 
 
@@ -1092,7 +1093,7 @@ def draft_broll_remove(req: BrollRemove) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_broll.json"
     chosen = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     chosen.pop(req.query, None)
-    f.write_text(json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(f, json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"broll": chosen}
 
 
@@ -1122,7 +1123,7 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         style.setdefault("anim", req.look)
         style.setdefault("zoomcut", True)
         style.setdefault("skin", render.SKIN_DEFAULT)
-        f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+        atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
         if not video_edit.kitconfig.simple():
             b = broll_fill(req.path)
             steps.append(f"ภาพประกอบ {len(b['broll'])} จุด" if b["queries"] else "ภาพประกอบ: ยังไม่ได้ให้ Claude เลือกคำค้น")
@@ -1136,7 +1137,7 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
             steps.append("ทำปกจากชื่อเรื่องแล้ว" if auto_cover(req.path) else "")
         placed = Path(req.path) / "clipkit_placed.json"
         if not placed.is_file():  # what the tool chose becomes the list the editor reviews and changes
-            placed.write_text(json.dumps({"broll": r["broll_items"],
+            atomic.write_text(placed, json.dumps({"broll": r["broll_items"],
                                           "music": {"file": r["music_file"], "volume": r["music_volume"]},
                                           "sfx": {"on": r["sfx_on"], "volume": r["sfx_volume"]}},
                                          ensure_ascii=False, indent=1), encoding="utf-8")
@@ -1194,7 +1195,7 @@ def draft_placed_save(req: PlacedRequest) -> dict[str, Any]:
         raise HTTPException(400, f"ไม่พบไฟล์เพลง: {req.music.file}")
     data = {"broll": [b.model_dump() for b in sorted(req.broll, key=lambda b: b.start)],
             "music": req.music.model_dump(), "sfx": req.sfx.model_dump()}
-    f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"placed": data}
 
 
@@ -1240,7 +1241,7 @@ def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
     f = folder / "clipkit_punch.json"
     data = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     data[line] = req.pairs
-    f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"line": line}
 
 
@@ -1254,7 +1255,7 @@ def draft_look(req: LookRequest) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_style.json"
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     style.update(req.style)
-    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return {"style": style}
 
 
@@ -1290,7 +1291,7 @@ def auto_color(path: str) -> dict[str, Any]:
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
     color["warmth"] = float((style.get("color") or {}).get("warmth", 0))
     style["color"] = color
-    f.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return {"color": color, "measured_luma": round(y, 3), "measured_rgb": [round(float(x), 3) for x in mean],
             "spread": round(spread, 3)}
 
@@ -1339,14 +1340,14 @@ def draft_hook(req: HookEdit) -> dict[str, Any]:
         f.unlink(missing_ok=True)
         return {"hook": []}
     old = f.read_text(encoding="utf-8") if f.is_file() else None
-    f.write_text(json.dumps(lines, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(f, json.dumps(lines, ensure_ascii=False), encoding="utf-8")
     try:
         return {"hook": render._hook(Path(req.path))}
     except VideoEditError as exc:
         if old is None:
             f.unlink()
         else:
-            f.write_text(old, encoding="utf-8")
+            atomic.write_text(f, old, encoding="utf-8")
         raise HTTPException(400, str(exc)) from exc
 
 
@@ -1365,7 +1366,7 @@ def draft_caption(req: CaptionEdit) -> dict[str, Any]:
         data[req.line] = req.text.strip()
     else:
         data.pop(req.line, None)
-    f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"lines": len(data)}
 
 
@@ -1408,7 +1409,7 @@ def draft_cut(req: CutRange) -> dict[str, Any]:
             elif b["start"] + b["dur"] <= req.start:
                 keep.append(b)
         pl["broll"] = keep
-        placed.write_text(json.dumps(pl, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic.write_text(placed, json.dumps(pl, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"length": r.get("result_length"), "undo": len(list((folder / "clipkit_undo").iterdir()))}
 
 
@@ -1441,7 +1442,7 @@ def auto_cover(path: str) -> str:
     sf = Path(path) / "clipkit_style.json"
     style = json.loads(sf.read_text(encoding="utf-8")) if sf.is_file() else {}
     style["cover"] = r["file"]
-    sf.write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(sf, json.dumps(style, ensure_ascii=False), encoding="utf-8")
     return r["file"]
 
 
