@@ -6,6 +6,7 @@ Round 1 covers what ClipKit itself makes: the main video track and the main text
 """
 from __future__ import annotations
 
+import atomic
 import json
 import re
 import subprocess
@@ -57,7 +58,7 @@ def normalize_loudness(mp4: Path) -> None:
     tmp = mp4.with_name(mp4.stem + ".loud.mp4")
     r = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(mp4), "-map", "0:v", "-map", "0:a", "-c:v", "copy",
                         "-af", LOUDNESS, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(tmp)],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
     if r.returncode or not tmp.is_file():
         raise VideoEditError("loudness pass failed: " + r.stderr.strip()[-400:])
     tmp.replace(mp4)
@@ -566,7 +567,7 @@ def _sfx(kind: str) -> Path:
     if not f.is_file():
         SFX.mkdir(exist_ok=True)
         r = subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", SFX_RECIPE[kind], str(f)],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, timeout=60)
         if r.returncode or not f.is_file():
             raise VideoEditError(f"could not make sound effect {kind}: {r.stderr[-300:]}")
     return f
@@ -764,7 +765,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             base = f"[bo{k}]"
         if events:
             fam0 = family or _font(None)[0]
-            (Path(tmp) / "subs.ass").write_text(
+            atomic.write_text((Path(tmp) / "subs.ass"), 
                 "[Script Info]\nScriptType: v4.00+\nPlayResX: %d\nPlayResY: %d\nWrapStyle: 2\n\n"
                 "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, "
                 "Shadow, Alignment, Encoding\nStyle: S,%s,60,&H00FFFFFF,&H00000000,1,0,0,5,1\n\n"
@@ -835,7 +836,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         cmd = [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
                "-c:v", "libx264", "-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20",
                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
-        r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
     if r.returncode != 0 or not target.is_file():
         raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
     return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,

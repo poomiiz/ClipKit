@@ -7,6 +7,7 @@ stays valid.
 """
 from __future__ import annotations
 
+import atomic
 import copy
 import json
 import os
@@ -72,7 +73,7 @@ def probe(path: str) -> dict[str, Any]:
     out = subprocess.run(
         [FFPROBE, "-v", "error", "-print_format", "json",
          "-show_format", "-show_streams", path],
-        capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
+        capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace", timeout=60)
     if out.returncode != 0 or not out.stdout.strip():
         raise VideoEditError(f"ffprobe failed for {path}: {out.stderr[-300:]}")
     data = json.loads(out.stdout)
@@ -170,7 +171,7 @@ def suggest_projects(folder: str) -> list[dict[str, Any]]:
 def _extract_audio(path: str, start: float, end: float, dest: Path) -> Path:
     cmd = [FFMPEG, "-y", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
            "-i", path, "-vn", "-ac", "1", "-ar", "16000", str(dest)]
-    run = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
+    run = subprocess.run(cmd, capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace", timeout=600)
     if run.returncode != 0 or not dest.exists():
         raise VideoEditError(f"audio extract failed: {run.stderr[-300:]}")
     return dest
@@ -192,7 +193,7 @@ def detect_pauses(path: str, start: float, end: float,
                 [FFMPEG, "-v", "error", "-i", str(work), "-af",
                  f"silencedetect=n={gate}dB:d={min_len},ametadata=print:file=-",
                  "-f", "null", "-"],
-                capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
+                capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace", timeout=1800)
             values = [float(m.group(2)) for m in
                       re.finditer(r"silence_(start|end)=([0-9.]+)", run.stdout + run.stderr)]
             pauses = [{"start": round(a, 2), "end": round(b, 2),
@@ -497,7 +498,7 @@ def _one_by_one(model, full: Path, total: float, language: str, window: float) -
         run = subprocess.run(
             [FFMPEG, "-y", "-v", "error", "-ss", f"{offset:.3f}", "-t", f"{span:.3f}",
              "-i", str(full), str(chunk)],
-            capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace")
+            capture_output=True, creationflags=NO_WINDOW, text=True, encoding="utf-8", errors="replace", timeout=600)
         if run.returncode != 0:
             raise VideoEditError(f"window extract failed: {run.stderr[-200:]}")
         try:
@@ -637,7 +638,7 @@ def find_focus(path: str, start: float = 0.0, end: float | None = None, frames: 
             t = start + (end - start) * (k + 0.5) / frames
             jpg = Path(tmp) / f"{k}.jpg"
             subprocess.run([FFMPEG, "-v", "error", "-y", "-ss", f"{t:.2f}", "-i", path, "-frames:v", "1",
-                            "-vf", "scale=640:-2", str(jpg)], capture_output=True)
+                            "-vf", "scale=640:-2", str(jpg)], capture_output=True, timeout=60)
             img = cv2.imread(str(jpg))
             if img is None:
                 continue
@@ -827,7 +828,7 @@ def create_capcut_draft(video_path: str, project_name: str,
             seg["clip"]["scale"] = {"x": clip["scale"], "y": clip["scale"]}
             seg["clip"]["transform"] = {"x": clip["x"], "y": clip["y"]}
     _drop_unused_materials(draft)
-    content_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic.write_text(content_path, json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
 
     meta_path = target / "draft_meta_info.json"
     if meta_path.is_file():
@@ -841,7 +842,7 @@ def create_capcut_draft(video_path: str, project_name: str,
         meta["draft_timeline_materials_size_"] = Path(video_path).stat().st_size
         cover = target / "draft_cover.jpg"
         cut = subprocess.run([FFMPEG, "-v", "error", "-y", "-ss", f"{clip_in + 1:.2f}", "-i", str(video_path),
-                              "-frames:v", "1", "-vf", "scale=-2:720", str(cover)], capture_output=True, text=True)
+                              "-frames:v", "1", "-vf", "scale=-2:720", str(cover)], capture_output=True, text=True, timeout=60)
         if cut.returncode != 0:
             raise VideoEditError(f"could not make the project cover: {cut.stderr.strip()[-200:]}")
         meta["draft_cover"] = "draft_cover.jpg"
@@ -858,7 +859,7 @@ def create_capcut_draft(video_path: str, project_name: str,
                     rough = value.get("roughcut_time_range")
                     if isinstance(rough, dict):
                         rough["duration"] = int(round(info["duration"] * US))
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     import capcut_edit  # here: capcut_edit imports this module
     capcut_edit.fresh_ids(target)  # own timeline id + the Timelines/<id> copy CapCut 9.x opens
 
@@ -1191,7 +1192,7 @@ def grab_frame(path: str, at: float = 1.0, width: int = 360) -> bytes:
     run = subprocess.run(
         [FFMPEG, "-v", "error", "-ss", f"{max(at, 0):.3f}", "-i", path,
          "-frames:v", "1", "-vf", f"scale={width}:-2", "-f", "image2", "-vcodec", "mjpeg",
-         "-"], capture_output=True, creationflags=NO_WINDOW)
+         "-"], capture_output=True, creationflags=NO_WINDOW, timeout=60)
     if run.returncode != 0 or not run.stdout:
         raise VideoEditError(f"cannot read a frame from {Path(path).name}")
     return run.stdout

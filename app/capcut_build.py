@@ -9,6 +9,7 @@ Built from the same timeline as the MP4 export (render.render_draft dry run) int
 """
 from __future__ import annotations
 
+import atomic
 import copy
 import json
 import shutil
@@ -137,7 +138,7 @@ def build(path: str) -> tuple[Path, list[str]]:
     if meta_f.is_file():
         meta = json.loads(meta_f.read_text(encoding="utf-8"))
         meta.update(draft_name=dst.name, draft_fold_path=dst.as_posix(), draft_id=_id())
-        meta_f.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_text(meta_f, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     capcut_edit.fresh_ids(dst)  # its own timeline id: never the same as the project it was copied from
     draft = capcut_edit._load(dst)
     draft["tracks"] = [x for x in draft["tracks"] if x["type"] != "text"]

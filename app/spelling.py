@@ -6,6 +6,7 @@ before anyone sees them. Only whole words are swapped, so "กอ" -> "ก็" n
 """
 from __future__ import annotations
 
+import atomic
 import difflib
 import json
 from pathlib import Path
@@ -42,7 +43,7 @@ def learn(old: str, new: str) -> list[tuple[str, str]]:
         for wrong, right in pairs:
             seen = data.get(wrong)
             data[wrong] = {"right": right, "n": seen["n"] + 1 if seen and seen["right"] == right else 1}
-        FILE.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic.write_text(FILE, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return pairs
 
 
