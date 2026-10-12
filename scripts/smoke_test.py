@@ -267,6 +267,7 @@ def name_check_works():
     import sync_team
     assert sync_team.names_in(("style from Ni" + "na 07").encode()), "a client name was not found"  # split: this file is synced too
     assert not sync_team.names_in("github.com/poomiiz/ClipKit".encode()), "the allowed repo link was flagged"
+    assert not sync_team.names_in("github.com/poomiiz/EditorKrab".encode()), "the new repo link was flagged"
 
 
 def preset_pack_roundtrip():

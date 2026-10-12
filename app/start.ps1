@@ -13,6 +13,10 @@ foreach ($f in Get-ChildItem ([Environment]::GetFolderPath('Desktop')) -Filter *
     if ("$($l.TargetPath) $($l.Arguments) $($l.WorkingDirectory)" -like "*$root*" -and $l.IconLocation -notlike "$ico*") {
         $l.IconLocation = $ico; $l.Description = "EditorKrab — ตัดคลิป จัดงาน จบในทีม"; $l.Save()
     }
+    if ($f.BaseName -like 'ClipKit*' -and $l.Arguments -like "*$app\start.ps1*") {
+        $brandShortcut = Join-Path $f.DirectoryName 'EditorKrab.lnk'
+        if (-not (Test-Path -LiteralPath $brandShortcut)) { Move-Item -LiteralPath $f.FullName -Destination $brandShortcut }
+    }
 }
 $url = "http://127.0.0.1:$port/video-editor.html"
 # already running = only open the page; the shared controller starts it and waits until /api/window/health is ready
