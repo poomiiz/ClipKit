@@ -3,6 +3,7 @@ pauses worth trimming, and hand the result to CapCut as a ready draft."""
 from __future__ import annotations
 
 import atomic
+import jobstore
 import subprocess
 import sys
 import json
@@ -286,7 +287,7 @@ class StoryPlanRequest(BaseModel):
     file: str
 
 
-_story_jobs: dict[str, dict[str, Any]] = {}
+_story_jobs = jobstore.JobStore("story-plan", failed="error")
 
 
 def _run_story_plan(file: str) -> None:
@@ -308,6 +309,7 @@ def _run_story_plan(file: str) -> None:
                    speech=round(sum(p["end"] - p["start"] for p in phrases), 1))
     except Exception as exc:  # surface every failure to the page
         job.update(status="error", error=str(exc))
+    _story_jobs.save()
 
 
 @router.post("/story-plan")
@@ -319,6 +321,7 @@ def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
     job = _story_jobs.get(req.file)
     if not job or job["status"] == "error":
         _story_jobs[req.file] = {"status": "running", "step": "เริ่ม"}
+        _story_jobs.save()
         threading.Thread(target=_run_story_plan, args=(req.file,), daemon=True).start()
     return _story_jobs[req.file]
 
@@ -339,6 +342,7 @@ def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if stories is not None:
             job.update(status="done", stories=stories)
+            _story_jobs.save()
     return job
 
 
