@@ -53,16 +53,11 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
 
   <div class="card" data-tab="team">
-    <h2>👥 ตั้งค่าบริการบัญชีและองค์กร</h2>
-    <p class="sub">สำหรับผู้ดูแลเครื่อง · ใช้ Supabase โครงการเดิม ผู้ใช้สมัครบัญชีและสร้างองค์กรจากหน้าทีมได้เอง</p>
-    <form id="teamSetup">
-      <div class="row"><label for="teamUrl">Supabase URL</label><input id="teamUrl" type="url" required autocomplete="off"></div>
-      <div class="row"><label for="teamKey">Publishable / anon key</label><input id="teamKey" required autocomplete="off"></div>
-      <p class="sub">ใช้รหัสสาธารณะเท่านั้น ห้ามใส่ service role key · ผู้ดูแลต้องติดตั้งฐานข้อมูลองค์กรและเปิดการยืนยันอีเมลใน Supabase ก่อนใช้งาน</p>
-      <button>บันทึกระบบทีม</button> <span id="mTeam" class="msg" role="status"></span>
-    </form>
-    <p class="sub">เลือกโฟลเดอร์ทีมในหน้าทีม แล้วตั้งค่า Syncthing หรือ Drive for desktop ให้ซิงก์เฉพาะ footage และ exports</p>
-    <a class="back" href="/team.html">เปิดหน้าสมัครบัญชีและจัดการองค์กร →</a>
+    <h2>👥 บัญชีและองค์กร</h2>
+    <p class="sub">ใช้บริการกลางของ ClipKit สมัครบัญชีและสร้างองค์กรได้จากหน้าทีม</p>
+    <p id="mTeam" class="msg" role="status" aria-live="polite">กำลังตรวจระบบทีม…</p>
+    <p class="sub">แต่ละทีมตั้งค่า Drive หรือ Syncthing กันเอง แล้วเลือกโฟลเดอร์ทีมในหน้าทีม</p>
+    <a class="back" href="/team.html">เข้าสู่ระบบ / สมัครบัญชี →</a>
   </div>
 
   <div class="card" data-tab="machine">
@@ -147,18 +142,15 @@ function renderTree(folders) {
   });
 }
 const $ = id => document.getElementById(id);
-async function teamSetupRequest(body) {
-  const response=await fetch('/api/team/setup',body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {});
-  const result=await response.json();
-  if (!response.ok) throw new Error(typeof result.detail==='string' ? result.detail : 'ค่าตั้งค่าไม่ถูกต้อง');
-  return result;
+async function loadTeamStatus() {
+  try {
+    const response = await fetch('/api/team/session');
+    if (!response.ok) throw new Error('ตรวจระบบทีมไม่ได้ กรุณาลองใหม่');
+    const result = await response.json();
+    say('mTeam', result.configured ? 'ระบบบัญชีพร้อม · เข้าสู่ระบบได้จากหน้าทีม' : 'บริการทีมยังไม่เปิดใช้งาน · ผู้ดูแล ClipKit กำลังตั้งค่าระบบ', result.configured);
+  } catch (e) { say('mTeam', e.message, false); }
 }
-teamSetupRequest().then(cfg=>{$('teamUrl').value=cfg.supabase_url;$('teamKey').value=cfg.supabase_anon_key;}).catch(e=>say('mTeam',e.message,false));
-$('teamSetup').onsubmit=async event=>{
-  event.preventDefault();const button=$('teamSetup').querySelector('button');button.disabled=true;
-  try {const result=await teamSetupRequest({supabase_url:$('teamUrl').value,supabase_anon_key:$('teamKey').value});say('mTeam',result.note,true);}
-  catch(e){say('mTeam',e.message,false);}finally{button.disabled=false;}
-};
+loadTeamStatus();
 async function api(path, opt={}) {
   const r = await fetch('/api/kit/' + path, {method: opt.method || 'GET', headers:{'Content-Type':'application/json'},
                                             body: opt.body ? JSON.stringify(opt.body) : undefined});
