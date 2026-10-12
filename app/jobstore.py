@@ -29,5 +29,5 @@ class JobStore(dict[str, dict[str, Any]]):
 
     def save(self) -> None:
         with self._lock:
-            STATE.mkdir(exist_ok=True)
+            self.path.parent.mkdir(exist_ok=True)
             atomic.write_text(self.path, json.dumps({k: dict(v) for k, v in self.items()}, ensure_ascii=False, indent=1))
