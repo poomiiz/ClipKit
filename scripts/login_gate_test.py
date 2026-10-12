@@ -1,11 +1,18 @@
 """Mandatory login protects local pages and APIs; provider calls are stubbed."""
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
 from fastapi.testclient import TestClient
 from app import app
 import team_hub as hub
+
+
+def sign_in(client, data):
+    """A provider session as the Google callback leaves it; password sign-in no longer exists."""
+    hub._sessions['test-session'] = {**data, 'expires_at': time.time() + 3600, 'ends_at': time.time() + 86400}
+    client.cookies.set(hub.COOKIE, 'test-session')
 
 def main():
     hub._sessions.clear()
@@ -22,7 +29,9 @@ def main():
         assert client.get('/api/team/session').json()['signed_in'] is False
         assert client.get('/api/window/health').status_code == 200
         assert client.post('/api/team/google', json={}).status_code == 200
-        assert client.post('/api/team/login', json={'email': 'editor@example.test', 'password': 'password'}).status_code == 200
+        for gone in ('/api/team/login', '/api/team/signup'):   # password accounts were removed; Google only
+            assert client.post(gone, json={'email': 'editor@example.test', 'password': 'password'}).status_code == 401, gone
+        sign_in(client, data)
         # GET clients sometimes send Content-Type without a body; this is not invalid JSON.
         assert client.get('/video-editor.html', headers={'Content-Type': 'application/json'}).status_code == 200
         assert client.get('/api/team/setup').status_code == 200
