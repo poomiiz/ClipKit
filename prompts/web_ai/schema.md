@@ -57,9 +57,9 @@ are still split at a pause by ClipKit, as for the local agent.
 | `motion` | Motion text | optional; line number + template, rendered here like the editor's Motion button |
 | `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per line number |
 
-## `inserts` (Envato files to links)
+## `inserts` (downloaded stock files to links)
 
-After downloading Envato clips by hand into one folder:
+After downloading stock clips by hand into one folder:
 
     python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-sheet "<folder>"   # writes "<video> - inserts.md" + ".jpg"
     python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>" --insert-plan answer.json

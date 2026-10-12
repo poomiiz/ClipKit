@@ -904,10 +904,10 @@
       <input id="stockQuery" placeholder="เช่น construction site inspection">
       <div class="row">
         <button class="small grow" onclick="suggestTerms()">แปลจากซับให้</button>
-        <button class="primary grow" onclick="runStockSearch()">ค้นใน Envato</button>
+        <button class="primary grow" onclick="runStockSearch()">ค้นภาพประกอบ</button>
       </div>
       <div class="busy" id="stBusy"></div>
-      <div class="hint">บอทจะค้นในหน้าต่าง Chrome ที่พี่ล็อกอินไว้ แล้วส่งภาพผลลัพธ์กลับมา · การกดโหลดยังต้องเป็นพี่กดเอง เพราะผูกกับใบอนุญาตของบัญชี</div>
+      <div class="hint">ค้นคลิปฟรีจาก Pixabay (ใส่รหัสในหน้าตั้งค่า) กดใช้คลิปไหน ระบบเก็บลงโฟลเดอร์ภาพประกอบให้</div>
     </div>
     <div id="stockTerms" class="list-grid"></div>
     <div id="stockResult"></div>
@@ -1508,38 +1508,14 @@ async function runStockSearch() {
   if (!query) return;
   const busy = document.getElementById('stBusy');
   const out = document.getElementById('stockResult');
-  // free stock (Pixabay) is the default; Envato only when Settings says so
-  const cfg = await fetch('/api/kit/config').then(r => r.json()).catch(() => ({options: {}}));
-  if ((cfg.options.stock_source || 'free') === 'free') {
-    busy.innerHTML = '<span class="spin"></span> กำลังค้น "' + query + '" ใน Pixabay…';
-    out.innerHTML = '';
-    try {
-      const r = await api('stock/free-search', {query, count: 6});
-      busy.textContent = 'เจอ ' + r.items.length + ' คลิปฟรี' + (r.missing_keys.length ? ' · ยังไม่ใส่รหัส ' + r.missing_keys.join(', ') + ' (ตั้งค่า)' : '') +
-        (r.errors.length ? ' · ⚠️ ' + r.errors.join(' · ') : '');
-      renderFree(r.items);
-    } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
-    return;
-  }
-  busy.innerHTML = '<span class="spin"></span> ส่งงานให้บอท…';
+  busy.innerHTML = '<span class="spin"></span> กำลังค้น "' + query + '" ใน Pixabay…';
   out.innerHTML = '';
   try {
-    const job = await api('stock/search', {query: query, count: 4});
-    busy.innerHTML = '<span class="spin"></span> บอทกำลังค้น "' + query + '" …';
-    for (let i = 0; i < 60; i++) {
-      await new Promise(r => setTimeout(r, 3000));
-      const r = await api('stock/result/' + job.job_id);
-      if (r.status === 'done' || r.status === 'failed' || r.status === 'needs_human') {
-        busy.textContent = r.status === 'done' ? 'เจอ ' + r.items.length + ' คลิป'
-                                               : '⚠ ' + (r.error || r.status);
-        renderStock(r);
-        return;
-      }
-    }
-    busy.textContent = 'บอทยังไม่ตอบ — เช็คว่าตัวบอทเปิดอยู่ไหม';
-  } catch (e) {
-    busy.textContent = '❌ ' + ckErr(e);
-  }
+    const r = await api('stock/free-search', {query, count: 6});
+    busy.textContent = 'เจอ ' + r.items.length + ' คลิปฟรี' + (r.missing_keys.length ? ' · ยังไม่ใส่รหัส ' + r.missing_keys.join(', ') + ' (ตั้งค่า)' : '') +
+      (r.errors.length ? ' · ⚠️ ' + r.errors.join(' · ') : '');
+    renderFree(r.items);
+  } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 
 // free clips: hover to play, one click saves it into the stock folder (free/<source>-<id>.mp4)
@@ -1562,39 +1538,6 @@ function renderFree(items) {
     out.appendChild(d);
   });
 }
-function renderStock(r) {
-  document.getElementById('stockResult').className = '';
-  const out = document.getElementById('stockResult');
-  out.innerHTML = '';
-  if (r.screenshot) {
-    const img = document.createElement('img');
-    img.src = r.screenshot;
-    img.style.cssText = 'width:100%;border-radius:14px;border:1px solid var(--line);margin-bottom:10px';
-    out.appendChild(img);
-  }
-  (r.items || []).forEach(it => {
-    const a = document.createElement('a');
-    a.className = 'tile';
-    a.href = it.url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.style.cssText = 'text-decoration:none;color:inherit';
-    const ico = it.thumb ? '<img src="' + it.thumb + '" style="width:96px;height:54px;object-fit:cover;border-radius:8px">'
-                         : '<div class="ico">🎞️</div>';
-    a.innerHTML = ico + '<div class="body"><div class="t1">' +
-      it.title + '</div><div class="t2">เปิดหน้านี้เพื่อกดโหลดเอง</div></div><div class="go">›</div>';
-    out.appendChild(a);
-  });
-  if (r.search_url) {
-    const a = document.createElement('a');
-    a.className = 'hint';
-    a.href = r.search_url;
-    a.target = '_blank';
-    a.textContent = 'เปิดหน้าค้นหาเต็มใน Envato';
-    out.appendChild(a);
-  }
-}
-
 /* ── background music ─────────────────────────────── */
 let musicLib = [];
 let musicLoad = null;
@@ -1780,7 +1723,7 @@ const GUIDE = [
   {key: 'check', label: 'ตรวจแก้คำผิดในซับ',      run: () => openSubs()},
   {key: 'style', label: 'ปรับสไตล์ซับ',           run: () => { openAllTools(); jump('c-style'); }},
   {key: 'motion', label: 'หัวคลิป / คำโปรยเคลื่อนไหว', run: () => { openAllTools(); jump('c-motion'); }},
-  {key: 'broll', label: 'หาภาพประกอบ (Envato)',   run: () => openStock()},
+  {key: 'broll', label: 'หาภาพประกอบ',   run: () => openStock()},
   {key: 'music', label: 'ใส่เพลง / เสียงประกอบ',  run: () => { openAllTools(); jump('c-music'); }},
   // last: the cover needs the finished clip and its title
   {key: 'cover', label: 'ทำปก (ขั้นสุดท้าย)',      run: () => { const d = state.draft;
@@ -1799,7 +1742,7 @@ const WZ = [
   {key: 'text', label: '🅰️ ตัวหนังสือ', help: 'สไตล์ซับ จัดวางข้อความ ตัวหนังสือเคลื่อนไหว และเสียง Pop',
    main: [['⬜ ซับขาว ภาษาไทย', () => subsLang('th')], ['⬜ ซับขาว ภาษาอังกฤษ', () => subsLang('en')]], show: ['c-subanim', 'c-overlay', 'c-style', 'c-layout']},
   {key: 'music', label: '🎵 เพลง', help: 'เลือกเพลงคลอจากคลัง', show: ['c-music']},
-  {key: 'broll', label: '🖼️ ภาพประกอบ', help: 'ค้นภาพจาก Envato ตามคำพูดในคลิป เลือกเฉพาะที่ใช้ (โหลด 1 ภาพ = ใช้สิทธิ์ 1 ครั้ง)',
+  {key: 'broll', label: '🖼️ ภาพประกอบ', help: 'ค้นคลิปฟรีจาก Pixabay ตามคำพูดในคลิป เลือกเฉพาะที่ใช้',
    main: [['🔍 หาภาพประกอบ', () => openStock()]]},
   {key: 'cover', label: '🏷️ ปก', help: 'เลือกภาพจากคลิป ใส่หัวข้อ แล้วได้ไฟล์ปก',
    main: [['🖼️ ทำปก', () => { const src = (state.draft.sources || [])[0] || ''; location.href = '/cover.html?src=' + encodeURIComponent(src) + '&l1=' + encodeURIComponent(state.draft.name); }]]},
