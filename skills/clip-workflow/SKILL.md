@@ -36,7 +36,7 @@ Show the list to the person before cutting.
 - Colours, sizes and positions come from the project's subtitle preset (`presets/<name>.json`).
 
 ## 5. B-roll inserts
-Use the `broll-finder` skill: transcript -> keyword list -> Envato search -> HTML picker -> the person ticks -> bot downloads. Place each insert on the exact spoken keyword it shows.
+`scripts/run_clip.py` fills free Pixabay b-roll and lists one search link per spot; the person downloads anything else by hand and it goes in with `--insert-from`. Place each insert on the exact spoken keyword it shows.
 
 ## 6. Audio
 Music under the voice (volume from the style skill). SFX only where the style skill says.

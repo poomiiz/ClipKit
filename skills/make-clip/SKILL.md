@@ -1,6 +1,6 @@
 ---
 name: make-clip
-description: One-request runner for a whole short clip - "ทำคลิปนี้", "ตัดคลิปจากไฟล์นี้", "ทำคลิปสั้นไม่เกิน 2 นาที", "make a clip from this footage", "ทำเป็นโปรเจกต์ CapCut ด้วย", and the commands the ClipKit app asks the person to paste ("ClipKit: แบ่งเรื่อง ...", "ClipKit: เลือกคำเน้น ..."). Runs scripts/run_clip.py end to end (transcribe, stories, cuts, subtitles in the person's preset, title, b-roll, music, MP4 and/or CapCut project) and does its two thinking steps. Use this as the entry point; it uses broll-finder and clip-qc.
+description: One-request runner for a whole short clip - "ทำคลิปนี้", "ตัดคลิปจากไฟล์นี้", "ทำคลิปสั้นไม่เกิน 2 นาที", "make a clip from this footage", "ทำเป็นโปรเจกต์ CapCut ด้วย", and the commands the ClipKit app asks the person to paste ("ClipKit: แบ่งเรื่อง ...", "ClipKit: เลือกคำเน้น ..."). Runs scripts/run_clip.py end to end (transcribe, stories, cuts, subtitles in the person's preset, title, b-roll, music, MP4 and/or CapCut project) and does its two thinking steps. Use this as the entry point; it uses clip-qc.
 ---
 
 # Make a clip (entry point)
@@ -23,15 +23,15 @@ list: the `presets/` folder; none they like: make one, see **Subtitle presets**)
 rarely change.
 It transcribes, splits into stories, makes one project per story (face crop, subtitles, silences trimmed,
 subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the HyperFrames page, and writes
-`<video> - ClipKit.html` with one Envato search link per b-roll spot. Rerunning skips every finished step.
+`<video> - ClipKit.html` with one Pixabay search link per b-roll spot. Rerunning skips every finished step.
 1. Run it. Output is one JSON line per step.
 2. `{"WAIT": ...}` (exit 2) = a thinking step is yours: do the pasted command(s) below (`แบ่งเรื่อง`, then
    `เลือกคำเน้น` for each project), keep stories within `--max` seconds, then run the same command again.
 3. Pilot rule: without `--all` only story 1 is built. Send the person the HTML file and wait for their OK
    before `--all`.
-4. Envato: the person opens the links, downloads into each project's `clipkit_insert` folder (name starts with
+4. Stock links: the person opens the links, downloads into each project's `clipkit_insert` folder (name starts with
    the link number, e.g. `2 coffee.mp4`), then you run with `--insert`; or downloads them in link order into one empty
-   folder and you run with `--insert-from "<folder>"` (the page numbers links across all projects). Never log in to Envato for them.
+   folder and you run with `--insert-from "<folder>"` (the page numbers links across all projects). Never log in to a stock site for them.
 5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
    tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
 6. Before showing the person any project, do the `ClipKit: ตรวจคำผิด` steps below on it. This is not optional and

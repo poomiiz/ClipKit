@@ -1,4 +1,4 @@
-"""Settings API for the ClipKit app: machine check, setup, config folders, Envato login, update.
+"""Settings API for the ClipKit app: machine check, setup, config folders, update.
 
 Local tool only (the app binds 127.0.0.1). Long jobs (setup, update, login) run in the background
 and report through GET /api/kit/job/{name}.
@@ -24,8 +24,8 @@ EXAMPLE = KIT / "config.example.json"
 
 # keys the settings page may edit; everything else in config.json is kept untouched
 FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx", "output_dir", "models_dir", "capcut_resources", "fonts_dir"]
-TEXT_KEYS = ["card_font", "envato_backend", "whisper_device", "whisper_model", "bot_api_url", "workspace",
-             "stock_source", "pixabay_key"]
+TEXT_KEYS = ["card_font", "whisper_device", "whisper_model", "bot_api_url", "workspace",
+             "pixabay_key"]
 # standard layout under one workspace folder: every machine in the team looks the same
 WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stock_music": "stock\\music",
                     "sfx": "sfx", "output_dir": "output", "models_dir": "models"}
@@ -1032,11 +1032,6 @@ def draft_delete(body: DraftPath) -> dict[str, str]:
 def run_setup() -> dict[str, Any]:
     return _start("setup", ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                             str(KIT / "scripts" / "setup.ps1")])
-
-
-@router.post("/envato-login")
-def envato_login() -> dict[str, Any]:
-    return _start("envato-login", [sys.executable, str(KIT / "scripts" / "envato.py"), "login"])
 
 
 @router.post("/update")

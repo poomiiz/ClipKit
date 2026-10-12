@@ -2,14 +2,14 @@
 
     python scripts/run_clip.py "<video>"                 # pilot: story 1 only
     python scripts/run_clip.py "<video>" --all           # every story
-    python scripts/run_clip.py "<video>" --insert        # put the downloaded Envato clips in
+    python scripts/run_clip.py "<video>" --insert        # put the downloaded stock clips in
     python scripts/run_clip.py "<video>" --all --export  # MP4 for every story
     python scripts/run_clip.py "<video>" --all --no-ai --capcut  # no AI step: straight to CapCut projects
-    python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>"  # Envato files downloaded there
+    python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>"  # stock files downloaded there
 
 Steps: transcribe -> split into stories (max --max seconds) -> one project per story (crop on the face,
 subtitles, silences trimmed, subtitle look, zoom cut) -> punch words and b-roll searches -> free Pixabay
-b-roll -> cover -> HyperFrames page -> "<video> - ClipKit.html" with Envato search links -> MP4 on --export.
+b-roll -> cover -> HyperFrames page -> "<video> - ClipKit.html" with Pixabay search links -> MP4 on --export.
 
 Two steps need judgement and are done by the AI agent (skill make-clip): splitting stories and picking punch
 words. When one is missing the script prints `WAIT` with the command to run and exits 2; the agent does it
@@ -40,7 +40,7 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--export", action="store_true", help="render the MP4s")
     ap.add_argument("--capcut", action="store_true", help="also lay the finished clip out as a CapCut project to keep editing")
     ap.add_argument("--insert-from", metavar="FOLDER",
-                    help="move the Envato files downloaded into FOLDER into each project by the page's link numbers, then --insert")
+                    help="move the stock files downloaded into FOLDER into each project by the page's link numbers, then --insert")
     ap.add_argument("--insert-sheet", metavar="FOLDER",
                     help="picture + prompt of the videos in FOLDER for a web AI to match to the links (answer: --insert-plan)")
     ap.add_argument("--insert-plan", metavar="ANSWER", help="with --insert-from: the web AI's JSON answer to --insert-sheet")
@@ -188,14 +188,14 @@ def insert(path: str) -> int:
     for i, q in enumerate(qs, 1):
         f = numbered.get(i) or (rest.pop(0) if rest else None)
         if f:
-            chosen[q] = {"file": str(f), "source": "envato", "id": f.name, "thumb": "", "page": ""}
+            chosen[q] = {"file": str(f), "source": "manual", "id": f.name, "thumb": "", "page": ""}
     out.write_text(json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
     (Path(path) / "clipkit_placed.json").unlink(missing_ok=True)  # the export follows the new b-roll list
     return len(files)
 
 
 def _links(sts: list[dict], picked, state: dict) -> list[tuple[str, int, str]]:
-    """(project, its own link number, search) for every Envato link on the page, in page order."""
+    """(project, its own link number, search) for every stock search link on the page, in page order."""
     out = []
     for n in picked:
         st = sts[n - 1]
@@ -271,7 +271,7 @@ def sheet(raw: str, sts: list[dict], picked, state: dict, folder: str) -> tuple[
 
 
 def place(raw: str, sts: list[dict], picked, state: dict, folder: str, plan: str | None = None) -> list[dict]:
-    """Envato files a person downloaded into one folder, moved into each project's clipkit_insert. With plan (a
+    """Stock files a person downloaded into one folder, moved into each project's clipkit_insert. With plan (a
     web AI's answer to sheet()), its {"file", "link"} pairs; without, by the page's numbers (counted across all
     projects): a file whose name starts with a number goes to that link, the others fill the links still empty in
     download order. Any bad pairing raises before anything moves."""
@@ -324,12 +324,12 @@ def page(raw: str, rows: list[dict]) -> Path:
     parts, k = [], 0
     for r in rows:
         links = "".join(
-            f'<li><a href="https://elements.envato.com/stock-video/{quote(q)}" target="_blank">{k + i}. {html.escape(q)}</a>'
+            f'<li><a href="https://pixabay.com/videos/search/{quote(q)}/" target="_blank">{k + i}. {html.escape(q)}</a>'
             f'{" · มีแล้ว (Pixabay)" if q in r["have"] else ""}</li>' for i, q in enumerate(r["queries"], 1))
         k += len(r["queries"])
         parts.append(f"""<section><h2>{r['n']}. {html.escape(r['title'])} <small>{r['length']} วิ</small></h2>
 <p><a href="{Path(r['hf']).as_uri()}">▶ ดูคลิป (HyperFrames)</a>{f' · <a href="{Path(r["mp4"]).as_uri()}">MP4</a>' if r.get('mp4') else ''}</p>
-<p>โหลดคลิปจาก Envato ทีละลิงก์ตามลำดับเลข ลงโฟลเดอร์ว่างโฟลเดอร์เดียว (ข้ามลิงก์ไหน ให้ตั้งชื่อไฟล์ขึ้นต้นด้วยเลขลิงก์ เช่น <code>7 coffee.mp4</code>)
+<p>โหลดคลิปทีละลิงก์ตามลำดับเลข ลงโฟลเดอร์ว่างโฟลเดอร์เดียว (ข้ามลิงก์ไหน ให้ตั้งชื่อไฟล์ขึ้นต้นด้วยเลขลิงก์ เช่น <code>7 coffee.mp4</code>)
 แล้วสั่งคำสั่งเดิมเติม <code>--insert-from "&lt;โฟลเดอร์นั้น&gt;"</code></p><ol style="list-style:none;padding:0">{links}</ol></section>""")
     out.write_text(f"""<!doctype html><html lang="th"><head><meta charset="utf-8"><title>{html.escape(Path(raw).stem)} · ClipKit</title>
 <style>body{{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#111;color:#eee}}
@@ -394,12 +394,12 @@ def main() -> int:
             note = ""
             try:
                 timed("b-roll Pixabay", ve.broll_fill, path)
-            except video_edit.VideoEditError as exc:  # no Pixabay key / offline: the Envato links still cover it
+            except video_edit.VideoEditError as exc:  # no Pixabay key / offline: the search links still cover it
                 note = str(exc)
             if not json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8")).get("cover"):
                 timed("ปก", ve.auto_cover, path)
             row = {"n": n, "title": st["title"], "path": path, "hf": str(timed("หน้า HyperFrames", hf_build.build, path)),
-                   "queries": timed("คำค้น Envato", queries, path),
+                   "queries": timed("คำค้นภาพประกอบ", queries, path),
                    "length": round(timed("ความยาวคลิป", ve.draft_timeline, path)["duration"], 1), "pixabay": note}
             bf = Path(path) / "clipkit_broll.json"
             row["have"] = list(json.loads(bf.read_text(encoding="utf-8"))) if bf.is_file() else []
