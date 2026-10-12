@@ -1085,7 +1085,7 @@ def version() -> dict[str, Any]:
     return {"version": meta.get("version"), "commit": commit}
 
 
-# ── preset packs (.clipkit): hand subtitle presets, covers and motion to the team as one file ──
+# ── preset packs (.editorkrab): hand subtitle presets, covers and motion to the team as one file ──
 class PackPath(BaseModel):
     path: str
 
@@ -1125,7 +1125,7 @@ def pack_install(body: PackPath) -> dict[str, Any]:
 
 @router.post("/pack/make")
 def pack_make(body: PackMake) -> dict[str, Any]:
-    """Write <output_dir>/packs/<id>.clipkit."""
+    """Write <output_dir>/packs/<id>.editorkrab."""
     cfg = _read_config()
     base = Path(cfg.get("output_dir") or "")
     if not cfg.get("output_dir") or not base.is_dir():
