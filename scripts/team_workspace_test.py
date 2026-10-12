@@ -11,7 +11,7 @@ import team_workspace as w
 org=UUID('00000000-0000-0000-0000-000000000010');project=UUID('00000000-0000-0000-0000-000000000020');owner='00000000-0000-0000-0000-000000000001'
 def main():
  with TemporaryDirectory() as tmp:
-  root=Path(tmp);shared=root/'team';shared.mkdir();local=root/'private';local.mkdir()
+  root=Path(tmp).resolve();shared=root/'team';shared.mkdir();local=root/'private';local.mkdir()
   cfg={'team_workspaces':{str(org):{'path':str(shared),'tool':'syncthing'}}}
   app=FastAPI();app.include_router(w.router)
   item={'id':str(project),'owner_id':owner,'status':'editing','revision':2,'project_type':'capcut'}
@@ -47,9 +47,11 @@ def main():
    except HTTPException as e:assert e.status_code==403
    else:raise AssertionError('old owner bypassed API guard')
    import os
-   try:w.guard_paths({'path':os.path.relpath(local/'mine')},request)
+   here=os.getcwd();os.chdir(root)  # relative to cwd; relpath cannot cross Windows drives (repo on D:, TEMP on C:)
+   try:w.guard_paths({'path':os.path.join('private','mine')},request)
    except HTTPException as e:assert e.status_code==403
    else:raise AssertionError('relative path bypassed owner guard')
+   finally:os.chdir(here)
    assert client.post(path+'/open',json={'expected_revision':2}).status_code==403
    from app import app as full_app
    import base64

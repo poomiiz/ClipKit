@@ -47,7 +47,23 @@ import team_workspace  # noqa: E402
 from window_lifecycle import window_router  # noqa: E402
 
 PORT = int(os.environ.get("VIDEO_EDITOR_PORT", "8770"))
-WIDGET_ORIGINS = ("http://localhost:8765", "http://127.0.0.1:8765")
+# Optional local helper (the MoonRacle dashboard and bot): config.json "bot_api_url", empty = off. It may embed
+# these pages and restart a hung server; without it nothing outside this app is trusted.
+HELPER_URL = str(kit_settings._read_config().get("bot_api_url") or "").rstrip("/")
+
+
+def _widget_origins(url: str) -> tuple[str, ...]:
+    if not url:
+        return ()
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError(f'config.json "bot_api_url" must be an http(s) URL, got {url!r}')
+    port = f":{parts.port}" if parts.port else ""
+    hosts = {"localhost", "127.0.0.1"} if parts.hostname in ("localhost", "127.0.0.1") else {parts.hostname}
+    return tuple(sorted(f"{parts.scheme}://{h}{port}" for h in hosts))
+
+
+WIDGET_ORIGINS = _widget_origins(HELPER_URL)
 
 
 def jobs_running() -> bool:
@@ -70,7 +86,8 @@ app.include_router(kit_settings.router)
 app.include_router(style_lab_api.router)
 app.include_router(team_hub.router)
 app.include_router(team_workspace.router)
-app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested))
+app.include_router(window_router(PORT, exit_server, jobs_running, lambda: not app.state.exit_requested,
+                                 helper_url=HELPER_URL))
 
 
 @app.exception_handler(Exception)
