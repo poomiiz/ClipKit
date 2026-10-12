@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 
 import kit_settings
 
@@ -115,15 +115,6 @@ def rpc(request: Request, name: str, body: dict) -> Any:
     return _provider("/rest/v1/rpc/" + name, "POST", body, session(request)["access_token"])
 
 
-class Credentials(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
-    password: SecretStr
-
-
-class Signup(Credentials):
-    display_name: str = Field(min_length=1, max_length=120)
-
-
 class Setup(BaseModel):
     supabase_url: str = Field(max_length=500)
     supabase_anon_key: str = Field(min_length=1, max_length=5000)
@@ -192,26 +183,6 @@ def google_callback(request: Request, state: str = "", code: str = "", error: st
     except HTTPException:
         response.headers["location"] = "/login.html?login_error=1"
     return response
-
-
-@router.post("/signup")
-def signup(body: Signup, request: Request, response: Response) -> dict:
-    _same_origin(request)
-    password = body.password.get_secret_value()
-    if len(password) < 8:
-        raise HTTPException(400, "รหัสผ่านต้องยาวอย่างน้อย 8 ตัว")
-    data = _provider("/auth/v1/signup", "POST", {"email": body.email.strip(), "password": password,
-                    "data": {"display_name": body.display_name.strip()}})
-    return {"verification_required": not _remember(data, response)}
-
-
-@router.post("/login")
-def login(body: Credentials, request: Request, response: Response) -> dict:
-    _same_origin(request)
-    data = _provider("/auth/v1/token?grant_type=password", "POST", {"email": body.email.strip(), "password": body.password.get_secret_value()})
-    if not _remember(data, response):
-        raise HTTPException(401, "เข้าสู่ระบบไม่ได้")
-    return {"signed_in": True}
 
 
 @router.post("/logout")

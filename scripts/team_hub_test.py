@@ -1,5 +1,6 @@
 """Check the local auth boundary without calling a live identity provider."""
 import sys
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -10,6 +11,12 @@ from fastapi.testclient import TestClient
 import team_hub as hub
 
 
+def sign_in(client, data):
+    """A provider session as the Google callback leaves it; password sign-in no longer exists."""
+    hub._sessions["test-session"] = {**data, "expires_at": time.time() + 3600, "ends_at": time.time() + 86400}
+    client.cookies.set(hub.COOKIE, "test-session")
+
+
 def main():
     app = FastAPI()
     app.include_router(hub.router)
@@ -18,14 +25,10 @@ def main():
     hub._sessions.clear()
     with TestClient(app) as client, patch.object(hub, "_config", return_value=("https://hub.example.test", "public-key")), patch.object(hub, "_provider") as provider:
         assert client.get("/api/team/organizations").status_code == 401
-        assert client.post("/api/team/login", json={"email": user["email"], "password": "password"}, headers={"Origin": "https://other.example.test"}).status_code == 403
+        for gone in ("/api/team/login", "/api/team/signup"):   # password accounts were removed; Google only
+            assert client.post(gone, json={"email": user["email"], "password": "password"}).status_code == 404, gone
         provider.assert_not_called()
-        provider.return_value = session
-        response = client.post("/api/team/login", json={"email": user["email"], "password": "password"})
-        assert response.status_code == 200
-        cookie = response.headers["set-cookie"].lower()
-        assert "httponly" in cookie and "samesite=lax" in cookie
-        assert "provider-access" not in response.text and "provider-refresh" not in response.text
+        sign_in(client, session)
         assert client.get("/api/team/session").json()["user"] == {"id": user["id"], "email": user["email"], "display_name": "Editor"}
         provider.return_value = "new-org"
         assert client.post("/api/team/organizations", json={"name": "Team"}).json() == {"id": "new-org"}
@@ -43,9 +46,9 @@ def main():
         assert client.get("/api/team/organizations").status_code == 401
     with TestClient(app) as client, patch.object(hub.kit_settings, "_read_config", return_value={}):
         assert client.get("/api/team/session").json() == {"configured": False, "signed_in": False}
-        assert client.post("/api/team/signup", json={"email": user["email"], "password": "password", "display_name": "Editor"}).status_code == 503
+        assert client.post("/api/team/google", json={}).status_code == 503
     with TestClient(app) as client, patch.object(hub.kit_settings, "_read_config", return_value={"supabase_url": "https://hub.example.test", "supabase_anon_key": "sb_secret_private"}):
-        assert client.post("/api/team/login", json={"email": user["email"], "password": "password"}).status_code == 503
+        assert client.post("/api/team/google", json={}).status_code == 503
         assert client.get("/api/team/setup").json()["supabase_anon_key"] == ""
     with TemporaryDirectory() as folder, TestClient(app) as client, patch.object(hub.kit_settings, "CONFIG", Path(folder)/"config.json"), patch.object(hub.kit_settings, "_read_config", return_value={"work_root":"preserved"}):
         setup={"supabase_url":"https://hub.example.test","supabase_anon_key":"sb_publishable_public"}
