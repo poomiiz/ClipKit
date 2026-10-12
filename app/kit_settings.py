@@ -5,6 +5,7 @@ and report through GET /api/kit/job/{name}.
 """
 from __future__ import annotations
 
+import atomic
 import json
 import subprocess
 import sys
@@ -132,7 +133,7 @@ def save_config(body: ConfigUpdate) -> dict[str, Any]:
     if missing:
         raise HTTPException(400, "folder not found: " + "; ".join(missing))
     cfg.update({k: v for k, v in body.values.items()})
-    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic.write_text(CONFIG, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"saved": True, "note": "restart the app for scripts already running to pick up new paths"}
 
 
@@ -158,7 +159,7 @@ def set_workspace(body: Workspace) -> dict[str, Any]:
         found = capcut_default_drafts()
         if found:
             cfg["capcut_drafts"] = found
-    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic.write_text(CONFIG, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"saved": True, "paths": paths, "capcut_drafts": cfg.get("capcut_drafts", "")}
 
 
@@ -219,7 +220,7 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
             raise HTTPException(500, "hyperframes init failed: " + (p.stderr or p.stdout).strip()[-600:])
         if src.name.endswith("-source" + src.suffix) and src.parent == root:
             src.unlink()  # init copied the cut into the project; the loose copy would outlive a deleted project
-    (project / "clipkit.json").write_text(json.dumps({"raw": body.file, "start": body.start, "end": body.end},
+    atomic.write_text((project / "clipkit.json"), json.dumps({"raw": body.file, "start": body.start, "end": body.end},
                                                      ensure_ascii=False), encoding="utf-8")
     _stop_studio()
     _hf_preview["proc"] = subprocess.Popen(
@@ -293,7 +294,7 @@ def make_cover(body: CoverRequest) -> dict[str, Any]:
     page, n = re.subn(r"const COVER = \{.*?\};", lambda _: f"const COVER = {cover};", page, count=1, flags=re.S)  # COVER spans several lines in the template
     if not n:
         raise HTTPException(500, "template has no COVER line")
-    (work / "index.html").write_text(page, encoding="utf-8")
+    atomic.write_text((work / "index.html"), page, encoding="utf-8")
     frames = work / "_frames"
     env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
     r = subprocess.run([npx, "--yes", f"hyperframes@{HF_VERSION}", "render", "--format", "png-sequence", "--quiet",
@@ -367,7 +368,7 @@ def library_hide(body: Hide) -> dict[str, Any]:
     hidden = set(cfg.get("library_hidden") or [])
     hidden = set() if body.restore and not body.keys else hidden - set(body.keys) if body.restore else hidden | set(body.keys)
     cfg["library_hidden"] = sorted(hidden)
-    CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic.write_text(CONFIG, json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"hidden": len(hidden)}
 
 
@@ -418,7 +419,7 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     page, n = re.subn(r'data-duration="[\d.]+"', f'data-duration="{length:g}"', page)
     if not n:
         raise HTTPException(500, "template has no data-duration")
-    (work / "index.html").write_text(page, encoding="utf-8")
+    atomic.write_text((work / "index.html"), page, encoding="utf-8")
     name = re.sub(r'[\\/:*?"<>|]+', "", body.name).strip()[:40] or body.template
     target = out_dir / f"{name}.mov"
     env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
@@ -617,7 +618,7 @@ def pick(start: str = "") -> dict[str, str]:
     """Windows' own Open dialog: pick a video file, or open a folder and press Open to take the whole folder
     (the classic 'file name = select this folder' trick, since Windows has no single file-or-folder dialog)."""
     script = Path(tempfile_dir()) / "clipkit_pick.ps1"
-    script.write_text(PICK_PS, encoding="utf-8-sig")   # BOM: Windows PowerShell reads Thai text correctly
+    atomic.write_text(script, PICK_PS, encoding="utf-8-sig")   # BOM: Windows PowerShell reads Thai text correctly
     # CREATE_NO_WINDOW: no black console window behind the dialog (only the Open dialog shows)
     p = subprocess.run(["powershell", "-NoProfile", "-STA", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
                         "-File", str(script), start],
@@ -774,7 +775,7 @@ def report_bug(text: str, page: str = "", errors: list[str] | None = None, auto:
     folder = KIT / "bug_reports"
     folder.mkdir(exist_ok=True)
     f = folder / f"{time.strftime('%Y%m%d-%H%M%S')}.json"
-    f.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(f, json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         if _send_report(report):
             return {"saved": str(f), "sent": True}
@@ -818,7 +819,7 @@ def footage_name(body: FootageName) -> dict[str, str]:
         names[key] = name
     else:
         names.pop(key, None)
-    FOOTAGE_NAMES.write_text(json.dumps(names, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(FOOTAGE_NAMES, json.dumps(names, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"name": name or p.stem}
 
 
@@ -856,7 +857,7 @@ def _delivery_statuses() -> dict[str, Any]:
 
 def _save_delivery_statuses(statuses: dict[str, Any]) -> None:
     temporary = DELIVERY_STATUSES.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(statuses, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(temporary, json.dumps(statuses, ensure_ascii=False, indent=1), encoding="utf-8")
     temporary.replace(DELIVERY_STATUSES)
 
 
@@ -946,7 +947,7 @@ def draft_rename(body: DraftPath) -> dict[str, str]:
             m = json.loads(meta.read_text(encoding="utf-8"))
             m["draft_name"] = new
             m["draft_fold_path"] = target.as_posix()
-            meta.write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+            atomic.write_text(meta, json.dumps(m, ensure_ascii=False), encoding="utf-8")
         if rm.is_file():
             shutil.copy2(rm, rm.with_suffix(".json.bak"))
             r = json.loads(rm.read_text(encoding="utf-8"))
@@ -957,7 +958,7 @@ def draft_rename(body: DraftPath) -> dict[str, str]:
                     for k in ("draft_fold_path", "draft_json_file", "draft_cover"):
                         if isinstance(e.get(k), str):
                             e[k] = e[k].replace(old_posix, target.as_posix()).replace(str(p), str(target))
-            rm.write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
+            atomic.write_text(rm, json.dumps(r, ensure_ascii=False), encoding="utf-8")
     else:
         p.rename(target)
     with _delivery_lock:

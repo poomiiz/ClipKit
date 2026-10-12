@@ -6,6 +6,7 @@ must be closed while these run, otherwise it overwrites the file on exit.
 """
 from __future__ import annotations
 
+import atomic
 import copy
 import json
 import os
@@ -41,7 +42,7 @@ def _digest(text: str) -> str:
 
 def _seal(folder: Path, text: str) -> None:
     """Remember what ClipKit last wrote, so an edit made outside ClipKit is caught before ClipKit builds on it."""
-    (folder / SEAL).write_text(json.dumps({"draft_content": _digest(text)}), encoding="utf-8")
+    atomic.write_text((folder / SEAL), json.dumps({"draft_content": _digest(text)}), encoding="utf-8")
 
 
 def accept(folder: str) -> None:
@@ -72,7 +73,7 @@ def sync_timeline(folder: Path, text: str) -> None:
         tid = json.loads(proj.read_text(encoding="utf-8")).get("main_timeline_id")
         inner = folder / "Timelines" / str(tid)
         if tid and inner.is_dir():
-            (inner / "draft_content.json").write_text(text, encoding="utf-8")
+            atomic.write_text((inner / "draft_content.json"), text, encoding="utf-8")
 
 
 def fresh_ids(folder: Path) -> str:
@@ -84,14 +85,14 @@ def fresh_ids(folder: Path) -> str:
     if proj.is_file():
         old = json.loads(proj.read_text(encoding="utf-8")).get("main_timeline_id")
         if old:
-            proj.write_text(proj.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+            atomic.write_text(proj, proj.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
             if (folder / "Timelines" / old).is_dir():
                 (folder / "Timelines" / old).rename(folder / "Timelines" / new)
     if content.is_file():
         draft = json.loads(content.read_text(encoding="utf-8"))
         draft["id"] = new
         text = json.dumps(draft, ensure_ascii=False, indent=2)
-        content.write_text(text, encoding="utf-8")
+        atomic.write_text(content, text, encoding="utf-8")
         sync_timeline(folder, text)
         _seal(folder, text)
     return new
@@ -246,7 +247,7 @@ def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
         shutil.copy2(content, backup)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
     before = content.read_text(encoding="utf-8")
-    content.write_text(text, encoding="utf-8")
+    atomic.write_text(content, text, encoding="utf-8")
     sync_timeline(folder, text)
     _seal(folder, text)
     _log_change(folder, before, text, op)  # after the write: the draft bot (watch) never sees history ahead of the file
@@ -256,7 +257,7 @@ def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
         if "tm_duration" in meta:
             meta["tm_duration"] = draft.get("duration", meta["tm_duration"])
             meta["tm_draft_modified"] = int(time.time() * US)
-            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic.write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _text_track(draft: dict[str, Any]) -> dict[str, Any] | None:
@@ -520,7 +521,7 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
     if line_h is not None:
         style_file = folder / "clipkit_style.json"
         style = json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {}
-        style_file.write_text(json.dumps({**style, "line_h": line_h}, ensure_ascii=False), encoding="utf-8")
+        atomic.write_text(style_file, json.dumps({**style, "line_h": line_h}, ensure_ascii=False), encoding="utf-8")
     return {"name": folder.name, "restyled": changed}
 
 
@@ -584,7 +585,7 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
             segments.append(seg)
     track["segments"] = segments
     _save(folder, draft, "tidy")
-    said_file.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text(said_file, json.dumps(words, ensure_ascii=False), encoding="utf-8")
     return {"name": folder.name, "mode": mode, "subtitles": len(segments), "two_lines": two, "split": split,
             "shrunk": shrunk, "moved_words": moved}
 
@@ -606,7 +607,7 @@ def subtitles_language(path: str, lang: str) -> dict[str, Any]:
     keep = folder / "clipkit_subs_th.json"
     if lang == "en":
         if not keep.is_file():
-            keep.write_text(json.dumps(current, ensure_ascii=False), encoding="utf-8")
+            atomic.write_text(keep, json.dumps(current, ensure_ascii=False), encoding="utf-8")
         thai = json.loads(keep.read_text(encoding="utf-8"))
         en_file = folder / "clipkit_subs_en.json"   # written by the agent: one English line per Thai line
         if not en_file.is_file():
@@ -778,7 +779,7 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                 s0 = shifted(sub["start"])
                 said[sub["text"]] = [[round(shifted(sub["start"] + a) - s0, 2), round(shifted(sub["start"] + b) - s0, 2), w]
                                      for a, b, w in said[sub["text"]]]
-        words_file.write_text(json.dumps(said, ensure_ascii=False), encoding="utf-8")
+        atomic.write_text(words_file, json.dumps(said, ensure_ascii=False), encoding="utf-8")
     draft["duration"] = timeline
     _save(folder, draft, "trim")
     preview.update(applied=True, segments=len(segments),
@@ -879,7 +880,7 @@ def transcribe_draft(path: str) -> dict[str, Any]:
                                      for a, b, w in phrase.get("words", [])]
         cursor += length
     # spoken word times per subtitle line, for the word-by-word highlight in the MP4 export
-    (folder / "clipkit_words.json").write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
+    atomic.write_text((folder / "clipkit_words.json"), json.dumps(words, ensure_ascii=False), encoding="utf-8")
 
     lines.sort(key=lambda p: p["start"])
     for first, second in zip(lines, lines[1:]):
@@ -1485,5 +1486,5 @@ def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
                 data[new] = data.pop(old)
                 if name == "clipkit_punch.json":
                     data[new] = _repick(data[new], old, new)
-                f.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+                atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"changed": hit}

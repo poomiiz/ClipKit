@@ -6,6 +6,7 @@ Round 1 covers what ClipKit itself makes: the main video track and the main text
 """
 from __future__ import annotations
 
+import atomic
 import json
 import re
 import subprocess
@@ -764,7 +765,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             base = f"[bo{k}]"
         if events:
             fam0 = family or _font(None)[0]
-            (Path(tmp) / "subs.ass").write_text(
+            atomic.write_text((Path(tmp) / "subs.ass"), 
                 "[Script Info]\nScriptType: v4.00+\nPlayResX: %d\nPlayResY: %d\nWrapStyle: 2\n\n"
                 "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, "
                 "Shadow, Alignment, Encoding\nStyle: S,%s,60,&H00FFFFFF,&H00000000,1,0,0,5,1\n\n"

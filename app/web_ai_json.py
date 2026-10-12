@@ -9,6 +9,7 @@ The same file works for an AI on this machine: it saves the JSON to answer_file(
 """
 from __future__ import annotations
 
+import atomic
 import json
 import re
 from pathlib import Path
@@ -43,7 +44,7 @@ def answer_file(step: str, target: str) -> Path:
 def _packet(prompt: str, data: dict[str, Any], out: Path) -> Path:
     ans = out.with_suffix(".answer.json")
     ans.unlink(missing_ok=True)  # an answer to an older export must not be imported for this one
-    out.write_text(f"> ถ้าคุณเขียนไฟล์ในเครื่องนี้ได้ (เช่น Claude Code): ไม่ต้องตอบในแชต ให้บันทึก JSON คำตอบ "
+    atomic.write_text(out, f"> ถ้าคุณเขียนไฟล์ในเครื่องนี้ได้ (เช่น Claude Code): ไม่ต้องตอบในแชต ให้บันทึก JSON คำตอบ "
                    f"(ตามหัวข้อ ตอบกลับ ด้านล่าง ไม่ต้องมี ```) ลงไฟล์ `{ans}` แล้ว ClipKit จะนำเข้าเอง\n\n"
                    + prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
                    + json.dumps(data, ensure_ascii=False, indent=1) + "\n```\n", encoding="utf-8")
@@ -78,7 +79,7 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
     if not subs:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
     lines = [s["text"] for s in subs]
-    (Path(path) / "clipkit_lines.json").write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text((Path(path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "caption_language": _caption_lang(path),
             "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)]}
     prompt = _prompt("clip.md")
@@ -133,7 +134,7 @@ def import_stories(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
         if not any(p["start"] >= a - 0.5 and p["end"] <= b + 0.5 for p in phrases):
             raise VideoEditError(f"เรื่องที่ {n} '{it['title']}' ({a}-{b} วิ) ไม่มีเสียงพูดในช่วงนั้น")
         out.append({"title": it["title"].strip(), "summary": str(it.get("summary", "")).strip(), "start": a, "end": b})
-    video_edit.stories_file(video).write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text(video_edit.stories_file(video), json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
 
 
@@ -202,11 +203,11 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
 
     folder = Path(path)
     written = ["clipkit_punch.json", "clipkit_hook.json"]
-    (folder / "clipkit_punch.json").write_text(json.dumps(punch, ensure_ascii=False, indent=1), encoding="utf-8")
-    (folder / "clipkit_hook.json").write_text(json.dumps([{"text": h["text"].strip(), "color": h["color"]} for h in hook],
+    atomic.write_text((folder / "clipkit_punch.json"), json.dumps(punch, ensure_ascii=False, indent=1), encoding="utf-8")
+    atomic.write_text((folder / "clipkit_hook.json"), json.dumps([{"text": h["text"].strip(), "color": h["color"]} for h in hook],
                                                          ensure_ascii=False, indent=1), encoding="utf-8")
     if caption is not None:
-        (folder / "clipkit_caption.json").write_text(json.dumps(caption, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic.write_text((folder / "clipkit_caption.json"), json.dumps(caption, ensure_ascii=False, indent=1), encoding="utf-8")
         written.append("clipkit_caption.json")
     if cut:  # the footage of each dropped line (up to the next line) goes, its subtitle with it
         ends = [max(s["end"], nxt["start"]) for s, nxt in zip(subs, subs[1:])] + [subs[-1]["end"]]

@@ -7,6 +7,7 @@ stays valid.
 """
 from __future__ import annotations
 
+import atomic
 import copy
 import json
 import os
@@ -827,7 +828,7 @@ def create_capcut_draft(video_path: str, project_name: str,
             seg["clip"]["scale"] = {"x": clip["scale"], "y": clip["scale"]}
             seg["clip"]["transform"] = {"x": clip["x"], "y": clip["y"]}
     _drop_unused_materials(draft)
-    content_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic.write_text(content_path, json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
 
     meta_path = target / "draft_meta_info.json"
     if meta_path.is_file():
@@ -858,7 +859,7 @@ def create_capcut_draft(video_path: str, project_name: str,
                     rough = value.get("roughcut_time_range")
                     if isinstance(rough, dict):
                         rough["duration"] = int(round(info["duration"] * US))
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     import capcut_edit  # here: capcut_edit imports this module
     capcut_edit.fresh_ids(target)  # own timeline id + the Timelines/<id> copy CapCut 9.x opens
 
