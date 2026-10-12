@@ -6,6 +6,7 @@ and report through GET /api/kit/job/{name}.
 from __future__ import annotations
 
 import atomic
+import jobstore
 import json
 import subprocess
 import sys
@@ -59,7 +60,7 @@ def capcut_default_drafts() -> str:
     return str(default) if default.is_dir() else ""
 
 router = APIRouter(prefix="/api/kit", tags=["kit-settings"])
-_jobs: dict[str, dict[str, Any]] = {}
+_jobs = jobstore.JobStore("kit")
 
 
 def _read_config() -> dict[str, Any]:
@@ -69,6 +70,7 @@ def _read_config() -> dict[str, Any]:
 
 def _run_job(name: str, cmd: list[str], cwd: Path = KIT) -> None:
     job = _jobs[name] = {"status": "running", "log": "", "started": time.time()}
+    _jobs.save()
     try:
         p = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, encoding="utf-8", errors="replace")
@@ -80,6 +82,7 @@ def _run_job(name: str, cmd: list[str], cwd: Path = KIT) -> None:
     except Exception as exc:  # report, never swallow
         job["status"] = "failed"
         job["log"] += f"\n{exc}"
+    _jobs.save()
 
 
 def _start(name: str, cmd: list[str]) -> dict[str, Any]:
