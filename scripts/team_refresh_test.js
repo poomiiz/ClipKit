@@ -23,3 +23,15 @@ const rendered=vm.runInNewContext('const d={};'+activity+'d.textContent',{
  person:id=>id,LABELS:{awaiting_review:'รอตรวจ',changes_requested:'ต้องแก้'}
 });
 assert(rendered.includes('เรื่องทดสอบ · lead · รอตรวจ → ต้องแก้ · แก้เสียง'));
+
+async function checkSignedOutEntry(){
+ const identityCode=source.slice(source.indexOf('async function loadIdentity()'),source.indexOf('async function loadOrganizations()'));
+ let redirected='',loaded=false;
+ const context={identity:null,team:async()=>({configured:true,signed_in:false}),$:()=>({}),
+  location:{replace:path=>{redirected=path;}},say:()=>{},loadOrganizations:async()=>{loaded=true;}};
+ await vm.runInNewContext(identityCode+';loadIdentity()',context);
+ assert.equal(redirected,'/login.html');
+ assert.equal(loaded,false,'Signed out users must not load organizational data');
+ console.log('PASS signed-out team returns to mandatory login');
+}
+checkSignedOutEntry().catch(error=>{console.error(error);process.exitCode=1;});
