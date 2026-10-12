@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>คลังสไตล์</title>
 <style>
-:root{--bg:#0c0f17;--card:#141824;--card2:#1b2030;--line:#262d40;--txt:#f1f4fb;--sub:#c5cde0;--mut:#828ca4;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
+:root{--bg:#0e0f12;--card:#16171b;--card2:#1d1f24;--line:#2a2c33;--txt:#ececf1;--sub:#c9cbd3;--mut:#8b8d98;--acc:#7c5cff;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 "Segoe UI","Leelawadee UI",system-ui,sans-serif}
 main{max-width:1200px;margin:0 auto;padding:22px 18px 60px}
@@ -31,7 +31,7 @@ code{display:block;padding:8px 10px;background:#080a10;border-radius:8px;font-si
 h3{font-size:14px;color:var(--sub);margin:16px 0 8px}
 .parts{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--sub)}.parts label{display:flex;gap:4px;align-items:center}
 </style>
-<link rel="stylesheet" href="/shell.css?v=7">
+<link rel="stylesheet" href="/shell.css?v=8">
 </head>
 <body>
 <main>
@@ -187,6 +187,6 @@ api('/api/style/capcut-projects').then(j => j.projects.forEach(p => {
 })).catch(e => { $('startMsg').textContent = '❌ ' + e.message; $('startMsg').className = 'msg bad'; });
 load();
 </script>
-<script src="/shell.js?v=10"></script>
+<script src="/shell.js?v=11"></script>
 </body>
 </html>

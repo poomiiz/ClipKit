@@ -1,4 +1,4 @@
-:root{--bg:#0c0f17;--card:#141824;--line:#262d40;--txt:#f1f4fb;--mut:#828ca4;--accent:#7c5cff}
+:root{--bg:#0e0f12;--card:#16171b;--line:#2a2c33;--txt:#ececf1;--mut:#8b8d98;--accent:#7c5cff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 "Segoe UI","Leelawadee UI",sans-serif}
 main{max-width:1200px;margin:auto;padding:24px 18px 90px}h1{font-size:23px;margin:0 0 8px}h2{font-size:18px;margin:0 0 12px}
 button,input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#1b2030;color:var(--txt)}

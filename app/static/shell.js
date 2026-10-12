@@ -14,6 +14,11 @@
     motion: '<path d="M4 7h10M4 12h16M4 17h7"/><path d="M18 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
     style: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
     drafts: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    bug: '<rect x="8" y="6" width="8" height="14" rx="4"/><path d="M9 6a3 3 0 016 0M3 13h5M16 13h5M4 8l4 2M20 8l-4 2M4 19l4-2M20 19l-4-2"/>',
+    restart: '<path d="M20 12a8 8 0 11-2.3-5.7"/><path d="M20 4v5h-5"/>',
+    power: '<path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1011.4 0"/>',
+    undo: '<path d="M9 14l-5-5 5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>',
   };
   window.CLIPKIT_ICONS = I;
@@ -32,7 +37,7 @@
     '<button class="sb-fold" id="sbFold" title="ย่อ / ขยายแถบซ้าย"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>' +
     NAV.map(([g, items]) => (g ? `<div class="sb-group">${g}</div>` : '<div style="height:8px"></div>') + items.map(([k, label, href]) =>
       `<a class="sb-item${isOn(href) ? ' on' : ''}" href="${href}" title="${label}">${svg(k)}<span>${label}</span></a>`).join('')).join('') +
-    '<button type="button" class="sb-item" id="ckCreateProject" title="สร้างโปรเจกต์ใหม่">➕<span>สร้างโปรเจกต์</span></button>' +
+    `<button type="button" class="sb-item" id="ckCreateProject" title="สร้างโปรเจกต์ใหม่">${svg('plus')}<span>สร้างโปรเจกต์</span></button>` +
     '<div class="sb-foot" id="sbVer">EditorKrab</div>';
   aside.querySelector('a[href="/styles.html"]').after(aside.querySelector('#ckCreateProject'));
   document.body.prepend(aside);
@@ -75,17 +80,17 @@
   // app-style icon bar, top right: report a bug, settings, restart, shut down
   const top = document.createElement('div');
   top.className = 'ck-top';
-  top.innerHTML = '<a href="#" id="sbBug" title="แจ้งปัญหา">🐞</a>' +
-    `<a href="/settings.html" title="ตั้งค่า"${isOn('/settings.html') ? ' class="on"' : ''}>⚙️</a>`;
+  top.innerHTML = `<a href="#" id="sbBug" title="แจ้งปัญหา">${svg('bug')}</a>` +
+    `<a href="/settings.html" title="ตั้งค่า"${isOn('/settings.html') ? ' class="on"' : ''}>${svg('settings')}</a>`;
   const pageTop = document.querySelector('.top');   // a page header: sit at its right end, else float top right
   (pageTop || document.body).append(top);
   top.classList.toggle('float', !pageTop);
   // Manual system controls: closing a page no longer owns the server lifetime.
   const controls = document.createElement('div');
   controls.className = 'sb-controls';
-  controls.innerHTML = '<div class="sb-control-buttons"><button type="button" id="ckRestart" title="รีสตาร์ต EditorKrab">🔄</button>' +
-    '<button type="button" id="ckShutdown" title="ปิดระบบ EditorKrab (หน่วง 1 นาที)">⏻</button>' +
-    '<button type="button" id="ckCancelShutdown" title="ยกเลิกการปิด" hidden>↩</button></div>' +
+  controls.innerHTML = '<div class="sb-control-buttons"><button type="button" id="ckRestart" title="รีสตาร์ต EditorKrab">' + svg('restart') + '</button>' +
+    '<button type="button" id="ckShutdown" title="ปิดระบบ EditorKrab (หน่วง 1 นาที)">' + svg('power') + '</button>' +
+    '<button type="button" id="ckCancelShutdown" title="ยกเลิกการปิด" hidden>' + svg('undo') + '</button></div>' +
     '<div id="ckSystemStatus" role="status" aria-live="polite"></div>';
   aside.insertBefore(controls, document.getElementById('sbVer'));
   const systemStatus = document.getElementById('ckSystemStatus');
