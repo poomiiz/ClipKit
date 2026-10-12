@@ -43,7 +43,7 @@ $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 $s.TargetPath = "powershell.exe"
 $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$root\app\start.ps1`""
 $s.WorkingDirectory = $root
-$s.IconLocation = "$root\app\static\editorkrab.ico"
+$s.IconLocation = "$root\app\static\editorkrab-crab.ico"
 $s.Description = "EditorKrab — ตัดคลิป จัดงาน จบในทีม"
 $s.Save()
 Write-Host "Desktop icon created: $lnk"
