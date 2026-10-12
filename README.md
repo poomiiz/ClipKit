@@ -1,4 +1,17 @@
-# ClipKit
+# EditorKrab
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.png">
+  <img src="docs/brand/logo.png" alt="EditorKrab" width="460">
+</picture>
+
+**ตัดคลิป จัดงาน จบในทีม**
+
+Previously ClipKit. EditorKrab is an **early-access** Windows editing workflow, not a complete replacement for Premiere Pro or CapCut. Existing projects and plugin IDs remain compatible.
+
+Prepare story cuts, Thai subtitles, covers and presets; continue in the local editor, CapCut or HyperFrames. See the [launch kit](docs/launch.md) for announcement copy and brand assets.
+
+The optional team workspace stores ownership and review metadata in Supabase. Google sign-in requires operator configuration; users do not enter provider credentials. Hosted sign-in and two-device synchronization have not passed live acceptance yet. Teams configure Drive for desktop or Syncthing themselves, sharing only footage and MP4 exports. Private project folders stay with their owner. See [team setup](docs/team-setup.md).
 
 Open-source kit for cutting talking-head footage into 60-130 s vertical shorts: Thai subtitles, story cut, B-roll, CapCut drafts, QC.
 Works in **Claude Code** (plugin) and **Codex** (skills), plus a local web app for reviewing on a timeline.
@@ -10,25 +23,27 @@ recommended for transcription (`whisper_device: "cuda"`); CPU works but is slow.
 
 Claude Code:
 ```
-claude plugin marketplace add poomiiz/ClipKit
+claude plugin marketplace add poomiiz/EditorKrab
 claude plugin install clip-kit@clip-kit
 ```
 
 Codex:
 ```
-npx skills add poomiiz/ClipKit --agent codex -g
+npx skills add poomiiz/EditorKrab --agent codex -g
 ```
+
+The `clip-kit` plugin ID stays unchanged so existing installations keep working.
 
 Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the `npx skills add` line (Codex).
 
 ## Machine setup (once)
-1. `git clone https://github.com/poomiiz/ClipKit` (scripts run from the clone).
+1. `git clone https://github.com/poomiiz/EditorKrab.git`, then `cd EditorKrab` (scripts run from the clone).
 2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` - installs Python, ffmpeg, Chrome (via winget) and all packages, creates `config.json` and the desktop icon.
-3. `python scripts\setup_workspace.py D:\ClipKit` (any folder: makes `config.json` and every folder), install
+3. `python scripts\setup_workspace.py D:\EditorKrab` (any folder: makes `config.json` and every folder), install
    Node.js LTS (nodejs.org, needed for MP4 export), then `python scripts\doctor.py --asr` must show all OK.
    Fonts are each editor's choice (not bundled); `card_font` is optional and only used for quick previews.
 4. Optional: `python scripts\envato.py login` - sign in to your Envato account once (only for the bot route; the link page needs no login here).
-5. Then ask your AI agent (Claude Code / Codex) "ตัดคลิปนี้ ..." - it follows `skills/make-clip`. The ClipKit
+5. Then ask your AI agent (Claude Code / Codex) "ตัดคลิปนี้ ..." - it follows `skills/make-clip`. The EditorKrab
    window (desktop icon) is optional, for reviewing on a timeline.
 
 ## Envato (optional)
