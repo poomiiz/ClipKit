@@ -97,8 +97,15 @@
   aside.insertBefore(controls, document.getElementById('sbVer'));
   const systemStatus = document.getElementById('ckSystemStatus');
   const systemButtons = controls.querySelectorAll('button');
+  // the optional helper (config.json "bot_api_url") can restart a hung server; remembered from the last health check
+  let helper = '';
+  try { helper = localStorage.getItem('ck.helper') || ''; } catch {}
   const health = () => fetch('/api/window/health', {cache: 'no-store', signal: AbortSignal.timeout(2000)})
-    .then(async r => r.ok ? r.json() : null).catch(() => null);
+    .then(async r => {
+      const h = r.ok ? await r.json() : null;
+      if (h) { helper = h.helper || ''; try { localStorage.setItem('ck.helper', helper); } catch {} }
+      return h;
+    }).catch(() => null);
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   // the server is gone: close the window (the EditorKrab icon opens a fresh one); a window the browser
   // will not let a script close shows one plain line instead of a page whose lists and covers fail
@@ -129,8 +136,8 @@
         }
       } catch (error) {
         // The dashboard's host worker remains available when this server is hung.
-        if (location.port !== '8770') throw error;
-        const response = await fetch('http://localhost:8765/bot/api/video-editor/control', {
+        if (location.port !== '8770' || !helper) throw error;
+        const response = await fetch(helper + '/bot/api/video-editor/control', {
           method: 'POST', headers: {'Content-Type': 'application/json'}, signal: AbortSignal.timeout(5000),
           body: JSON.stringify({action, request_id: crypto.randomUUID()})
         });
@@ -142,7 +149,7 @@
       while (Date.now() < deadline) {
         await pause(1000);
         if (queued) {
-          const response = await fetch('http://localhost:8765/bot/api/video-editor/control/' + queued.request_id,
+          const response = await fetch(helper + '/bot/api/video-editor/control/' + queued.request_id,
             {cache: 'no-store', signal: AbortSignal.timeout(3000)});
           if (!response.ok) throw new Error('อ่านผลคำสั่งไม่ได้ (' + response.status + ')');
           const result = await response.json();

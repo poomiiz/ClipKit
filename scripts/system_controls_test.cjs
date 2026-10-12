@@ -4,7 +4,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../app/stat
 const script = source.split('// Manual system controls:')[1].split('// End manual system controls.')[0];
 const code = script.slice(script.indexOf('\n'));
 
-function run({fallback = false, action = 'restart', fail = false, unchanged = false} = {}) {
+function run({fallback = false, action = 'restart', fail = false, unchanged = false, noHelper = false} = {}) {
   let now = 0, calls = [], reloaded = false, checks = 0, closed = false;
   const buttons = [{disabled:false}, {disabled:false}];
   const status = {textContent:''}, body = {innerHTML:''};
@@ -20,7 +20,7 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
       if(url==='/api/window/health') {
         checks++;
         if(checks>1 && action==='shutdown') throw new Error('closed');
-        return {ok:true,json:async()=>({ready:true,instance:checks===1 || unchanged ? 10 : 11,busy:false})};
+        return {ok:true,json:async()=>({ready:true,instance:checks===1 || unchanged ? 10 : 11,busy:false,helper:noHelper?'':'http://localhost:8765'})};
       }
       if(url.startsWith('/api/window/')) {
         if(fallback) throw new Error('server hung');
@@ -40,6 +40,8 @@ function run({fallback = false, action = 'restart', fail = false, unchanged = fa
   assert(!test.calls.some(url=>url.includes('/start'))); assert(!test.reloaded());
   test=run({fallback:true}); await test.click(); assert(test.reloaded());
   assert(test.calls.includes('http://localhost:8765/bot/api/video-editor/control/test-id'));
+  test=run({fallback:true,noHelper:true}); await test.click(); assert(!test.reloaded());
+  assert(!test.calls.some(url=>url.includes('/bot/api/')), 'no helper set: never call one');
   test=run({fallback:true,fail:true,action:'shutdown'}); await test.click();
   assert.match(test.status.textContent,/foreign process refused/); assert(!test.reloaded()); assert(!test.closed());
   assert(test.buttons.every(b=>!b.disabled));

@@ -21,3 +21,6 @@ delivery_statuses.json.tmp
 *.sqlite
 presets/pace/
 .env
+
+# job status kept between restarts (app/jobstore.py)
+state/

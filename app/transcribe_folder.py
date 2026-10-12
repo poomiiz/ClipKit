@@ -1,6 +1,7 @@
 """Transcribe the Sony interview takes proposed from a footage folder."""
 from __future__ import annotations
 
+import atomic
 import argparse
 import gc
 import json
@@ -40,14 +41,14 @@ def main() -> int:
         payload = {"take": take, "source": str(source), "duration": file["duration"],
                    "folder": file.get("folder", ""),
                    "phrases": phrases}
-        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_text(target, json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         text_target = target.with_suffix(".md")
-        text_target.write_text("# Take %d — %s\n\n" % (take, source.name) +
+        atomic.write_text(text_target, "# Take %d — %s\n\n" % (take, source.name) +
                                "\n".join(f"- [{stamp(item['start'])}] {item['text']}" for item in phrases),
                                encoding="utf-8")
         print(f"DONE Take {take}: {len(phrases)} lines", flush=True)
         status["takes"].append({"take": take, "status": "done", "lines": len(phrases), "file": str(target)})
-        (output / "status.json").write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_text((output / "status.json"), json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
     # ponytail: one batch at a time; unload Whisper before Qwen because this machine has 8GB VRAM.
     video_edit._model = None
     gc.collect()
@@ -59,9 +60,9 @@ def main() -> int:
         if data.get("review") and not args.force:
             continue
         data["review"] = summarize_transcript([phrase["text"] for phrase in data["phrases"]], Path(data["source"]).name)
-        target.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic.write_text(target, json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     status["finished_at"] = datetime.now().isoformat(timespec="seconds")
-    (output / "status.json").write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic.write_text((output / "status.json"), json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
     summary = ["# SUMMARY TOPICS", "", "ร่างจาก Qwen local — ตรวจเคาะก่อนสร้าง CapCut", ""]
     for item in status["takes"]:
         if item["status"] != "done":
@@ -72,7 +73,7 @@ def main() -> int:
                         f"- หัวข้อ: {review.get('title', '')}",
                         f"- Hook: {review.get('hook', '')}",
                         f"- สรุป: {review.get('summary', '')}", ""])
-    (output / "SUMMARY_TOPICS.md").write_text("\n".join(summary), encoding="utf-8")
+    atomic.write_text((output / "SUMMARY_TOPICS.md"), "\n".join(summary), encoding="utf-8")
     print("COMPLETE", flush=True)
     return 0
 

@@ -13,7 +13,12 @@ from fastapi.testclient import TestClient
 
 def main():
     os.environ["CLIPKIT_MANAGED_WINDOW"] = "1"  # former launchers cannot revive automatic shutdown
+    import kit_settings
+    with patch.object(kit_settings, "_read_config", return_value={"bot_api_url": "http://127.0.0.1:8765"}):
+        import app as app_module
     from app import app
+    assert app_module._widget_origins("") == ()   # no helper set: no outside page may embed or control the app
+    assert app_module.WIDGET_ORIGINS == ("http://127.0.0.1:8765", "http://localhost:8765")
     app.state.server = SimpleNamespace(should_exit=False)
     app.state.exit_requested = False
     with patch("window_lifecycle.launch_control") as launch, patch("window_lifecycle.threading.Timer") as timer, TestClient(app, base_url="http://127.0.0.1:8770") as client:
@@ -25,6 +30,7 @@ def main():
             health = client.get("/api/window/health", headers=headers)
             assert health.status_code == 200 and health.json()["managed"] is False
             assert health.json()["instance"] == os.getpid()
+            assert health.json()["helper"] == "http://127.0.0.1:8765"
             for action in ("restart", "shutdown"):
                 calls=launch.call_count
                 result = client.post("/api/window/" + action + "?control=v2", headers=headers)

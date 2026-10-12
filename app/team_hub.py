@@ -1,6 +1,7 @@
 """Supabase-backed organization identity; provider tokens stay in the local server."""
 from __future__ import annotations
 
+import atomic
 import json
 import base64
 import hashlib
@@ -142,7 +143,7 @@ def save_setup(body: Setup,request: Request) -> dict:
     values={key:value.strip() for key,value in body.model_dump().items()}
     _validate_config(values)
     cfg=kit_settings._read_config();cfg.update(values)
-    kit_settings.CONFIG.write_text(json.dumps(cfg,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    atomic.write_text(kit_settings.CONFIG, json.dumps(cfg,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     with _session_lock:_sessions.clear()
     return {"saved":True,"note":"บันทึกแล้ว กรุณาเข้าสู่ระบบใหม่"}
 
