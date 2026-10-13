@@ -361,6 +361,83 @@ def progress_bar(vin: str, length: float, W: int, H: int) -> tuple[str, str]:
             f"{vin}[pbar]overlay=x='-w+w*t/{length:.3f}':y=H-h:eof_action=pass[pb]"), "[pb]"
 
 
+EMOJI_DIR = Path(__file__).resolve().parents[1] / "emoji"  # Twemoji pictures (CC-BY 4.0), see THIRD_PARTY_NOTICES
+EMOJI = {  # picture -> words that call it up: whole words after Thai word splitting, English in any case
+    "1f4b0": ("เงิน", "รวย", "ล้าน", "บาท", "money", "rich"),
+    "1f525": ("ไฟ", "ร้อน", "ปัง", "hot", "fire"),
+    "2764": ("รัก", "love"),
+    "1f602": ("ขำ", "ตลก", "ฮา", "funny", "lol"),
+    "1f631": ("ตกใจ", "ช็อก", "shock", "wow"),
+    "1f4a1": ("ไอเดีย", "เคล็ดลับ", "idea", "tip"),
+    "23f0": ("เวลา", "time"),
+    "2705": ("สำเร็จ", "ถูกต้อง", "success"),
+    "274c": ("ผิดพลาด", "ล้มเหลว", "ห้าม", "mistake", "wrong"),
+    "1f4c8": ("กำไร", "เพิ่มขึ้น", "growth", "profit"),
+    "1f4c9": ("ขาดทุน", "ลดลง", "loss"),
+    "1f680": ("พุ่ง", "launch", "fast"),
+    "1f3af": ("เป้าหมาย", "goal", "target"),
+    "1f35c": ("อาหาร", "อร่อย", "food"),
+    "2708": ("เที่ยว", "เดินทาง", "travel", "trip"),
+    "1f3e0": ("บ้าน", "home", "house"),
+    "1f4aa": ("สู้", "ออกกำลังกาย", "strong", "workout"),
+    "1f914": ("ทำไม", "สงสัย", "why"),
+    "26a0": ("ระวัง", "อันตราย", "warning", "careful"),
+    "1f389": ("ฉลอง", "ยินดี", "party"),
+    "1f4f1": ("มือถือ", "แอป", "phone", "app"),
+    "1f9e0": ("สมอง", "brain"),
+    "2b50": ("ดีที่สุด", "best"),
+}
+WORD_EMOJI = {w: code for code, words in EMOJI.items() for w in words}
+EMOJI_GAP = 2.5  # seconds between two emoji at least: one now and then reads as a reaction, every line as noise
+
+
+def _emoji_for(word: str) -> str | None:
+    """The emoji a word calls up: a keyword itself, or a Thai compound of a keyword and another real word
+    ("ได้เงิน", "ไฟไหม้"), not a word that only starts with the letters ("ไฟล์", "รักษา")."""
+    from pythainlp.corpus import thai_words
+    if word in WORD_EMOJI:
+        return WORD_EMOJI[word]
+    for kw, code in WORD_EMOJI.items():
+        rest = word[len(kw):] if word.startswith(kw) else word[:-len(kw)] if word.endswith(kw) else ""
+        if rest and rest in thai_words():
+            return code
+    return None
+
+
+def emoji_beats(phrases: list[tuple[float, float, str]], skip_until: float = 0) -> list[dict[str, Any]]:
+    """An emoji that pops up as a phrase starts when one of its words is a keyword (EMOJI): the first match in a
+    phrase, none in the clip title's seconds, and never closer than EMOJI_GAP to the one before."""
+    from pythainlp.tokenize import word_tokenize
+    beats: list[dict[str, Any]] = []
+    for a, b, line in sorted(phrases):
+        if a < skip_until or (beats and a - beats[-1]["at"] < EMOJI_GAP):
+            continue
+        code = next((c for w in word_tokenize(unbreak(line), keep_whitespace=False) if (c := _emoji_for(w.lower()))), None)
+        if code:
+            f = EMOJI_DIR / f"{code}.png"
+            if not f.is_file():
+                raise VideoEditError(f"emoji picture missing: {f}")
+            beats.append({"at": round(a, 2), "dur": round(min(1.2, max(0.4, b - a)), 2), "file": str(f)})
+    return beats
+
+
+def emoji_box(W: int, H: int) -> tuple[int, int, int]:
+    """(size, x, y) of an emoji: centred, in the upper third, clear of the subtitles lower down."""
+    size = round(min(W, H) * 0.16)
+    return size, (W - size) // 2, round(H * 0.3)
+
+
+def emoji_overlay(vin: str, n: int, k: int, e: dict[str, Any], W: int, H: int) -> tuple[str, str]:
+    """Input n (the emoji picture, looped) over vin for its beat: pops up from a little lower, fades out at the end.
+    Returns (filter, output label)."""
+    es, ex, ey = emoji_box(W, H)
+    a, d = e["at"], e["dur"]
+    return (f";[{n}:v]scale={es}:{es},format=rgba,trim=0:{d:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB,"
+            f"fade=t=in:st={a:.3f}:d=0.1:alpha=1,fade=t=out:st={a + d - 0.15:.3f}:d=0.15:alpha=1[em{k}];"
+            f"{vin}[em{k}]overlay=x={ex}:y='{ey}+{es * 0.4:.0f}*max(0,1-(t-{a:.3f})/0.15)':eof_action=pass:"
+            f"enable='between(t,{a:.3f},{a + d:.3f})'[eo{k}]"), f"[eo{k}]"
+
+
 def zoom_spans(segs: list) -> list[tuple[float, float]]:
     """Zoom cut: the punch-in changes only on a real cut (a removed pause), so the jump looks meant; it flips
     100% <-> 108% at a cut only when the current framing has held for at least ZOOM_GAP s (no flicker on
@@ -732,6 +809,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                           f"\\bord{px * h['width'] * 0.6 + 2:.1f}\\shad2\\fad(0,150)\\fscx120\\fscy120"
                           f"\\t({n * 150},{n * 150 + 160},\\fscx100\\fscy100)}}" + lines[0])
 
+    emoji = emoji_beats([(m[1], m[2], f"{m[3]} {m[4]}") for m in marks if m[0] == "phrase"],
+                        HOOK_DUR if hook else 0) if style.get("emoji") else []
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{folder.name}{' - ตัวอย่าง' if preview else ''}.mp4"
@@ -774,6 +854,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                       f"trim=0:{e - a:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB[br{k}];"
                       f"{base}[br{k}]overlay=0:0:eof_action=pass:enable='between(t,{a:.3f},{e:.3f})'[bo{k}]")
             base = f"[bo{k}]"
+        for k, e in enumerate(emoji):
+            piece, base = emoji_overlay(base, add("-loop", "1", "-i", e["file"]), k, e, W, H)
+            graph += piece
         if events:
             fam0 = family or _font(None)[0]
             atomic.write_text((Path(tmp) / "subs.ass"), 
@@ -823,7 +906,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
                     "hook": hook, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
-                    "progress": bool(style.get("progress")),
+                    "progress": bool(style.get("progress")), "emoji": emoji,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},

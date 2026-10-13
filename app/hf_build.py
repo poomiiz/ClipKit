@@ -202,6 +202,13 @@ def build(path: str) -> Path:
                    f'style="position:absolute;left:0;bottom:0;width:{W}px;height:{max(4, round(H * 0.008))}px;background:#fff;'
                    f'transform-origin:0 50%;transform:scaleX(0)"></div>')
         anim.append(f'tl.fromTo(".pbar",{{scaleX:0}},{{scaleX:1,duration:{D:.3f},ease:"none"}},0);')
+    # emoji on keywords, popping in (same place and times as the ffmpeg export, render.emoji_beats)
+    es, ex, ey = render.emoji_box(W, H)
+    for e in t["emoji"]:
+        i = nid("e")
+        els.append(f'<img id="{i}" class="clip" src="{_local(out, e["file"])}" data-start="{e["at"]:.3f}" data-duration="{e["dur"]:.3f}" '
+                   f'data-track-index="7" style="position:absolute;left:{ex}px;top:{ey}px;width:{es}px;height:{es}px">')
+        anim.append(f'tl.fromTo("#{i}",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.18,ease:"back.out(2.5)"}},{e["at"]:.3f});')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):
