@@ -111,13 +111,21 @@ def say(**kw) -> None:
     print(json.dumps(kw, ensure_ascii=False), flush=True)
 
 
+VIDEO = ""  # set by main(): the video every timed step belongs to
+
+
 def timed(name: str, fn, *args, **kw):
-    """Run one step and print how long it took, so a slow run shows where the time went."""
+    """Run one step and print how long it took, so a slow run shows where the time went. Each step is also
+    appended to <output>/logs/timings.jsonl, the machine-time side of docs/benchmark.md."""
     t = time.perf_counter()
     try:
         return fn(*args, **kw)
     finally:
-        say(took=name, s=round(time.perf_counter() - t, 1))
+        s = round(time.perf_counter() - t, 1)
+        say(took=name, s=s)
+        with open(cutlog.logs_dir() / "timings.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "video": VIDEO, "step": name, "s": s},
+                               ensure_ascii=False) + "\n")
 
 
 def detail(exc: Exception) -> str:
@@ -337,6 +345,8 @@ def main() -> int:
     render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
     say(preset=a.preset)
     raw = str(Path(a.video).resolve())
+    global VIDEO
+    VIDEO = Path(raw).name
     if not Path(raw).is_file():
         say(error="file not found", file=raw)
         return 1

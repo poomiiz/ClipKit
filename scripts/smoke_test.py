@@ -261,6 +261,27 @@ def run_clip_follows_speech_language():
     assert asked == [None], f"run_clip chose the language itself: {asked}"
 
 
+def run_clip_logs_step_times_for_the_benchmark():
+    # docs/benchmark.md needs machine time per step on disk; run_clip only printed it, so a run left no evidence
+    import bench
+    import cutlog
+    import run_clip
+    with tempfile.TemporaryDirectory() as t:
+        keep = cutlog.logs_dir
+        cutlog.logs_dir = lambda: Path(t)
+        run_clip.VIDEO = "talk.mp4"
+        try:
+            run_clip.timed("step", lambda: None)
+        finally:
+            cutlog.logs_dir = keep
+        machine = bench.machine_minutes(Path(t) / "timings.jsonl")
+    assert list(machine) == ["talk.mp4"], machine
+    rows = [{"video": "a.mp4", "length_group": "5", "format": "short", "mode": "manual", "human_min": "60", "fixes": "", "qc_pass": "y"},
+            {"video": "talk.mp4", "length_group": "5", "format": "short", "mode": "editorkrab", "human_min": "15", "fixes": "3", "qc_pass": "y"}]
+    r = bench.summarize(rows, {"talk.mp4": 5.0})[0]
+    assert (r["editor_time_saved_pct"], r["faster_x"], r["wall_clock_saved_pct"]) == (75, 4.0, 67), r
+
+
 def saved_stories_come_back_after_restart():
     # the split is saved beside the video; after ClipKit restarts, opening the file shows it again with no new AI round
     import video_editor
