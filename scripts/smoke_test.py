@@ -494,6 +494,29 @@ def emoji_pops_on_keywords():
         box = np.frombuffer(r.stdout, np.uint8).reshape(568, 320)[ey:ey + es, ex:ex + es]
         assert ((box > 40).mean() > 0.3) == shown, (at, (box > 40).mean())
 
+def speed_ramp_eases_into_normal_speed():
+    # a source whose brightness is 25 x its own time: the ramped copy runs 3x at first, 1x after 0.6 s
+    import render
+    import numpy as np
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "count.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=64x64:r=30:d=6,geq=lum='T*25':cb=128:cr=128",
+                        "-c:v", "libx264", "-crf", "1", "-pix_fmt", "yuv420p", str(src)], check=True)
+        out = render.speed_ramp(str(src), 2.0, Path(tmp) / "c")
+        assert render.speed_ramp(str(src), 2.0, Path(tmp) / "c") == out  # made once, then reused
+        info = render.probe(out)
+        assert abs(info["duration"] - 2.0) < 0.1, info
+        for at, source_t in ((0.3, 0.75), (0.6, 1.2), (1.6, 2.2)):
+            r = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(at), "-i", out, "-frames:v", "1", "-f", "rawvideo",
+                                "-pix_fmt", "yuv420p", "-"], capture_output=True, check=True)
+            got = np.frombuffer(r.stdout[:64 * 64], np.uint8).mean() / 25  # the Y plane, as geq wrote it
+            assert abs(got - source_t) < 0.12, (at, got, source_t)
+    try:
+        render.speed_ramp("x", 0, Path("."))
+        raise AssertionError("a 0 s b-roll got a ramp")
+    except render.VideoEditError:
+        pass
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)
