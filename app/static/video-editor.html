@@ -591,7 +591,7 @@
       </div>
       <div class="clip-right">
         <div class="card">
-          <h2>ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
+          <h2>📝 ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
           <textarea id="brief" rows="2" maxlength="2000" style="width:100%;margin-bottom:8px" placeholder="อยากได้คลิปแบบไหน (ไม่ใส่ก็ได้) เช่น vlog สบายๆ เน้นช่วงตลก คลิปละไม่เกิน 1 นาที"></textarea>
           <button class="ghost" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเสียงและแบ่งเรื่อง</button>
           <div id="storyPlan" style="margin-top:10px"></div>
@@ -685,7 +685,7 @@
         <!-- Review: the quick preview of everything the tool did, before the real export -->
         <div class="tool-card" id="c-review">
           <div class="tc-head"><div class="icon">👀</div><div class="titles">
-            <h3>รีวิวก่อนส่งออก</h3><p>ดูตัวอย่างให้ครบทั้งคลิป ถ้าต้องแก้ ไปแท็บนั้นแล้วกด "ทำให้ครบ" ใหม่</p></div></div>
+            <h3>👀 รีวิวก่อนส่งออก</h3><p>ดูตัวอย่างให้ครบทั้งคลิป ถ้าต้องแก้ ไปแท็บนั้นแล้วกด "ทำให้ครบ" ใหม่</p></div></div>
           <div id="rvBusy" class="busy"></div>
           <video id="rvVideo" controls style="display:none;width:100%;max-height:60vh;border-radius:12px;background:#000"></video>
           <div id="rvSteps" class="hint"></div>
@@ -701,7 +701,7 @@
         <!-- How subtitles move in the MP4 export -->
         <div class="tool-card" id="c-subanim">
           <div class="tc-head"><div class="icon">✨</div><div class="titles">
-            <h3>ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก EditorKrab</p></div></div>
+            <h3>💬 ซับเคลื่อนไหว</h3><p>ใช้กับซับทุกบรรทัดตอนส่งออก MP4 จาก EditorKrab</p></div></div>
           <div class="row" id="saBtns" style="gap:8px;flex-wrap:wrap">
             <button class="small" data-a="pair">คู่ประโยค</button>
             <button class="small" data-a="none">ซับนิ่ง</button>
@@ -721,7 +721,7 @@
         <!-- Motion on top: click a line, pick a look; it renders and sits at that moment -->
         <div class="tool-card" id="c-overlay">
           <div class="tc-head"><div class="icon">⚡</div><div class="titles">
-            <h3>ใส่โมชั่น</h3><p>กดปุ่มที่ประโยคไหน ระบบทำตัวหนังสือเคลื่อนไหวจากประโยคนั้นแล้ววางตรงเวลานั้นให้ (ราว 30 วินาทีต่อชิ้น)</p></div></div>
+            <h3>✨ ใส่โมชั่น</h3><p>กดปุ่มที่ประโยคไหน ระบบทำตัวหนังสือเคลื่อนไหวจากประโยคนั้นแล้ววางตรงเวลานั้นให้ (ราว 30 วินาทีต่อชิ้น)</p></div></div>
           <div id="ovList" class="ov-list"><div class="hint">กำลังอ่านซับ…</div></div>
           <div class="busy" id="ovBusy"></div>
         </div>
@@ -731,7 +731,7 @@
           <div class="tc-head">
             <div class="icon">🅰️</div>
             <div class="titles">
-              <h3>สไตล์ซับไตเติลทั้งคลิป</h3>
+              <h3>🎨 สไตล์ซับไตเติลทั้งคลิป</h3>
               <p>ปรับขนาด สี ขอบ และตำแหน่งพร้อมพรีวิวแบบ 9:16</p>
             </div>
           </div>
@@ -754,7 +754,7 @@
         <!-- Place each subtitle: the system lays them out, the editor drags / tilts any of them -->
         <div class="tool-card" id="c-layout">
           <div class="tc-head"><div class="icon">✋</div><div class="titles">
-            <h3>จัดวางข้อความ</h3><p>ระบบวางและย่อให้พอดีจอก่อน กดข้อความในรายการแล้วลากบนภาพซ้ายเพื่อย้าย</p></div></div>
+            <h3>📐 จัดวางข้อความ</h3><p>ระบบวางและย่อให้พอดีจอก่อน กดข้อความในรายการแล้วลากบนภาพซ้ายเพื่อย้าย</p></div></div>
           <div class="row" style="gap:8px;flex-wrap:wrap">
             <button class="small" onclick="layoutLoad()">โหลดข้อความ</button>
             <button class="small" onclick="layoutAuto()">จัดอัตโนมัติ (ย่อให้พอดีจอ)</button>
@@ -776,7 +776,7 @@
           <div class="tc-head">
             <div class="icon">✨</div>
             <div class="titles">
-              <h3>อนิเมชัน & เสียง Pop</h3>
+              <h3>🎵 อนิเมชัน & เสียง Pop</h3>
               <p>ใส่ลูกเล่นการเคลื่อนไหวให้ข้อความหรือภาพ</p>
             </div>
           </div>
@@ -811,7 +811,7 @@
           <div class="tc-head">
             <div class="icon">🩹</div>
             <div class="titles">
-              <h3>เติมซับเฉพาะช่วงที่ยังไม่มี</h3>
+              <h3>➕ เติมซับเฉพาะช่วงที่ยังไม่มี</h3>
               <p>ถอดเสียงเฉพาะท่อนที่เพิ่มฟุตเทจทีหลัง โดยไม่แตะซับเดิม</p>
             </div>
           </div>
@@ -829,7 +829,7 @@
           <div class="tc-head">
             <div class="icon">✂️</div>
             <div class="titles">
-              <h3>ตัดช่วงเงียบในโปรเจกต์ (Smart Cut)</h3>
+              <h3>✂️ ตัดช่วงเงียบในโปรเจกต์ (Smart Cut)</h3>
               <p>ตัดเสียงเงียบ Dead air อัตโนมัติ ซับไตเติลจะเลื่อนตามให้</p>
             </div>
           </div>
@@ -845,7 +845,7 @@
           <div class="tc-head">
             <div class="icon">🎵</div>
             <div class="titles">
-              <h3>เพลงประกอบ (BGM)</h3>
+              <h3>🎶 เพลงประกอบ (BGM)</h3>
               <p>เลือกเพลงคลอจากคลังและควบคุมระดับเสียง</p>
             </div>
           </div>
@@ -864,7 +864,7 @@
           <div class="tc-head">
             <div class="icon">🎨</div>
             <div class="titles">
-              <h3>ก๊อปเกรดสีจากโปรเจกต์อื่น</h3>
+              <h3>🌈 ก๊อปเกรดสีจากโปรเจกต์อื่น</h3>
               <p>ดึงโทนสีและ Color Grading จากคลิปที่แต่งแล้ว</p>
             </div>
           </div>
@@ -884,7 +884,7 @@
   <!-- Screen 6: Edit Subtitles -->
   <div class="screen" id="s-subs">
     <div class="card">
-      <h2>สไตล์บรรทัดเน้น</h2>
+      <h2>🖍️ สไตล์บรรทัดเน้น</h2>
       <div class="form-row"><label for="emSize">ขนาด</label><input id="emSize" type="number" value="24"></div>
       <div class="form-row"><label for="emY">ตำแหน่งแนวตั้ง</label><input id="emY" type="number" step="0.05" value="-0.45"></div>
       <div class="form-row"><label for="emColor">สี</label><input id="emColor" type="color" value="#ffd84d" style="padding:4px"></div>
@@ -901,7 +901,7 @@
   <!-- Screen 7: Stock Footage -->
   <div class="screen" id="s-stock">
     <div class="card">
-      <h2>คำค้น</h2>
+      <h2>🔍 คำค้น</h2>
       <input id="stockQuery" placeholder="เช่น construction site inspection">
       <div class="row">
         <button class="small grow" onclick="suggestTerms()">แปลจากซับให้</button>
@@ -917,7 +917,7 @@
   <!-- Screen 8: Preset Styles -->
   <div class="screen" id="s-style">
     <div class="card">
-      <h2>สไตล์ซับจากงานที่เคยทำ</h2>
+      <h2>🗂️ สไตล์ซับจากงานที่เคยทำ</h2>
       <div class="hint">เลือกแล้วจะใช้กับโปรเจกต์ที่เปิดอยู่</div>
       <div id="styleList" class="list-grid"></div>
     </div>

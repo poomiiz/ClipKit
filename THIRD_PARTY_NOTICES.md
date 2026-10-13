@@ -14,3 +14,9 @@
 ## Kanit (Cadson Demak) — SIL Open Font License 1.1
 
 - `fonts/Kanit-Bold.ttf`, licence text in `fonts/OFL-Kanit.txt`.
+
+## Twemoji (Twitter / jdecked) — CC-BY 4.0
+
+- `emoji/*.png` — 23 emoji pictures rasterised to 160 px from the npm package `@twemoji/svg` 15.0.0
+  (https://github.com/jdecked/twemoji). Graphics licensed under CC-BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/). Copyright Twitter, Inc and other contributors.
