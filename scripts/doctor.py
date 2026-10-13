@@ -4,6 +4,7 @@
     python scripts/doctor.py --asr     # also transcribe 3 s of silence-free test tone to prove Whisper loads
 """
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,11 @@ def tools():
     missing = [t for t in ("ffmpeg", "ffprobe") if not shutil.which(t)]
     if missing:
         raise RuntimeError("not on PATH: " + ", ".join(missing))
+    for option, feature in (("-filters", "subtitles"), ("-encoders", "libx264")):
+        out = subprocess.run(["ffmpeg", "-hide_banner", option], capture_output=True, text=True,
+                             check=True, timeout=30).stdout
+        if not re.search(r"^\s+\S+\s+" + feature + r"\s", out, re.M):
+            raise RuntimeError("ffmpeg is missing " + feature + " support; install a compatible build")
 
 
 def node():

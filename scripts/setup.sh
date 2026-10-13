@@ -21,7 +21,14 @@ ensure_tool() {
   command -v "$tool" >/dev/null 2>&1 || { printf 'Cannot find %s after installation.\n' "$tool" >&2; exit 1; }
 }
 ensure_tool python3.12 python@3.12
-ensure_tool ffmpeg ffmpeg
+ensure_tool ffmpeg ffmpeg-full
+ffmpeg_filters="$(ffmpeg -hide_banner -filters 2>/dev/null)"
+ffmpeg_encoders="$(ffmpeg -hide_banner -encoders 2>/dev/null)"
+if [[ "$ffmpeg_filters" != *" subtitles "* || "$ffmpeg_encoders" != *" libx264 "* ]]; then
+  command -v brew >/dev/null 2>&1 || { printf '%s\n' "ffmpeg needs subtitle and libx264 support. Install a compatible build, or install Homebrew and rerun setup." >&2; exit 1; }
+  brew install ffmpeg-full
+  export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"
+fi
 ensure_tool node node@22
 command -v npx >/dev/null 2>&1 || { printf '%s\n' "Node is installed but npx is missing." >&2; exit 1; }
 if [[ ! -d "$repo_root/.venv" ]]; then python3.12 -m venv "$repo_root/.venv"; fi

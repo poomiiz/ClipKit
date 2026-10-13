@@ -356,6 +356,9 @@ def main():
     r.set_defaults(fn=cmd_render)
 
     a = ap.parse_args()
+    if sys.platform == "darwin":
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "capcut"))
+        import kitconfig  # restore setup's tool PATH for plan and render too
     a.fn(a)
 
 
