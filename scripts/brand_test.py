@@ -34,5 +34,14 @@ if os.name=='nt':
  print('PASS Windows PowerShell desktop launcher and setup parse Thai strings')
 
 assert (root/"app/static/editorkrab-crab.ico").read_bytes()==(root/"app/static/editorkrab.ico").read_bytes()
+import make_promo
+voice=(root/'docs/brand/promo-voiceover.md').read_text(encoding='utf-8')
+for start,end,line in make_promo.LINES:
+ assert 0 <= start < end <= make_promo.DUR and line in voice
+for phrase in ('ready-to-post','one click','hours of','edit less','post more'):
+ assert phrase not in (root/'scripts/make_promo.py').read_text(encoding='utf-8').lower(),phrase
+assert 'Workflow illustration' in (root/'scripts/make_promo.py').read_text(encoding='utf-8')
+assert 'Mac setup: experimental' in (root/'scripts/make_promo.py').read_text(encoding='utf-8')
+assert make_promo.F(40).getlength('relaxed vlog, funny parts, under 1 min|') <= 740
 for script in ("app/start.ps1","scripts/setup.ps1"):
  assert "editorkrab-crab.ico" in (root/script).read_text(encoding="utf-8-sig")

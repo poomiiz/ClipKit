@@ -7,7 +7,7 @@
 
 EditorKrab helps turn talking-head footage into short videos. It prepares a draft with story cuts, subtitles and a cover, so you can review and finish the edit in CapCut or the local editor.
 
-This is an early access project. Windows uses the existing installer. Mac support is experimental, and CapCut projects still need testing on real Macs. These instructions cover version 0.29.0. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability.
+This is an early access project. Windows uses the existing installer. Mac support is experimental, and CapCut projects still need testing on real Macs. These instructions cover version 0.29.1. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability.
 
 [คู่มือภาษาไทย](docs/README.th.md) · [Documentation](docs/index.md) · [Report a bug](CONTRIBUTING.md)
 

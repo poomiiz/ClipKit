@@ -7,11 +7,12 @@ Start with the [README](../README.md) for installation and your first clip, or t
 | Guide | What it covers |
 |---|---|
 | [Mac setup](macos.md) | Experimental setup, CPU transcription and real-device checks |
+| [Mac and Update checks](test-logs/macos-support.md) | Results and the CapCut checks still needed |
 | [Team setup](team-setup.md) (Thai) | Account configuration, ownership, MP4 review and external synchronization |
 | [Setup settings](../config.example.json) | The settings copied into your private config.json |
 | [Machine check](../scripts/doctor.py) | Python packages, ffmpeg, Node.js and optional speech-model checks |
 
-Use Update in the app to receive published release tags. It does not deliver every main-branch merge. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for version 0.29.0 availability.
+Use Update in the app to receive published release tags. It does not deliver every main-branch merge. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for version 0.29.1 availability.
 
 ## Make and review a clip
 
