@@ -1,11 +1,18 @@
 """First-login invitation routing; provider tokens stay server-side."""
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import team_hub as hub
+
+
+def sign_in(client, data):
+    """A provider session as the Google callback leaves it; password sign-in no longer exists."""
+    hub._sessions['test-session'] = {**data, 'expires_at': time.time() + 3600, 'ends_at': time.time() + 86400}
+    client.cookies.set(hub.COOKIE, 'test-session')
 
 def main():
     app = FastAPI()
@@ -33,7 +40,7 @@ def main():
         with TestClient(app) as client, patch.object(hub, '_config', return_value=('https://hub.example.test', 'public')), patch.object(hub, '_provider', side_effect=provider):
             assert client.get('/invitations').status_code == 404
             assert client.get('/api/team/invitations').status_code == 401
-            client.post('/api/team/login', json={'email': 'future@example.test', 'password': 'password'})
+            sign_in(client, data)
             result = client.get('/api/team/organizations')
             assert result.status_code == 200
             assert admitted == (count == 1)
