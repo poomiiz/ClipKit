@@ -46,3 +46,30 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $failed += $t.Name }
           }
           if ($failed) { throw "failed: $($failed -join ', ')" }
+
+  install:
+    # The README's one setup command on a fresh Windows machine, end to end (tiny model, CPU).
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Small model and a stand-in CapCut drafts folder (no CapCut on the runner)
+        shell: pwsh
+        run: |
+          $drafts = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\capcut-drafts"
+          $cfg = Get-Content config.example.json -Raw | ConvertFrom-Json
+          $cfg.whisper_model = "tiny"
+          $cfg | Add-Member -Force capcut_drafts $drafts.FullName
+          $cfg | ConvertTo-Json -Depth 10 | Set-Content config.json -Encoding utf8NoBOM
+      - name: setup.ps1 -Workspace
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Workspace "$env:RUNNER_TEMP\Editor Krab"
+      - name: Setup switched to CPU without a GPU
+        shell: pwsh
+        run: if ((Get-Content config.json -Raw | ConvertFrom-Json).whisper_device -ne "cpu") { throw "whisper_device not cpu" }
