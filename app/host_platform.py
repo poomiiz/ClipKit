@@ -28,21 +28,26 @@ def hyperframes_command(command: list[str], project: Path, env: dict[str, str]) 
     if not node:
         raise RuntimeError("Node.js is missing")
     cache = Path(__file__).resolve().parents[1] / "state" / "hyperframes-npm"
-    if any(p.is_symlink() for p in (cache, cache.parent)):
+    runtime = cache.parent / "hyperframes"
+    if any(p.is_symlink() for p in (cache, runtime, cache.parent)):
         raise RuntimeError("HyperFrames cache must not be linked to another directory")
     env["npm_config_cache"] = str(cache)
     env["PWD"] = str(project.resolve())
-    pattern = "_npx/*/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
-    files = list(cache.glob(pattern))
-    if not files:
-        install = subprocess.run([command[0], "--yes", command[2], "--help"], cwd=project, env=env,
+    module = runtime / "node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
+    if not module.resolve().is_relative_to(runtime.resolve()):
+        raise RuntimeError("HyperFrames module is outside the private runtime")
+    if not module.is_file():
+        npm = shutil.which("npm", path=env.get("PATH"))
+        if not npm:
+            raise RuntimeError("npm is missing")
+        install = subprocess.run([npm, "install", "--prefix", str(runtime), "--no-save", "--no-package-lock",
+                                  "--no-audit", "--no-fund", command[2]], cwd=project, env=env,
                                  capture_output=True, text=True, timeout=240)
         if install.returncode:
             raise RuntimeError("HyperFrames preparation failed: " + (install.stderr or install.stdout)[-600:])
-        files = list(cache.glob(pattern))
-    if len(files) != 1 or not files[0].resolve().is_relative_to(cache.resolve()):
-        raise RuntimeError("Pinned HyperFrames cleanup module not found uniquely in the private cache")
-    source = files[0].read_bytes()
+    if not module.is_file() or not module.resolve().is_relative_to(runtime.resolve()):
+        raise RuntimeError("Pinned HyperFrames cleanup module not found in the private runtime")
+    source = module.read_bytes()
     entry = b"function killOrphanedProcesses() {"
     guarded = entry + b"\n  return 0;"
     original = source.replace(guarded, entry, 1)
@@ -50,8 +55,8 @@ def hyperframes_command(command: list[str], project: Path, env: dict[str, str]) 
         raise RuntimeError("Pinned HyperFrames cleanup module changed; refusing to run it")
     # shortcut: pinned internal module; use upstream scoped cleanup when it is available.
     if source == original:
-        atomic.write_text(files[0], source.replace(entry, guarded, 1).decode("utf-8"), encoding="utf-8")
-    cli = files[0].parent.parent / "bin" / "hyperframes.mjs"
+        atomic.write_text(module, source.replace(entry, guarded, 1).decode("utf-8"), encoding="utf-8")
+    cli = module.parent.parent / "bin" / "hyperframes.mjs"
     if not cli.is_file():
         raise RuntimeError("Pinned HyperFrames launcher is missing")
     args = command[3:]
