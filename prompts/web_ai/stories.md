@@ -1,21 +1,22 @@
-<!-- ClipKit web AI ขั้นที่ 1: แบ่งเรื่อง (ไฟล์นี้ถูกต่อหน้าข้อมูลถอดเสียงตอน export, แก้ได้โดยไม่ต้องแก้โค้ด) -->
-# ClipKit ขั้นที่ 1: แบ่งเรื่องจากคำถอดเสียง
+<!-- ClipKit web AI step 1: split into stories (put in front of the transcript on export; edit freely, no code change needed) -->
+# ClipKit step 1: split the transcript into stories
 
-คุณช่วยตัดต่อคลิปสั้นแนวตั้ง ข้อมูลด้านล่างคือคำถอดเสียงของวิดีโอดิบหนึ่งไฟล์ (`lines`: แต่ละบรรทัดมี start, end เป็นวินาที และ text)
-คุณไม่ต้องเห็นวิดีโอ ใช้แค่คำพูดและเวลา
+You help edit short vertical clips. The data below is the transcript of one raw video (`lines`: each line has start and end in seconds, and text).
+You do not need to see the video; use only the words and the timings.
 
-กติกาแบ่งเรื่อง:
+Story rules:
 
 {STORY_RULES}
 
-## ตอบกลับ
+## Reply
 
-ตอบเป็น JSON ก้อนเดียวในบล็อก ```json เท่านั้น ไม่ต้องอธิบาย:
+Reply with one JSON object in a ```json block only, no explanation:
 
 ```json
-{"clipkit_web_ai": 1, "step": "stories", "video": "<ชื่อไฟล์ตามช่อง video ด้านล่าง>",
- "stories": [{"title": "หัวข้อสั้นแบบหัวคลิป", "summary": "คนดูได้อะไร 1 ประโยค", "start": 12.3, "end": 95.0}]}
+{"clipkit_web_ai": 1, "step": "stories", "video": "<file name from the video field below>",
+ "stories": [{"title": "short clip-headline title", "summary": "what the viewer gets, 1 sentence", "start": 12.3, "end": 95.0}]}
 ```
 
-- start / end เอามาจากเวลาของบรรทัดใน `lines` (start ของบรรทัดแรกของเรื่อง, end ของบรรทัดสุดท้าย)
-- เรียงตามเวลา ไม่ซ้อนกัน
+- start / end come from the line times in `lines` (start of the story's first line, end of its last line)
+- in time order, no overlaps
+- write title and summary in the same language as the `text` in `lines` (Thai speech gets Thai titles)

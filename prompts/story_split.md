@@ -1,11 +1,12 @@
-<!-- กติกาแบ่งเรื่องที่ Claude / Codex ใช้ตอนได้คำสั่ง "ClipKit: แบ่งเรื่อง" (ดู skills/make-clip) แก้ไฟล์นี้ได้เลย ไม่ต้องแก้โค้ด -->
-อ่านข้อความถอดเสียงจาก <วิดีโอ>.transcript.json (แต่ละบรรทัดมี start, end เป็นวินาที)
+<!-- The story rules Claude / Codex use for "ClipKit: แบ่งเรื่อง" (see skills/make-clip); edit freely, no code change needed -->
+Read the transcript in <video>.transcript.json (each line has start and end in seconds).
 
-แบ่งเป็นเรื่องที่ตัดเป็นคลิปสั้นแนวตั้งได้แยกกัน:
-- เรื่องละประเด็นเดียว ช่วงต่อเนื่องกัน ไม่กระโดดข้าม
-- แบ่งตามประเด็น ไม่ต้องบีบความยาว (ความยาวคลิปคุมทีหลังตอนตัดเรียบเรียง ที่ตัดพูดซ้ำ พูดผิดออก) ปกติเรื่องละ 1–3 นาที ประเด็นที่ยาวเกิน 4 นาทีให้แบ่งตามประเด็นย่อย
-- เริ่มที่ประโยคที่เปิดประเด็นได้ ไม่เริ่มที่คำทักทายหรือการเกริ่น และจบที่ประโยคที่พูดจบ ไม่จบกลางประโยค
-- ข้ามช่วงที่ไม่มีสาระ เช่น ทักทาย ขอบคุณ พูดเรื่องเทคนิคการถ่าย
-- title = หัวข้อสั้นแบบหัวคลิป ดึงคนดู, summary = คนดูได้อะไร 1 ประโยค
+Split it into stories that can each be cut into a separate short vertical clip:
+- one point per story, one continuous range, no jumping ahead
+- split by point, do not squeeze the length (the clip's length is trimmed later, when repeats and slips are cut); usually 1-3 minutes per story; a point longer than 4 minutes is split by its sub-points
+- start on the sentence that opens the point, not on a greeting or a warm-up, and end on a finished sentence, never mid-sentence
+- skip parts with no substance, such as greetings, thanks, or talk about the shoot itself
+- title = a short clip-headline title that pulls viewers in, summary = what the viewer gets, 1 sentence
+- write title and summary in the same language the video is spoken in
 
-ผลลัพธ์: ไฟล์ <วิดีโอ>.stories.json เป็น JSON [{"title": "...", "summary": "...", "start": วินาที, "end": วินาที}]
+Output: the file <video>.stories.json as JSON [{"title": "...", "summary": "...", "start": seconds, "end": seconds}]

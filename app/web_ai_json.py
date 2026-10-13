@@ -44,9 +44,9 @@ def answer_file(step: str, target: str) -> Path:
 def _packet(prompt: str, data: dict[str, Any], out: Path) -> Path:
     ans = out.with_suffix(".answer.json")
     ans.unlink(missing_ok=True)  # an answer to an older export must not be imported for this one
-    atomic.write_text(out, f"> ถ้าคุณเขียนไฟล์ในเครื่องนี้ได้ (เช่น Claude Code): ไม่ต้องตอบในแชต ให้บันทึก JSON คำตอบ "
-                   f"(ตามหัวข้อ ตอบกลับ ด้านล่าง ไม่ต้องมี ```) ลงไฟล์ `{ans}` แล้ว ClipKit จะนำเข้าเอง\n\n"
-                   + prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
+    atomic.write_text(out, f"> If you can write files on this machine (e.g. Claude Code): do not answer in chat, save the JSON answer "
+                   f"(as in Reply below, without ```) to `{ans}` and ClipKit imports it\n\n"
+                   + prompt.rstrip() + "\n\n## Data (do not change clipkit_web_ai, step, video, project)\n\n```json\n"
                    + json.dumps(data, ensure_ascii=False, indent=1) + "\n```\n", encoding="utf-8")
     return out
 
@@ -70,8 +70,8 @@ def export_stories(video: str) -> Path:
     data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "lines": lines}
     prompt, brief = _prompt("stories.md"), video_edit.read_brief(video)
     if brief:  # the person's own words go first, so the AI picks stories for them
-        prompt = (f"## ความต้องการของผู้ตัดต่อ\n\n{brief}\n\nเลือกและแบ่งเรื่องให้ตรงกับความต้องการนี้ "
-                  f"โดยยังทำตามกฎทุกข้อด้านล่าง\n\n" + prompt)
+        prompt = (f"## What the editor wants\n\n{brief}\n\nPick and split the stories to match this, "
+                  f"still following every rule below\n\n" + prompt)
     return _packet(prompt, data, packet_file("stories", video))
 
 
@@ -88,9 +88,10 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
             "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)]}
     prompt = _prompt("clip.md")
     if max_minutes:
-        prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "
-                                f"{subs[-1]['end'] / 60:.1f} นาที): ตัดพูดซ้ำ พูดผิด ออกนอกเรื่องก่อน ถ้ายังยาวกว่ามาก ให้ตัดบรรทัดที่เป็น"
-                                "รายละเอียดรองที่ตัดแล้วยังเล่าต่อกันรู้เรื่อง คุมคร่าวๆ เกินได้บ้าง อย่าตัดใจความจนเรื่องขาด\n\n## 1. Subtitle", 1)
+        prompt = prompt.replace("## 1. Subtitle", f"The editor wants a clip of about {max_minutes:g} min (the clip is now "
+                                f"{subs[-1]['end'] / 60:.1f} min): cut repeats, slips and off-topic lines first; if it is still much longer, "
+                                "cut lines of minor detail that the story still flows without. A rough aim, going a little over is fine; "
+                                "never cut the point so the story breaks\n\n## 1. Subtitle", 1)
     return _packet(prompt, data, packet_file("clip", path))
 
 
