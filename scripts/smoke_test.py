@@ -409,6 +409,19 @@ def web_ai_answers_are_checked():
         (Path(t) / "ep.mov.transcript.json").write_text(json.dumps(
             [{"start": 0.0, "end": 2.0, "text": "สวัสดี"}, {"start": 10.0, "end": 14.0, "text": "เรื่องเงิน"}]), encoding="utf-8")
         assert "เรื่องเงิน" in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        # what the person typed before the split leads the packet; clearing the box removes it
+        import video_editor
+        video_editor._story_jobs.path = Path(t) / "jobs-story-plan.json"
+        video_editor._story_jobs[str(video)] = {"status": "waiting"}  # a split already going: no Whisper here
+        video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief="  vlog สบายๆ เน้นช่วงตลก "))
+        assert video_editor.brief(str(video)) == {"brief": "vlog สบายๆ เน้นช่วงตลก"}
+        packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        assert packet.index("vlog สบายๆ เน้นช่วงตลก") < packet.index("เรื่องเงิน"), packet[:300]
+        video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video)))  # no brief sent: kept
+        assert video_editor.brief(str(video))["brief"]
+        video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief=""))
+        assert video_editor.brief(str(video)) == {"brief": ""}
+        assert "ความต้องการของผู้ตัดต่อ" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
         for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},
                     {**head, "stories": [{"title": "a", "start": 3, "end": 5}]}):  # wrong video / no speech
