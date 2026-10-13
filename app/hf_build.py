@@ -110,7 +110,7 @@ def build(path: str) -> Path:
                        f'data-duration="{b["dur"]:.3f}" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">')
         elif b.get("file"):
-            els.append(f'<video id="{nid("b")}" class="clip" src="{_local(out, b["file"])}" muted playsinline data-start="{b["start"]:.3f}" '
+            els.append(f'<video id="{nid("b")}" class="clip" src="{_local(out, b["play"])}" muted playsinline data-start="{b["start"]:.3f}" '
                        f'data-duration="{b["dur"]:.3f}" data-media-start="0" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
 

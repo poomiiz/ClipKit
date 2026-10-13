@@ -438,6 +438,36 @@ def emoji_overlay(vin: str, n: int, k: int, e: dict[str, Any], W: int, H: int) -
             f"enable='between(t,{a:.3f},{a + d:.3f})'[eo{k}]"), f"[eo{k}]"
 
 
+RAMP_IN, RAMP_FROM = 0.6, 3.0  # b-roll rushes in at 3x and eases to normal speed over its first 0.6 s
+
+
+def speed_ramp(file: str, dur: float, cache: Path) -> str:
+    """A muted copy of a b-roll clip, dur seconds long, that starts at RAMP_FROM x speed and slows evenly to 1x
+    over RAMP_IN s (the vlog speed ramp). Made once per file and length, kept in cache."""
+    import hashlib
+    if dur <= 0:
+        raise VideoEditError("speed ramp needs a b-roll longer than 0 s")
+    st = Path(file).stat()
+    key = hashlib.md5(f"{file}|{st.st_size}|{st.st_mtime_ns}|{dur:.3f}|{RAMP_IN}|{RAMP_FROM}".encode()).hexdigest()[:10]
+    dst = cache / f"ramp_{key}.mp4"
+    if dst.is_file():
+        return str(dst)
+    R, S = RAMP_IN, RAMP_FROM
+    used = (S + 1) * R / 2  # source seconds the ramp plays through
+    # output time for source time T: the inverse of T = S*o - (S-1)*o^2/(2R) during the ramp, then 1:1
+    pts = f"if(lt(T,{used:.4f}),({S}-sqrt({S * S}-{2 * (S - 1) / R:.4f}*T))*{R / (S - 1):.4f},T-{used - R:.4f})/TB"
+    cache.mkdir(exist_ok=True)
+    tmp = dst.with_suffix(".part.mp4")
+    r = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", file, "-t", f"{dur - R + used + 0.1:.3f}", "-an",
+                        "-vf", f"setpts=PTS-STARTPTS,setpts='{pts}',fps=30,trim=0:{dur:.3f}",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(tmp)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    if r.returncode or not tmp.is_file():
+        raise VideoEditError("speed ramp failed: " + r.stderr.strip()[-300:])
+    tmp.replace(dst)
+    return str(dst)
+
+
 def zoom_spans(segs: list) -> list[tuple[float, float]]:
     """Zoom cut: the punch-in changes only on a real cut (a removed pause), so the jump looks meant; it flips
     100% <-> 108% at a cut only when the current framing has held for at least ZOOM_GAP s (no flicker on
@@ -847,8 +877,11 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         for k, it in enumerate(plan):
             if not Path(it["file"]).is_file():
                 raise VideoEditError(f"b-roll file missing: {it['file']}")
+            # "play": the file both renderers show, the speed-ramped copy when that look is on
+            ramp = style.get("ramp") and not video_edit.is_image(it["file"])
+            it["play"] = speed_ramp(it["file"], float(it["dur"]), folder / "clipkit_ramp") if ramp else it["file"]
             # a still picture is one frame: loop it so it stays up for the whole span
-            n = add("-loop", "1", "-i", it["file"]) if video_edit.is_image(it["file"]) else add("-i", it["file"])
+            n = add("-loop", "1", "-i", it["play"]) if video_edit.is_image(it["file"]) else add("-i", it["play"])
             a, e = float(it["start"]), float(it["start"]) + float(it["dur"])
             graph += (f";[{n}:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                       f"trim=0:{e - a:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB[br{k}];"
