@@ -23,7 +23,17 @@ from video_edit import VideoEditError
 VERSION = 1
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 LOOKS = {"pair", "white", "color", "red", "hold", "skip"}
-MOTION = {"hook-title", "sentence-pair"}  # video_editor.MOTION_TEMPLATES
+
+
+def _motion_menu() -> list[dict[str, Any]]:
+    """Every motion/<name> template the AI may place: name, label, role and its fields (quick ones need none)."""
+    import kit_settings
+    import video_editor
+    return [{"template": k, "label": v.get("label", k), "role": v.get("role", ""),
+             **({} if k in video_editor.QUICK_MOTION else {"params": {
+                 f["key"] + ("" if f.get("required") else "?"): f["type"] if f["type"] != "select" else [o[0] for o in f["options"]]
+                 for f in v.get("fields", []) if f["type"] not in ("font",)}})}
+            for k, v in kit_settings.motion_templates().items()]
 
 
 def _prompt(name: str) -> str:
@@ -85,7 +95,8 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
     lines = [s["text"] for s in subs]
     atomic.write_text((Path(path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "caption_language": _caption_lang(path),
-            "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)]}
+            "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)],
+            "motion_templates": _motion_menu()}
     prompt = _prompt("clip.md")
     if max_minutes:
         prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "
@@ -201,9 +212,16 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
             raise VideoEditError(f'preset นี้มีซับแปล ({lang}): caption ต้องเป็น {{"1": "...", ...}} ครบทุกบรรทัด')
         caption = {s["text"]: cap[str(n)].strip() for n, s in enumerate(subs, 1) if n not in cut}
     motion = ans.get("motion") or []
-    if not isinstance(motion, list) or any(not isinstance(m, dict) or m.get("template") not in MOTION
-                                           or m.get("n") not in range(1, len(subs) + 1) or m["n"] in cut for m in motion):
-        raise VideoEditError(f'motion (Motion text) ต้องเป็น [{{"n": เลขบรรทัด, "template": "{"|".join(sorted(MOTION))}"}}]')
+    import video_editor
+    quick = video_editor.QUICK_MOTION
+    if not isinstance(motion, list) or any(not isinstance(m, dict) or m.get("n") not in range(1, len(subs) + 1)
+                                           or m["n"] in cut for m in motion):
+        raise VideoEditError('motion ต้องเป็น [{"n": เลขบรรทัด, "template": "...", "params": {...}}]')
+    for m in motion:  # checked before anything is written; params only for templates not made from the line
+        if m.get("params") is not None:
+            video_editor.motion_params(m.get("template"), m["params"], 3.0)
+        elif m.get("template") not in quick:
+            raise VideoEditError(f'motion บรรทัด {m["n"]}: "{m.get("template")}" ต้องมี params (ช่องตาม motion_templates)')
 
     folder = Path(path)
     written = ["clipkit_punch.json", "clipkit_hook.json"]
@@ -219,11 +237,10 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         written.append(f"ตัด {len(set(cut))} บรรทัด")
         kept = {s["text"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
         subs = [kept.get(s["text"], s) for s in subs]  # motion goes at the lines' new times
-    if motion:
-        import video_editor  # renders each motion here, the same as the editor's Motion button
+    if motion:  # renders each motion here, the same as the editor's Motion button
         for m in motion:
             s = subs[m["n"] - 1]
-            video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"],
+            video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"], params=m.get("params"),
                                                                        start=s["start"], end=s["end"], text=s["text"]))
         written.append(video_editor.OVERLAYS)
     out = {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
