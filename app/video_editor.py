@@ -279,6 +279,7 @@ def transcribe(req: TranscribeRequest) -> dict[str, Any]:
 
 class StoryPlanRequest(BaseModel):
     file: str
+    brief: str | None = Field(default=None, max_length=2000)  # None: keep the saved one; "": remove it
 
 
 _story_jobs = jobstore.JobStore("story-plan", failed="error")
@@ -312,12 +313,22 @@ def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
     import threading
     if not Path(req.file).is_file():
         raise HTTPException(status_code=400, detail="file not found")
+    if req.brief is not None:  # saved before the split, so the agent or the web AI packet reads it
+        if req.brief.strip():
+            atomic.write_text(video_edit.brief_file(req.file), req.brief.strip(), encoding="utf-8")
+        else:
+            video_edit.brief_file(req.file).unlink(missing_ok=True)
     job = _story_jobs.get(req.file)
     if not job or job["status"] == "error":
         _story_jobs[req.file] = {"status": "running", "step": "เริ่ม"}
         _story_jobs.save()
         threading.Thread(target=_run_story_plan, args=(req.file,), daemon=True).start()
     return _story_jobs[req.file]
+
+
+@router.get("/brief")
+def brief(file: str = Query(...)) -> dict[str, Any]:
+    return {"brief": video_edit.read_brief(file)}
 
 
 @router.get("/story-plan")
