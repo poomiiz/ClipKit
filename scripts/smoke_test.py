@@ -455,6 +455,25 @@ def web_ai_answers_are_checked():
         assert json.loads((proj / "clipkit_hook.json").read_text(encoding="utf-8"))[0]["color"] == "red"
 
 
+def progress_bar_fills_over_the_clip():
+    # the bar is empty at the start, half way at the middle and full at the end of a 2 s clip
+    import render
+    import numpy as np
+    bar, out = render.progress_bar("[vo]", 2.0, 320, 180)
+    assert out == "[pb]", out
+    for at, lit in ((0.05, 0.0), (1.0, 0.5), (1.96, 1.0)):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x180:r=25:d=2",
+                            "-filter_complex", "[0:v]null[vo]" + bar, "-map", out, "-ss", str(at), "-frames:v", "1",
+                            "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True)
+        row = np.frombuffer(r.stdout, np.uint8).reshape(180, 320)[-2]
+        assert abs((row > 128).mean() - lit) < 0.06, (at, (row > 128).mean())
+    try:
+        render.progress_bar("[vo]", 0, 320, 180)
+        raise AssertionError("a 0 s clip got a bar")
+    except render.VideoEditError:
+        pass
+
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)

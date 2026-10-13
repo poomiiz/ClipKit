@@ -350,6 +350,17 @@ def _hook(folder: Path) -> list[dict[str, Any]]:
 ZOOM, ZOOM_GAP = 1.08, 2.5
 
 
+def progress_bar(vin: str, length: float, W: int, H: int) -> tuple[str, str]:
+    """A bar along the bottom edge that fills from left to right over the clip (keeps people watching to the end):
+    a white strip slid in from the left, as overlay works out x on every frame (drawbox does not).
+    Returns (filter, output label)."""
+    if length <= 0:
+        raise VideoEditError("progress bar needs a clip longer than 0 s")
+    h = max(4, round(H * 0.008))
+    return (f";color=c=white:s={W}x{h}:d={length:.3f}[pbar];"
+            f"{vin}[pbar]overlay=x='-w+w*t/{length:.3f}':y=H-h:eof_action=pass[pb]"), "[pb]"
+
+
 def zoom_spans(segs: list) -> list[tuple[float, float]]:
     """Zoom cut: the punch-in changes only on a real cut (a removed pause), so the jump looks meant; it flips
     100% <-> 108% at a cut only when the current framing has held for at least ZOOM_GAP s (no flicker on
@@ -791,6 +802,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             graph += (f";[{n}:v]scale=-2:{H},setpts=PTS-STARTPTS+{s0:.3f}/TB[m{k}];"
                       f"{vout}[m{k}]overlay=(W-w)/2:0:eof_action=pass:enable='between(t,{s0:.3f},{s0 + float(o['duration']):.3f})'[o{k}]")
             vout = f"[o{k}]"
+        if style.get("progress"):
+            bar, vout = progress_bar(vout, sum(s["target_timerange"]["duration"] for s in segs) / US, W, H)
+            graph += bar
         if preview:  # quick look for review: half size, fast encode
             graph += f";{vout}scale=trunc(iw/4)*2:-2[pv]"
             vout = "[pv]"
@@ -809,6 +823,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
                     "hook": hook, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
+                    "progress": bool(style.get("progress")),
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
