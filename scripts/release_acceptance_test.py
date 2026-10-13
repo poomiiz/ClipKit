@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -15,7 +16,8 @@ TASK = "fac553c5-4930-4eb5-838f-9cb610e13cab"
 
 
 def run(cwd: Path, *args: str) -> str:
-    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True,
+    result = subprocess.run(args, cwd=cwd, env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+                            capture_output=True, text=True,
                             encoding="utf-8", errors="replace", timeout=240)
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout.strip()
@@ -32,13 +34,18 @@ def main() -> None:
         return
     if not args.expected_release or not args.proof:
         parser.error("--live requires --expected-release and --proof")
+    proof_path = args.proof.absolute()
+    assert not proof_path.exists() and not any(p.is_symlink() for p in (proof_path, *proof_path.parents)), \
+        "proof must be a new file without linked parents"
+    assert proof_path.resolve().is_relative_to((ROOT / "bug_reports").resolve()), "proof must be inside bug_reports"
     remote = run(ROOT, "git", "remote", "get-url", "origin")
     with tempfile.TemporaryDirectory(prefix="editorkrab-update-") as folder:
         clone = Path(folder) / "clone"
         run(ROOT, "git", "clone", "-q", "--branch", "v0.29.0", remote, str(clone))
         git = lambda *values: run(clone, "git", "-c", "user.name=codex",  # noqa: E731
                                  "-c", "user.email=codex@users.noreply.github.com", *values)
-        before_requirements = (clone / "requirements.txt").read_bytes()
+        assert Path(git("rev-parse", "--show-toplevel")).resolve() == clone.resolve()
+        before_requirements = git("rev-parse", "HEAD:requirements.txt")
         config = clone / "config.json"
         config.write_text('{"update_acceptance_fixture": true}\n', encoding="utf-8")
         fixture = clone / "update-local-commit.txt"
@@ -55,8 +62,8 @@ def main() -> None:
         check = json.loads(run(clone, str(python), update, "--check"))
         assert check["release"] == args.expected_release and check["count"] > 0, check
         # This patch check must not install packages into the CI checkout's environment.
-        target_requirements = git("show", args.expected_release + ":requirements.txt")
-        assert before_requirements.decode("utf-8").strip() == target_requirements.strip(), \
+        target_requirements = git("rev-parse", args.expected_release + ":requirements.txt")
+        assert before_requirements == target_requirements, \
             "dependency changes need an installed baseline environment"
         output = run(clone, str(python), update)
         expected_commit = git("rev-parse", args.expected_release + "^{commit}")
@@ -77,8 +84,9 @@ def main() -> None:
                  "system": platform.system(), "machine": platform.machine(),
                  "check": check, "tracked_edits_stashed": True, "local_commit_backed_up": True,
                  "local_config_preserved": True, "packages": "unchanged", "second_update": second}
-        args.proof.parent.mkdir(parents=True, exist_ok=True)
-        args.proof.write_text(json.dumps(proof, indent=2) + "\n", encoding="utf-8")
+        proof_path.parent.mkdir(parents=True, exist_ok=True)
+        with proof_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(proof, indent=2) + "\n")
         print(output)
         print("PASS real release Update, tracked edits, local commits, config and repeat update")
 

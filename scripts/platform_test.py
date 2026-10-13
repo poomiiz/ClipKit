@@ -1,5 +1,6 @@
 """Host adapters and ownership regressions; native apps and process signals are mocked."""
 import importlib
+import hashlib
 import json
 import os
 import subprocess
@@ -245,6 +246,7 @@ class PlatformTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as folder, patch.object(host, "is_macos", return_value=True), \
                     patch.object(host, "process_identity", return_value="owned-snapshot") as identity, \
+                    patch.object(kit_settings, "_mac_preview_command", return_value=["node", "preview", "--foreground"]) as safe_command, \
                     patch("shutil.which", return_value="npx"), \
                     patch.object(kit_settings, "_stop_studio"), \
                     patch.object(kit_settings.subprocess, "Popen", return_value=Mock(pid=4321)) as popen, \
@@ -264,9 +266,52 @@ class PlatformTests(unittest.TestCase):
                 self.assertIn("--foreground", popen.call_args.args[0])
                 self.assertEqual(kit_settings._hf_preview["identity"], "owned-snapshot")
                 self.assertEqual(identity.call_count, 2)
+                self.assertEqual(safe_command.call_count, 2)
         finally:
             kit_settings._hf_preview.clear()
             kit_settings._hf_preview.update(previous)
+
+    def test_mac_preview_private_copy_disables_only_the_orphan_sweep(self):
+        source = b'const orphansKilled = killOrphanedProcesses();\nexport default {};\n'
+        with tempfile.TemporaryDirectory(prefix="preview ' ") as folder:
+            root = Path(folder)
+            original = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/preview-MOKQFMZS.js"
+            original.parent.mkdir(parents=True)
+            original.write_bytes(source)
+            env = {}
+            with patch.object(kit_settings, "KIT", root), \
+                    patch.object(kit_settings, "MAC_HF_PREVIEW_SHA", hashlib.sha256(source).hexdigest()), \
+                    patch("shutil.which", return_value="node"), \
+                    patch.object(kit_settings.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as install:
+                command = kit_settings._mac_preview_command(
+                    ["npx", "--yes", "hyperframes@0.8.101", "preview", "--port", "3002", "--no-open"], root, env)
+            self.assertEqual(original.read_bytes(), source)
+            self.assertEqual(original.with_name("editorkrab-preview.js").read_text(),
+                             'const orphansKilled = 0;\nexport default {};\n')
+            self.assertEqual(env["npm_config_cache"], str(root / "state/hyperframes-npm"))
+            self.assertEqual(install.call_args.args[0], ["npx", "--yes", "hyperframes@0.8.101", "--help"])
+            self.assertIn("foreground:true,open:false,json:false", command[3])
+            self.assertEqual(command[-4:], ["3002", "hyperframes@0.8.101", "preview", "--foreground"])
+
+    def test_mac_preview_changed_module_fails_before_writing_or_launching(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            module = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/preview-MOKQFMZS.js"
+            module.parent.mkdir(parents=True)
+            module.write_text("unexpected module")
+            with patch.object(kit_settings, "KIT", root), patch("shutil.which", return_value="node"), \
+                    patch.object(kit_settings.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+                with self.assertRaisesRegex(RuntimeError, "module changed"):
+                    kit_settings._mac_preview_command(
+                        ["npx", "--yes", "hyperframes@0.8.101", "preview", "--port", "3002"], root, {})
+            self.assertFalse(module.with_name("editorkrab-preview.js").exists())
+
+    def test_mac_preview_future_version_is_rejected_before_install(self):
+        with patch.object(kit_settings, "HF_VERSION", "0.9.0"), \
+                patch.object(kit_settings.subprocess, "run") as install:
+            with self.assertRaisesRegex(RuntimeError, "needs review"):
+                kit_settings._mac_preview_command(["npx", "--yes", "hyperframes@0.9.0", "preview"], ROOT, {})
+            install.assert_not_called()
 
     def test_mac_setup_uses_bash_with_workspace_as_one_argument(self):
         with patch.object(host, "is_macos", return_value=True), \

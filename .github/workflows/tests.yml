@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      expected_release:
+        description: Published release tag to verify (blank skips delivery check)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -46,6 +53,20 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $failed += $t.Name }
           }
           if ($failed) { throw "failed: $($failed -join ', ')" }
+      - name: Verify delivery of the published release
+        if: github.event_name == 'workflow_dispatch' && inputs.expected_release != ''
+        shell: pwsh
+        env:
+          EXPECTED_RELEASE: ${{ inputs.expected_release }}
+        run: python scripts/release_acceptance_test.py --live --expected-release "$env:EXPECTED_RELEASE" --proof bug_reports/update-acceptance.json
+      - name: Upload release delivery proof
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.expected_release != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-delivery-Windows
+          path: bug_reports/update-acceptance.json
+          if-no-files-found: warn
+          retention-days: 14
 
   install:
     # The README's one setup command on a fresh Windows machine, end to end (tiny model, CPU).
@@ -122,3 +143,20 @@ jobs:
           exit "$failed"
       - name: Isolated native server lifecycle
         run: .venv/bin/python scripts/macos_native_test.py --live
+      - name: Native font, Thai subtitle and owned preview proof
+        run: .venv/bin/python scripts/macos_acceptance_test.py --live --proof bug_reports/macos-acceptance
+      - name: Verify delivery of the published release
+        if: github.event_name == 'workflow_dispatch' && inputs.expected_release != ''
+        env:
+          EXPECTED_RELEASE: ${{ inputs.expected_release }}
+        run: .venv/bin/python scripts/release_acceptance_test.py --live --expected-release "$EXPECTED_RELEASE" --proof bug_reports/update-acceptance.json
+      - name: Upload native and release delivery proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-acceptance-${{ matrix.os }}
+          path: |
+            bug_reports/macos-acceptance/
+            bug_reports/update-acceptance.json
+          if-no-files-found: warn
+          retention-days: 14
