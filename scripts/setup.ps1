@@ -8,6 +8,10 @@ $root = Split-Path $PSScriptRoot -Parent
 function Refresh-Path {
     $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 }
+function Run([string[]]$cmd) {
+    & python @cmd
+    if ($LASTEXITCODE -ne 0) { throw "failed: python $($cmd -join ' ')" }
+}
 function Ensure($cmd, $wingetId, $label) {
     if (Get-Command $cmd -ErrorAction SilentlyContinue) { return }
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "$label is missing and winget is not available - install $label by hand" }
@@ -32,6 +36,7 @@ if (-not (Test-Path "$root\config.json")) {
     Copy-Item "$root\config.example.json" "$root\config.json"
     if (-not $Workspace) { Write-Host "Created config.json - open it and set your folders, then run the check below." }
 }
+if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) { Run "$root\scripts\use_cpu.py" }
 
 # Desktop icon for the Video -> CapCut app
 $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) "EditorKrab.lnk"
@@ -44,10 +49,6 @@ $s.Description = "EditorKrab — ตัดคลิป จัดงาน จบ
 $s.Save()
 Write-Host "Desktop icon created: $lnk"
 
-function Run([string[]]$cmd) {
-    & python @cmd
-    if ($LASTEXITCODE -ne 0) { throw "failed: python $($cmd -join ' ')" }
-}
 if ($Workspace) { Run "$root\scripts\setup_workspace.py", $Workspace }
 Run "$root\scripts\fetch_model.py"
 if ($Workspace) { Run "$root\scripts\doctor.py", "--asr" } else { Run "$root\scripts\doctor.py" }

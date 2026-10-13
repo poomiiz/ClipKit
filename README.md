@@ -44,10 +44,11 @@ Update later: `claude plugin marketplace update clip-kit` (Claude) or re-run the
 
 ## Machine setup (once)
 1. `git clone https://github.com/poomiiz/EditorKrab.git`, then `cd EditorKrab` (scripts run from the clone).
-2. `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Workspace D:\EditorKrab` - one command: installs
+2. Double-click `setup.cmd` and type a workspace folder (or run
+   `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Workspace D:\EditorKrab`) - one command: installs
    Python, ffmpeg and Node.js LTS (via winget) and all packages, makes `config.json` and every folder under the
    workspace folder (any folder), adds the desktop icon, downloads the speech model and runs
-   `python scripts\doctor.py --asr`, which must show all OK. Fonts are each editor's choice (not bundled);
+   `python scripts\doctor.py --asr`, which must show all OK. Without an NVIDIA GPU it sets `whisper_device` to `cpu`. Fonts are each editor's choice (not bundled);
    `card_font` is optional and only used for quick previews.
 3. Then ask your AI agent (Claude Code / Codex) "ตัดคลิปนี้ ..." - it follows `skills/make-clip`. The EditorKrab
    window (desktop icon) is optional, for reviewing on a timeline.
