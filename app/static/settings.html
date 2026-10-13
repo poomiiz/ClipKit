@@ -90,8 +90,8 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
   <div class="card" data-tab="packs">
     <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">ลงแพ็ก preset</h2>
-      <p class="sub" style="margin:2px 0 0">ไฟล์ .clipkit ที่เพื่อนในทีมส่งมา: ซับ+คำเน้น ปก โมชั่น · ชื่อซ้ำกับที่มีอยู่จะไม่ลงทับ</p></div>
-      <button id="bPackPick">เลือกไฟล์ .clipkit</button></div>
+      <p class="sub" style="margin:2px 0 0">ไฟล์ .editorkrab ที่เพื่อนในทีมส่งมา: ซับ+คำเน้น ปก โมชั่น · ชื่อซ้ำกับที่มีอยู่จะไม่ลงทับ</p></div>
+      <button id="bPackPick">เลือกไฟล์ .editorkrab</button></div>
     <span class="msg" id="mPack"></span>
   </div>
 
@@ -101,7 +101,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="row"><label for="pkId">รหัสแพ็ก</label><input id="pkId" placeholder="a-z 0-9 - เช่น vlog-warm" style="flex:1"></div>
     <div class="row"><label for="pkAuthor">คนทำ</label><input id="pkAuthor" style="flex:1"></div>
     <div class="checks" id="pkItems" style="grid-template-columns:1fr"></div>
-    <div class="row"><button id="bPackMake">สร้างไฟล์ .clipkit</button><span class="msg" id="mPackMake"></span></div>
+    <div class="row"><button id="bPackMake">สร้างไฟล์ .editorkrab</button><span class="msg" id="mPackMake"></span></div>
   </div>
 </main>
 <script>
@@ -227,7 +227,7 @@ $('bDoctorAsr').onclick = () => runDoctor(true);
 $('bSetup').onclick = () => startJob('setup', $('bSetup'), 'mSetup', 'logSetup', 'กำลังติดตั้ง…');
 $('bSave').onclick = saveConfig;
 loadConfig(); runDoctor(false);
-// preset packs: install a .clipkit from the team, or bundle this machine's looks into one
+// preset packs: install a .editorkrab from the team, or bundle this machine's looks into one
 const PACK_LABELS = {subtitles: 'ซับ+คำเน้น', covers: 'ปก', motion: 'โมชั่น'};
 async function loadPackItems() {
   const it = await api('pack/items');

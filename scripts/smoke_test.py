@@ -273,7 +273,7 @@ def name_check_works():
 
 
 def preset_pack_roundtrip():
-    # a .clipkit made on one machine installs on another, and never overwrites a look that is already there
+    # a .editorkrab made on one machine installs on another, and never overwrites a look that is already there
     import preset_pack as pp
     real = pp.KIT
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
@@ -288,8 +288,11 @@ def preset_pack_roundtrip():
             pp.KIT = src
             f = pp.make_pack(src, {"id": "warm", "name": "Warm", "tier": "team", "subtitles": ["warm"],
                                    "covers": ["cover-warm"], "motion": ["warm-hook"]})
+            assert f.suffix == ".editorkrab", f
             pp.KIT = dst
-            pp.install_pack(f)
+            old = f.with_suffix(".clipkit")   # packs shared before the rename still install
+            shutil.copy(f, old)
+            pp.install_pack(old)
             assert (dst / "presets" / "warm.json").is_file() and (dst / "motion" / "cover-warm" / "index.html").is_file()
             assert pp.items()["motion"] == ["warm-hook"], pp.items()
             try:
