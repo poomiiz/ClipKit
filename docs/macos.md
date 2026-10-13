@@ -8,10 +8,10 @@ These instructions cover version 0.29.0. Check [Releases](https://github.com/poo
 
 You need Git, Python 3.12, ffmpeg and Node.js, which provides `npx`. Install Homebrew if you want setup to install missing tools for you. Install CapCut desktop if you want to continue editing a CapCut draft.
 
-The setup script checks the prerequisites and uses Homebrew to install missing Python 3.12, ffmpeg or Node.js 22. It does not install Homebrew itself. If you prefer to install the tools first:
+The setup script checks the prerequisites and uses Homebrew to install missing tools. It selects an ffmpeg build that can render subtitles and H.264 video. It does not install Homebrew itself. If you prefer to install the tools first:
 
 ```bash
-brew install python@3.12 ffmpeg node@22
+brew install python@3.12 ffmpeg-full node@22
 ```
 
 Keep footage and projects in a workspace folder you control. Allow enough space for the speech model, source media and exported videos.
