@@ -439,7 +439,7 @@ async function run(btn, text, fn) {
   document.querySelectorAll('.top button').forEach(b => b.disabled = true);
   say('<span class="spin"></span> ' + text);
   try { await fn(); } catch (e) { say('❌ ' + ckErr(e)); }
-  document.querySelectorAll('.top button').forEach(b => b.disabled = false);
+  document.querySelectorAll('.top button').forEach(b => b.disabled = !!b.dataset.off);
 }
 $('bAuto').onclick = () => run($('bAuto'), 'กำลังทำทุกขั้น… (1–3 นาที)', async () => {
   const r = await api('draft/auto', {path: PATH}); await load(); say('✅ ' + r.steps.filter(Boolean).join(' · ') + ' · แก้บนไทม์ไลน์ได้เลย เห็นผลทันที');
@@ -539,7 +539,7 @@ $('bExport').onclick = () => run($('bExport'), 'กำลังส่งออ�
   const r = await api('draft/hf-export', {path: PATH}); say('✅ ได้ไฟล์แล้ว (' + r.seconds + ' วิ): ' + esc(r.file));
 });
 $('bCapcut').onclick = () => run($('bCapcut'), 'กำลังจัดซับก่อนเปิดใน CapCut…', async () => {
-  if (!await checkText('เปิดใน CapCut')) return say('');
+  if (T && !await checkText('เปิดใน CapCut')) return say('');
   await fetch('/api/kit/draft-open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: PATH})}); say('');
 });
 $('bCover').onclick = () => { SEL = null; drawTL(); side(); $('adv').open = true; $('coverH').scrollIntoView({behavior: 'smooth'}); };
@@ -551,7 +551,14 @@ document.addEventListener('keydown', e => {
     const b = PL.broll[SEL.i]; b.start = Math.max(0, +(b.start + (e.key === 'ArrowLeft' ? -0.1 : 0.1)).toFixed(2)); drawTL(); clearTimeout(window._sv); window._sv = setTimeout(savePL, 400);
   }
 });
-if (!PATH) $('title').textContent = 'ไม่ได้ระบุโปรเจกต์'; else load().catch(e => say('❌ ' + ckErr(e)));
+// a project this page cannot open: say why where the player would be, and leave only Back and CapCut usable
+function broken(msg) {
+  $('title').textContent = PATH ? 'เปิดโปรเจกต์นี้ในหน้านี้ไม่ได้' : msg;
+  $('empty').style.display = ''; $('empty').textContent = '❌ ' + msg; say('');
+  ['bAuto', 'bCover', 'bExport', 'bAddBr'].forEach(id => { $(id).dataset.off = '1'; $(id).disabled = true; });
+  if (!PATH) $('bCapcut').dataset.off = $('bCapcut').disabled = '1';
+}
+if (!PATH) broken('ไม่ได้ระบุโปรเจกต์'); else load().catch(e => broken(ckErr(e)));
 </script>
 <script src="/hyperframes-player.js"></script>
 <script src="/shell.js?v=11"></script>
