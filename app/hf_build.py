@@ -196,6 +196,12 @@ def build(path: str) -> Path:
                  h["grow"], tops.get(first, 0) + 8, one=True)
         first = first or i
         anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{j * 0.15:.2f});')
+    # progress bar along the bottom edge, filling over the clip (same as render.progress_bar)
+    if t["progress"]:
+        els.append(f'<div id="{nid("p")}" class="clip pbar" data-start="0" data-duration="{D:.3f}" data-track-index="6" '
+                   f'style="position:absolute;left:0;bottom:0;width:{W}px;height:{max(4, round(H * 0.008))}px;background:#fff;'
+                   f'transform-origin:0 50%;transform:scaleX(0)"></div>')
+        anim.append(f'tl.fromTo(".pbar",{{scaleX:0}},{{scaleX:1,duration:{D:.3f},ease:"none"}},0);')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):
