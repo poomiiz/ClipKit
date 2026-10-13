@@ -4,6 +4,8 @@ Three steps, one JSON contract (the edit plan) between them:
 
     python clipkit.py transcribe IN.mov            -> IN.words.json
     python clipkit.py plan IN.mov                  -> IN.plan.json  (auto draft: silence cuts + captions)
+    python clipkit.py plan IN.mov --cut motion     -> IN.plan.json  (keeps the parts where the picture moves;
+                                                      for B-roll or footage with nobody talking)
     (agent edits IN.plan.json: trims keep ranges, rewrites captions, adds inserts + music)
     python clipkit.py render IN.plan.json          -> IN.mp4 (1080x1920, burned Thai subs)
 
@@ -106,6 +108,42 @@ def keep_from_silences(silences, total, pad):
     return keep
 
 
+def motion_scores(src, fps):
+    """How much the picture changes between samples taken `fps` times a second: mean absolute difference of
+    small grey frames, 0 (still) to 1. Element k compares sample k with sample k+1."""
+    import numpy as np
+    w, h = 96, 54
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-v", "error", "-i", str(src), "-an",
+                        "-vf", f"fps={fps},scale={w}:{h},format=gray", "-f", "rawvideo", "-"],
+                       capture_output=True, timeout=3600)
+    if p.returncode:
+        raise RuntimeError(f"ffmpeg could not read frames from {src}: {p.stderr.decode('utf-8', 'replace')[-300:]}")
+    frames = np.frombuffer(p.stdout, np.uint8)
+    if frames.size < 2 * w * h:
+        raise RuntimeError(f"{src} has fewer than 2 frames to compare")
+    frames = frames[: frames.size // (w * h) * w * h].reshape(-1, h, w).astype(np.int16)
+    return [round(float(x), 4) for x in np.abs(np.diff(frames, axis=0)).mean(axis=(1, 2)) / 255]
+
+
+def keep_from_motion(scores, step, total, threshold, min_still, min_len, pad):
+    """Keep ranges (source seconds) where the picture moves: samples whose score reaches `threshold`, with
+    stills shorter than `min_still` bridged, moves shorter than `min_len` dropped, then `pad` added each side."""
+    runs, start = [], None
+    for k, sc in enumerate(scores + [0.0]):
+        if sc >= threshold and start is None:
+            start = k
+        elif sc < threshold and start is not None:
+            runs.append([start * step, k * step + step])   # sample k-1 vs k moved, so k's frame belongs too
+            start = None
+    merged = []
+    for s, e in runs:
+        if merged and s - merged[-1][1] < min_still:
+            merged[-1][1] = e
+        else:
+            merged.append([s, e])
+    return [[round(max(0, s - pad), 3), round(min(total, e + pad), 3)] for s, e in merged if e - s >= min_len]
+
+
 def map_time(t, keep):
     """Source time -> output time, or None if t was cut."""
     off = 0.0
@@ -140,13 +178,22 @@ def group_captions(words, keep, max_chars, max_gap):
 def cmd_plan(a):
     src = Path(a.input)
     words_path = Path(a.words or src.with_suffix(".words.json"))
-    if not words_path.exists():
+    if a.cut == "motion" and not a.words and not words_path.exists():
+        words = []   # footage with nobody talking: no transcript, no captions
+    elif not words_path.exists():
         raise RuntimeError(f"{words_path} not found - run transcribe first")
-    words = json.loads(words_path.read_text(encoding="utf-8"))["words"]
+    else:
+        words = json.loads(words_path.read_text(encoding="utf-8"))["words"]
     total = probe_duration(src)
-    keep = keep_from_silences(detect_silences(src, a.noise_db, a.min_silence), total, a.pad)
-    if not keep:
-        raise RuntimeError("silence detection kept nothing - check --noise-db")
+    if a.cut == "motion":
+        step = 1 / a.motion_fps
+        keep = keep_from_motion(motion_scores(src, a.motion_fps), step, total, a.motion, a.min_still, a.min_move, a.pad)
+        if not keep:
+            raise RuntimeError(f"nothing moved enough in {src} - lower --motion (now {a.motion})")
+    else:
+        keep = keep_from_silences(detect_silences(src, a.noise_db, a.min_silence), total, a.pad)
+        if not keep:
+            raise RuntimeError("silence detection kept nothing - check --noise-db")
     plan = {
         "source": str(src.resolve()),
         "keep": keep,
@@ -288,6 +335,12 @@ def main():
     p.add_argument("--min-silence", type=float, default=0.45)
     p.add_argument("--pad", type=float, default=0.08)
     p.add_argument("--max-chars", type=int, default=18)
+    p.add_argument("--cut", choices=("silence", "motion"), default="silence",
+                   help="silence: cut the pauses in speech; motion: keep only where the picture moves")
+    p.add_argument("--motion", type=float, default=0.02, help="motion: how much the picture must change (0-1)")
+    p.add_argument("--motion-fps", type=float, default=5, help="motion: samples per second")
+    p.add_argument("--min-still", type=float, default=0.6, help="motion: stills shorter than this stay in")
+    p.add_argument("--min-move", type=float, default=0.5, help="motion: moves shorter than this are dropped")
     p.set_defaults(fn=cmd_plan)
 
     r = sub.add_parser("render")
