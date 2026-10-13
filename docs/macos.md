@@ -2,7 +2,7 @@
 
 The Mac setup path prepares a local Python environment and starts EditorKrab in your browser. Transcription uses the CPU. Apple GPU acceleration is not implemented.
 
-These instructions cover version 0.29.0. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability. Installation checks or CI results do not prove that a CapCut draft opens correctly on every Mac; it still needs testing on real devices.
+These instructions cover version 0.29.1. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability. Installation checks or CI results do not prove that a CapCut draft opens correctly on every Mac; it still needs testing on real devices.
 
 ## Before you start
 

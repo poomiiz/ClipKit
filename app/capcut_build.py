@@ -119,17 +119,33 @@ def build(path: str) -> tuple[Path, list[str]]:
     """Returns the new project folder and what this machine lacks (shown to the person, never hidden)."""
     if not TEMPLATES.is_file():
         raise VideoEditError("app/capcut_templates.json is missing - run scripts/capcut/make_templates.py")
-    raw = _machine_paths(TEMPLATES.read_text(encoding="utf-8"))
+    probe = json.loads(_machine_paths(TEMPLATES.read_text(encoding="utf-8")))
     warnings: list[str] = []
-    probe = json.loads(raw)
-    fonts = {st.get("font", {}).get("path", "") for k in ("white", "orange", "caption", "title")
-             for st in json.loads(probe[k]["mat"]["content"]).get("styles", [])}
-    kanit = render.DEFAULT_FONT.as_posix()
-    for f in sorted(x for x in fonts if x and not Path(x).is_file()):
-        # a font path that does not exist makes CapCut fail on the text layer: use the Thai font ClipKit ships
-        raw = raw.replace(f, kanit)
-        warnings.append(f"font {Path(f).name} not on this machine: using Kanit (change it in CapCut if you like)")
-    _T.update(json.loads(raw))
+    fonts, bodies = [], []
+    for role in ("white", "orange", "caption", "title"):
+        mat = probe[role]["mat"]
+        body = json.loads(mat["content"])
+        bodies.append((mat, body))
+        fonts.append((mat, "font_path"))
+        fonts.extend((style.setdefault("font", {}), "path") for style in body.get("styles", []))
+    paths = [obj.get(key, "") for obj, key in fonts]
+    if any(not isinstance(path, str) for path in paths):
+        raise VideoEditError("template font path must be a string")
+    missing = {path for path in paths if not path or not Path(path).is_file()}
+    if missing:
+        if not render.DEFAULT_FONT.is_file():
+            raise VideoEditError(f"font file missing: {render.DEFAULT_FONT}")
+        kanit = render.DEFAULT_FONT.as_posix()
+        for font_path in sorted(missing):
+            name = Path(font_path).name if font_path else "(empty path)"
+            warnings.append(f"font {name} not on this machine: using Kanit (change it in CapCut if you like)")
+        # Mutate only font fields: nested JSON escaping and ordinary text stay intact.
+        for obj, key in fonts:
+            if obj.get(key, "") in missing:
+                obj[key] = kanit
+        for mat, body in bodies:
+            mat["content"] = json.dumps(body, ensure_ascii=False)
+    _T.update(probe)
     t = render.render_draft(path, "", dry=True)
     st = t["style"] or {}
     src = Path(path)

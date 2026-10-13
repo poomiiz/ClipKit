@@ -1,6 +1,6 @@
 # Promotion drafts
 
-Prepared copy for the version 0.29.0 launch. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability before announcing it. This preparation does not send social or community posts.
+Prepared copy for the version 0.29.1 launch. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability before announcing it. This preparation does not send social or community posts.
 
 Keep the practical claim: EditorKrab prepares an editable draft that a person reviews and finishes. Mac support is experimental. Real time savings have not been measured.
 

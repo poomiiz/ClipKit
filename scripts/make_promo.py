@@ -17,13 +17,13 @@ ICON = Image.open(f"{REPO}/docs/brand/icon-512.png").convert("RGBA")
 EMO = {c: Image.open(f"{REPO}/emoji/{c}.png").convert("RGBA") for c in ("1f525", "23f0", "1f4a1", "2705")}
 
 LINES = [
-    (0.3, 4.3, "One long video. Hours of editing."),
-    (4.6, 8.4, "Meet EditorKrab. It turns long videos into ready-to-post shorts."),
-    (8.6, 13.4, "Drop in your video, and tell it what you want."),
-    (13.6, 18.4, "It transcribes the speech and splits it into stories."),
-    (18.6, 24.8, "One click adds subtitles, zoom cuts, emoji and music."),
-    (25.0, 28.8, "Export an MP4, or keep editing in CapCut."),
-    (29.0, 33.0, "EditorKrab. Edit less, post more. Free on GitHub."),
+    (0.3, 4.3, "Start with one long video."),
+    (4.6, 8.4, "EditorKrab helps prepare editable short-video drafts."),
+    (8.6, 13.4, "Choose your video and the story you want."),
+    (13.6, 18.4, "Prepare the transcript and select a story."),
+    (18.6, 24.8, "Review the subtitles, cuts and sound before finishing the edit."),
+    (25.0, 28.8, "Export after review, or continue editing in CapCut."),
+    (29.0, 33.0, "EditorKrab. Draft, review, finish. Code on GitHub."),
 ]
 SCENES = [(0, 4.5), (4.5, 8.5), (8.5, 13.5), (13.5, 18.5), (18.5, 25), (25, 29), (29, 33.3)]
 
@@ -90,7 +90,9 @@ def scene_alpha(t, a, b):
 
 def frame(t):
     img = Image.new("RGBA", (W, H), NAVY + (255,))
-    # 1: one long video = hours of editing
+    # This animation illustrates the workflow; it is not a recorded editing trial.
+    text(img, (W / 2, 90), "Workflow illustration", 32, fill=GREY)
+    # 1: start with one video and choose a story
     a = scene_alpha(t, *SCENES[0])
     if a > 0:
         text(img, (W / 2, 700 - 60 * (1 - ease(p(t, 0.1, 0.4)))), "1 long video", 64, alpha=a * ease(p(t, 0.1, 0.4)))
@@ -100,9 +102,9 @@ def frame(t):
             for x in range(120, int(60 + w), 64):
                 rect(img, (x, 790, x + 4, 910), (255, 154, 133), 0, a)
         s = back(p(t, 2.0, 0.45))
-        text(img, (W / 2, 1120), "= hours of", 118, alpha=a * clamp(s), scale=s)
-        text(img, (W / 2 - 60, 1250), "editing", 118, fill=CORAL, alpha=a * clamp(s), scale=s)
-        paste(img, EMO["23f0"], W / 2 + 280, 1250, 120 * s, a * clamp(s))
+        text(img, (W / 2, 1120), "Choose", 118, alpha=a * clamp(s), scale=s)
+        text(img, (W / 2 - 60, 1250), "a story", 118, fill=CORAL, alpha=a * clamp(s), scale=s)
+        paste(img, EMO["1f4a1"], W / 2 + 280, 1250, 120 * s, a * clamp(s))
     # 2: logo
     a = scene_alpha(t, *SCENES[1])
     if a > 0:
@@ -110,7 +112,7 @@ def frame(t):
         paste(img, ICON, W / 2, 720, 380 * s, a, rot=-25 * (1 - clamp(s)))
         k = ease(p(t, 5.1, 0.45))
         wordmark(img, 1080 + 80 * (1 - k), 118, a * k)
-        text(img, (W / 2, 1210), "long videos → ready-to-post shorts", 44, fill=GREY, alpha=a * p(t, 5.7, 0.4))
+        text(img, (W / 2, 1210), "short-video drafts you can edit", 44, fill=GREY, alpha=a * p(t, 5.7, 0.4))
     # 3: drop a video and say what you want
     a = scene_alpha(t, *SCENES[2])
     if a > 0:
@@ -127,12 +129,12 @@ def frame(t):
         brief = "relaxed vlog, funny parts, under 1 min"
         n = round(len(brief) * p(t, 10.2, 2.2))
         caret = "|" if int(t * 3) % 2 == 0 else ""
-        text(img, (170, 1250), brief[:n] + caret, 44, alpha=a, anchor="lm")
+        text(img, (170, 1250), brief[:n] + caret, 40, alpha=a, anchor="lm")
     # 4: split into stories
     a = scene_alpha(t, *SCENES[3])
     if a > 0:
         text(img, (W / 2, 470), "STEP 2", 42, fill=CORAL, alpha=a)
-        text(img, (W / 2, 620), "Transcribe & split\ninto stories", 64, alpha=a)
+        text(img, (W / 2, 620), "Prepare a transcript\nChoose a story", 64, alpha=a)
         bw = 960 * ease(p(t, 13.7, 0.6))
         if bw > 2:
             rect(img, (60, 960, 60 + bw, 1080), CORAL, 24, a * (1 - p(t, 14.8, 0.2)))
@@ -147,10 +149,10 @@ def frame(t):
             paste(img, EMO[code], cx, cy - 90 * s, 110 * s, a * clamp(s))
             text(img, (cx, cy + 50 * s), title, 40, alpha=a * clamp(s), scale=s)
             text(img, (cx, cy + 150 * s), length, 30, fill=GREY, alpha=a * clamp(s), scale=s)
-    # 5: one click edit, on a phone
+    # 5: review the draft, on a phone
     a = scene_alpha(t, *SCENES[4])
     if a > 0:
-        text(img, (W / 2, 330), "STEP 3 · ONE CLICK", 42, fill=CORAL, alpha=a)
+        text(img, (W / 2, 330), "STEP 3 · REVIEW YOUR DRAFT", 42, fill=CORAL, alpha=a)
         dy = 300 * (1 - ease(p(t, 18.6, 0.5)))
         x0, y0, x1, y1 = 240, 420 + dy, 840, 1486 + dy
         phone = Image.new("RGBA", (600, 1066), (0, 0, 0, 0))
@@ -179,7 +181,7 @@ def frame(t):
         rect(img, (x0 - 14, y0 - 14, x1 + 14, y1 + 14), (13, 22, 38), 62, a)
         img.alpha_composite(phone, (int(x0), int(y0)))
         k = ease(p(t, 22.4, 0.4))
-        text(img, (W / 2, 1600 + 30 * (1 - k)), "Subtitles · Zoom cuts · Emoji · Music", 44, alpha=a * k)
+        text(img, (W / 2, 1528 + 30 * (1 - k)), "Subtitles · Zoom cuts · Emoji · Music", 44, alpha=a * k)
     # 6: export
     a = scene_alpha(t, *SCENES[5])
     if a > 0:
@@ -198,11 +200,12 @@ def frame(t):
         paste(img, ICON, W / 2, 560, 300 * s, a)
         wordmark(img, 850, 118, a)
         k = ease(p(t, 29.7, 0.4))
-        text(img, (W / 2, 1040 + 60 * (1 - k)), "Edit less.", 64, alpha=a * k)
-        text(img, (W / 2, 1120 + 60 * (1 - k)), "Post more.", 64, fill=CORAL, alpha=a * k)
+        text(img, (W / 2, 1040 + 60 * (1 - k)), "Draft. Review.", 64, alpha=a * k)
+        text(img, (W / 2, 1120 + 60 * (1 - k)), "Finish your edit.", 64, fill=CORAL, alpha=a * k)
         k = p(t, 30.5, 0.4)
         text(img, (W / 2, 1330), "Free & open source", 44, fill=GREY, alpha=a * k)
         text(img, (W / 2, 1400), "github.com/poomiiz/EditorKrab", 44, alpha=a * k)
+        text(img, (W / 2, 1480), "Mac setup: experimental · CPU", 36, fill=GREY, alpha=a * k)
     # caption of the voice line, so it also works muted
     for la, lb, line in LINES:
         if la <= t <= lb:
