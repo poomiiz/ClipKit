@@ -455,6 +455,68 @@ def web_ai_answers_are_checked():
         assert json.loads((proj / "clipkit_hook.json").read_text(encoding="utf-8"))[0]["color"] == "red"
 
 
+def progress_bar_fills_over_the_clip():
+    # the bar is empty at the start, half way at the middle and full at the end of a 2 s clip
+    import render
+    import numpy as np
+    bar, out = render.progress_bar("[vo]", 2.0, 320, 180)
+    assert out == "[pb]", out
+    for at, lit in ((0.05, 0.0), (1.0, 0.5), (1.96, 1.0)):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x180:r=25:d=2",
+                            "-filter_complex", "[0:v]null[vo]" + bar, "-map", out, "-ss", str(at), "-frames:v", "1",
+                            "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True)
+        row = np.frombuffer(r.stdout, np.uint8).reshape(180, 320)[-2]
+        assert abs((row > 128).mean() - lit) < 0.06, (at, (row > 128).mean())
+    try:
+        render.progress_bar("[vo]", 0, 320, 180)
+        raise AssertionError("a 0 s clip got a bar")
+    except render.VideoEditError:
+        pass
+
+
+def emoji_pops_on_keywords():
+    # one emoji per keyword phrase, 2.5 s apart at least, none under the clip title; drawn only during its beat
+    import render
+    import numpy as np
+    beats = render.emoji_beats([(0.5, 2.0, "วันนี้ได้เงินเยอะ"), (1.0, 3.0, "ไฟไหม้"), (4.0, 5.0, "ธรรมดา"),
+                                (6.0, 7.0, "I have an idea")])
+    assert [(b["at"], Path(b["file"]).stem) for b in beats] == [(0.5, "1f4b0"), (6.0, "1f4a1")], beats
+    assert render.emoji_beats([(0.5, 2.0, "เงิน")], skip_until=3) == []
+    for code in render.EMOJI:
+        assert (render.EMOJI_DIR / f"{code}.png").is_file(), code
+    piece, out = render.emoji_overlay("[vo]", 1, 0, {"at": 0.5, "dur": 1.0, "file": ""}, 320, 568)
+    es, ex, ey = render.emoji_box(320, 568)
+    for at, shown in ((0.2, False), (0.9, True), (1.8, False)):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x568:r=25:d=2",
+                            "-loop", "1", "-i", str(render.EMOJI_DIR / "1f525.png"),
+                            "-filter_complex", "[0:v]null[vo]" + piece, "-map", out, "-ss", str(at), "-frames:v", "1",
+                            "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True)
+        box = np.frombuffer(r.stdout, np.uint8).reshape(568, 320)[ey:ey + es, ex:ex + es]
+        assert ((box > 40).mean() > 0.3) == shown, (at, (box > 40).mean())
+
+def speed_ramp_eases_into_normal_speed():
+    # a source whose brightness is 25 x its own time: the ramped copy runs 3x at first, 1x after 0.6 s
+    import render
+    import numpy as np
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "count.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=64x64:r=30:d=6,geq=lum='T*25':cb=128:cr=128",
+                        "-c:v", "libx264", "-crf", "1", "-pix_fmt", "yuv420p", str(src)], check=True)
+        out = render.speed_ramp(str(src), 2.0, Path(tmp) / "c")
+        assert render.speed_ramp(str(src), 2.0, Path(tmp) / "c") == out  # made once, then reused
+        info = render.probe(out)
+        assert abs(info["duration"] - 2.0) < 0.1, info
+        for at, source_t in ((0.3, 0.75), (0.6, 1.2), (1.6, 2.2)):
+            r = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(at), "-i", out, "-frames:v", "1", "-f", "rawvideo",
+                                "-pix_fmt", "yuv420p", "-"], capture_output=True, check=True)
+            got = np.frombuffer(r.stdout[:64 * 64], np.uint8).mean() / 25  # the Y plane, as geq wrote it
+            assert abs(got - source_t) < 0.12, (at, got, source_t)
+    try:
+        render.speed_ramp("x", 0, Path("."))
+        raise AssertionError("a 0 s b-roll got a ramp")
+    except render.VideoEditError:
+        pass
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)

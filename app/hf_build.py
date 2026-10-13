@@ -110,7 +110,7 @@ def build(path: str) -> Path:
                        f'data-duration="{b["dur"]:.3f}" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">')
         elif b.get("file"):
-            els.append(f'<video id="{nid("b")}" class="clip" src="{_local(out, b["file"])}" muted playsinline data-start="{b["start"]:.3f}" '
+            els.append(f'<video id="{nid("b")}" class="clip" src="{_local(out, b["play"])}" muted playsinline data-start="{b["start"]:.3f}" '
                        f'data-duration="{b["dur"]:.3f}" data-media-start="0" data-track-index="2" '
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
 
@@ -196,6 +196,19 @@ def build(path: str) -> Path:
                  h["grow"], tops.get(first, 0) + 8, one=True)
         first = first or i
         anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{j * 0.15:.2f});')
+    # progress bar along the bottom edge, filling over the clip (same as render.progress_bar)
+    if t["progress"]:
+        els.append(f'<div id="{nid("p")}" class="clip pbar" data-start="0" data-duration="{D:.3f}" data-track-index="6" '
+                   f'style="position:absolute;left:0;bottom:0;width:{W}px;height:{max(4, round(H * 0.008))}px;background:#fff;'
+                   f'transform-origin:0 50%;transform:scaleX(0)"></div>')
+        anim.append(f'tl.fromTo(".pbar",{{scaleX:0}},{{scaleX:1,duration:{D:.3f},ease:"none"}},0);')
+    # emoji on keywords, popping in (same place and times as the ffmpeg export, render.emoji_beats)
+    es, ex, ey = render.emoji_box(W, H)
+    for e in t["emoji"]:
+        i = nid("e")
+        els.append(f'<img id="{i}" class="clip" src="{_local(out, e["file"])}" data-start="{e["at"]:.3f}" data-duration="{e["dur"]:.3f}" '
+                   f'data-track-index="7" style="position:absolute;left:{ex}px;top:{ey}px;width:{es}px;height:{es}px">')
+        anim.append(f'tl.fromTo("#{i}",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.18,ease:"back.out(2.5)"}},{e["at"]:.3f});')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):
