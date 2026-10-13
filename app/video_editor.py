@@ -370,7 +370,7 @@ def capcut(req: DraftRequest) -> dict[str, Any]:
 
 # ── project templates: the whole look of a clip, saved once and given to every new project ──
 TEMPLATES_DIR = _APP_DIR.parent / "project_templates"   # this machine's own (git-ignored)
-TEMPLATE_KEYS = ("anim", "preset", "zoomcut", "progress", "skin", "music", "music_volume", "sfx", "sfx_volume",
+TEMPLATE_KEYS = ("anim", "preset", "zoomcut", "progress", "emoji", "skin", "music", "music_volume", "sfx", "sfx_volume",
                  "auto_color", "trim", "hook_colors")
 TEMPLATE_DEFAULT = {"anim": "pair", "preset": "default", "zoomcut": True, "skin": 0.6, "auto_color": True, "trim": True,
                     "sfx": True, "sfx_volume": 1.0, "music_volume": 0.12, "hook_colors": ["white", "orange"]}
