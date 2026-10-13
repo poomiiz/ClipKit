@@ -37,6 +37,7 @@ MIT licensed. Issues and pull requests in Thai or English are welcome.
 - `docs/brand/icon.svg`, `icon-512.png`, `icon-1024.png`: app icon
 - `app/static/editorkrab.ico`: Windows icon, sizes 16–256
 - `docs/brand/github-banner.png`: repository social preview, 1280 × 640
+- `docs/brand/promo.mp4`: 33 s vertical promo with English captions (silent); voice-over lines and times in `docs/brand/promo-voiceover.md`, generator `scripts/make_promo.py`
 
 Palette: navy #17243B, coral #FF785C, paper #F7F5EF. Mark: crab with a play symbol. Wordmark: Segoe UI / Arial. Editable SVG sources and raster exports are included.
 
