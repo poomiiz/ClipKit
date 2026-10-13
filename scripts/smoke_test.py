@@ -421,7 +421,7 @@ def web_ai_answers_are_checked():
         assert video_editor.brief(str(video))["brief"]
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief=""))
         assert video_editor.brief(str(video)) == {"brief": ""}
-        assert "ความต้องการของผู้ตัดต่อ" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        assert "What the editor wants" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
         for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},
                     {**head, "stories": [{"title": "a", "start": 3, "end": 5}]}):  # wrong video / no speech
@@ -446,9 +446,9 @@ def web_ai_answers_are_checked():
         capcut_edit.read_draft = lambda p: {"subtitles": [{"start": 0.0, "end": 2.0, "text": "เงินไม่พอใช้"}]}
         try:
             web_ai.export_clip(str(proj))
-            assert "ยาวราว" not in web_ai.export_clip(str(proj)).read_text(encoding="utf-8")
+            assert "about 1.5" not in web_ai.export_clip(str(proj)).read_text(encoding="utf-8")
             aimed = web_ai.export_clip(str(proj), 1.5).read_text(encoding="utf-8")
-            assert "ยาวราว 1.5 นาที" in aimed and aimed.index("ยาวราว") < aimed.index("## 1. Subtitle"), "the length aim is not in the cut rules"
+            assert "about 1.5 min" in aimed and aimed.index("about 1.5") < aimed.index("## 1. Subtitle"), "the length aim is not in the cut rules"
             good = {"clipkit_web_ai": 1, "step": "clip", "project": "proj", "hook": [{"text": "เงินหมด", "color": "red"}],
                     "lines": [{"n": 1, "items": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}]}
             for bad in ({**good, "lines": [{"n": 1, "items": [["เงิน", "พอใช้"]]}]},  # words changed

@@ -1,44 +1,46 @@
-<!-- ClipKit web AI ขั้นที่ 2: ซับ คำเน้น หัวคลิป motion ของคลิปเดียว (ไฟล์นี้ถูกต่อหน้าข้อมูลซับตอน export, แก้ได้โดยไม่ต้องแก้โค้ด) -->
-# ClipKit ขั้นที่ 2: Subtitle / เน้น / HL Hook / Motion text ของคลิปเดียว
+<!-- ClipKit web AI step 2: subtitles, emphasis, clip headline and motion for one clip (put in front of the subtitle data on export; edit freely, no code change needed) -->
+# ClipKit step 2: Subtitle / emphasis / HL Hook / Motion text for one clip
 
-ข้อมูลด้านล่างคือซับของคลิปสั้นหนึ่งคลิปที่ตัดแล้ว (`lines`: n, start, end เป็นวินาทีบนไทม์ไลน์คลิป, text) คุณไม่ต้องเห็นวิดีโอ
-ClipKit จะเอาคำตอบไปสร้างโปรเจกต์ CapCut ในเครื่องเอง: ซับขาว (Subtitle), คำเน้นสี (เน้น), หัวคลิป 4 วินาทีแรก (HL Hook) และ Motion text
+The data below is the subtitles of one short clip that is already cut (`lines`: n, start, end in seconds on the clip timeline, text). You do not need to see the video.
+ClipKit builds the CapCut project on this machine from your answer: white subtitles (Subtitle), coloured emphasis words (เน้น), a headline for the first 4 seconds (HL Hook) and Motion text.
 
-## 0. ตัดเรียบเรียง (ไม่ใส่ก็ได้)
-`cut`: เลขบรรทัดที่ตัดทิ้งทั้งภาพและเสียง เช่น ทักทาย พูดซ้ำ พูดผิดแล้วพูดใหม่ ออกนอกเรื่อง ให้คลิปกระชับและยังเล่าต่อกันรู้เรื่อง
-ห้ามตัดจนเหลือไม่ถึงบรรทัดเดียว บรรทัดที่ตัดไม่ต้องใส่ items, caption หรือ motion (ตัดได้แค่ทั้งบรรทัด และไม่สลับลำดับ)
+**Language:** every text you write (lead, punch, show, second, hook) is in the same language as the `text` in `lines`, so the on-screen text matches the clip. Only image search terms are English, and `caption` uses `caption_language`. The examples below are Thai; follow their shape, not their language.
 
-## 1. Subtitle + เน้น (ทุกบรรทัดที่ไม่ได้ตัด)
-- แบ่งแต่ละบรรทัดเป็นท่อนสั้น ราว 2 วินาที / 10-18 ตัวอักษรไทย ตามลำดับที่พูด ตัดตรงที่ความคิดจบ
-- แต่ละท่อน = `[lead, punch]`: punch คือคำหรือวลีที่เป็นใจความ (ความรู้สึก ตัวเลข ผลลัพธ์ แบรนด์ เช่น "ถูกกดดัน", "20 ปี", "ไม่อิ่ม") ไม่ใช่แค่คำท้าย
-- **lead + punch ของทุกท่อนต่อกันต้องเป็นข้อความเดิมของบรรทัดนั้นครบทุกตัวอักษรตามลำดับ** (ตัดช่องว่างได้ อย่างอื่นห้ามเปลี่ยน) punch มาก่อนได้: lead เป็น ""
-- lead ยาวไม่เกินราว 15 ตัวอักษร ยาวกว่านั้นแยกท่อน
-- ไม่ใช่ทุกท่อนต้องมีสี: คำเติม/คำเชื่อม ("อืมๆ", "แบบว่า", คำซ้ำ) ใช้ `[ข้อความ, ""]` เน้นสีแค่ท่อนที่เป็นใจความ ราวครึ่งหนึ่งหรือน้อยกว่า
-- ตัวเลือกการแสดง (ช่องที่ 4, ไม่ใส่ก็ได้) `{"look": ..., "show": [ขาว, สี]}`:
-  - `pair` (ค่าเริ่มต้น) ขาว lead + สี punch · `white` ขาวอย่างเดียว (ประโยคปูเรื่อง คำถาม) · `color` สีอย่างเดียว (ท่อนสั้นที่เป็นใจความล้วน)
-  - `red` สีแดง เฉพาะ 1-2 ประเด็นที่แรงที่สุด · `hold` คงบรรทัดขาวก่อนหน้าไว้ขณะคำสีเปลี่ยน (ใช้กับการไล่รายการ) · `skip` ไม่ขึ้นซับ (คำเติม พูดซ้ำ พูดผิด)
-  - `show`: คำบนจอแบบเขียนใหม่ให้สั้นสะอาด ("ไปจ้างพนักงานขายซิ" -> "จ้างเซลส์มาขาย") ไม่เกินราว 15 ตัวอักษร (lead + punch ยังต้องเป็นคำพูดเดิม เพราะใช้จับเวลา)
-  - `color`: "#rrggbb" สีเฉพาะท่อนนี้ · `second`: คำสั้นของคนที่สอง ("ห๊ะ!", "โห")
-- ภาพประกอบ: ราว 1 ใน 3 ท่อนที่พูดถึงสิ่งที่มองเห็นได้ ใส่ช่องที่ 3 เป็นคำค้นภาษาอังกฤษ 2-4 คำ เช่น `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]` ไม่ใส่ชื่อแบรนด์ ไม่ติดกันสองท่อน
-- รูปแบบท่อน: `[lead, punch]`, `[lead, punch, คำค้น]`, `[lead, punch, {ตัวเลือก}]` หรือ `[lead, punch, คำค้น, {ตัวเลือก}]`
+## 0. Tighten the edit (optional)
+`cut`: line numbers to drop, picture and sound, such as greetings, repeats, a slip followed by a retake, or going off topic, so the clip is tight and still flows.
+Never cut down to less than one line. A cut line needs no items, caption or motion (only whole lines can be cut, and the order stays).
 
-## 2. HL Hook (หัวคลิป)
-1-2 บรรทัด สัญญาสั้นๆ ว่าคลิปให้อะไร ราว 8-16 ตัวอักษรต่อบรรทัด ไม่ใช่ประโยคจากคำพูด สีต่อบรรทัด `white`, `orange` หรือ `red`
-(แดง = เตือน/ช็อก, ส้ม = คำสัญญา) เช่น "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้", "เงิน 5 แสนก็ไม่เอา!"
-หัวคลิปขึ้น 4 วินาทีแรก ซับช่วงนั้นจะไม่ขึ้น แต่ยังต้องใส่ทุกบรรทัดใน lines
+## 1. Subtitle + emphasis (every line that is not cut)
+- Split each line into short chunks of about 2 seconds / 10-18 Thai characters (about 3-6 words in other languages), in spoken order, breaking where a thought ends
+- Each chunk = `[lead, punch]`: punch is the key word or phrase (a feeling, a number, a result, a brand, e.g. "ถูกกดดัน", "20 ปี", "ไม่อิ่ม"), not just the last word
+- **The lead + punch of all chunks joined together must be the line's original text, every character, in order** (spaces may change, nothing else). punch may come first: then lead is ""
+- lead is at most about 15 characters; split longer ones into more chunks
+- Not every chunk needs colour: fillers and connectors ("อืมๆ", "แบบว่า", repeated words) use `[text, ""]`. Colour only the chunks that carry the point, about half or fewer
+- Display options (4th slot, optional) `{"look": ..., "show": [white, colour]}`:
+  - `pair` (default) white lead + coloured punch · `white` white only (set-up sentences, questions) · `color` colour only (short chunks that are pure point)
+  - `red` red, only for the 1-2 strongest points · `hold` keep the previous white line while the coloured word changes (for lists) · `skip` no subtitle (fillers, repeats, slips)
+  - `show`: on-screen words rewritten short and clean ("ไปจ้างพนักงานขายซิ" -> "จ้างเซลส์มาขาย"), at most about 15 characters (lead + punch must still be the spoken words, they set the timing)
+  - `color`: "#rrggbb" colour for this chunk only · `second`: a short word from a second person ("ห๊ะ!", "โห")
+- Pictures: on about 1 in 3 chunks that talk about something visible, put 2-4 English search words in the 3rd slot, e.g. `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. No brand names, never two chunks in a row
+- Chunk shapes: `[lead, punch]`, `[lead, punch, search]`, `[lead, punch, {options}]` or `[lead, punch, search, {options}]`
 
-## 3. Motion text (ไม่ใส่ก็ได้)
-บรรทัดที่ควรเป็นตัวหนังสือเคลื่อนไหวแทนซับ ไม่เกิน 1-2 จุดต่อคลิป: `{"n": เลขบรรทัด, "template": "hook-title"}` (หัวข้อใหญ่) หรือ `"sentence-pair"` (คู่คำเน้น)
+## 2. HL Hook (clip headline)
+1-2 lines, a short promise of what the clip gives, about 8-16 Thai characters (3-5 words) per line, not a sentence from the speech. Colour per line: `white`, `orange` or `red`
+(red = warning/shock, orange = promise), e.g. "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้", "เงิน 5 แสนก็ไม่เอา!"
+The headline shows for the first 4 seconds and subtitles in that span are hidden, but every line must still be in lines.
 
-## 4. caption (เฉพาะเมื่อ `caption_language` ด้านล่างไม่ใช่ null)
-แปลทุกบรรทัดเป็นภาษานั้น สั้นและเป็นธรรมชาติ ชื่อแบรนด์คงเดิม: `{"1": "...", "2": "..."}`
+## 3. Motion text (optional)
+Lines that should be animated text instead of a subtitle, at most 1-2 per clip: `{"n": line number, "template": "hook-title"}` (big title) or `"sentence-pair"` (emphasis pair)
 
-## ตอบกลับ
+## 4. caption (only when `caption_language` below is not null)
+Translate every line into that language, short and natural, brand names unchanged: `{"1": "...", "2": "..."}`
 
-ตอบเป็น JSON ก้อนเดียวในบล็อก ```json เท่านั้น ไม่ต้องอธิบาย lines มีทุกบรรทัด n = 1..จำนวนบรรทัด ตามลำดับ (บรรทัดที่ตัดใส่แค่ n):
+## Reply
+
+Reply with one JSON object in a ```json block only, no explanation. lines has every line, n = 1..number of lines, in order (a cut line has only n):
 
 ```json
-{"clipkit_web_ai": 1, "step": "clip", "project": "<ชื่อตามช่อง project ด้านล่าง>",
+{"clipkit_web_ai": 1, "step": "clip", "project": "<name from the project field below>",
  "hook": [{"text": "เริ่มทำธุรกิจใหม่", "color": "red"}, {"text": "ทำสิ่งนี้ก่อน", "color": "white"}],
  "lines": [{"n": 1, "items": [["บางคนบอกต้องลง", "ระบบ Crm", {"look": "hold", "show": ["", "ลงระบบ CRM"]}]]}, {"n": 2}],
  "cut": [2],
