@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   tests:
-    # EditorKrab targets Windows (PowerShell window control, CapCut paths), so the tests run there.
+    # Keep the existing Windows setup and host controls covered.
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -73,3 +73,52 @@ jobs:
       - name: Setup switched to CPU without a GPU
         shell: pwsh
         run: if ((Get-Content config.json -Raw | ConvertFrom-Json).whisper_device -ne "cpu") { throw "whisper_device not cpu" }
+
+  macos:
+    name: Mac (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Use the small model for the installation check
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path('config.example.json').read_text())
+          config['whisper_model'] = 'tiny'
+          config['autosave'] = False
+          config['auto_bug_report'] = False
+          Path('config.json').write_text(json.dumps(config))
+          PY
+      - name: Install, configure paths and run CPU transcription
+        run: bash scripts/setup.sh "$RUNNER_TEMP/Editor Krab Workspace"
+      - name: Python tests
+        run: |
+          failed=0
+          for test in scripts/*_test.py; do
+            echo "== $test"
+            .venv/bin/python "$test" || failed=1
+          done
+          exit "$failed"
+      - name: Page script tests
+        run: |
+          failed=0
+          while IFS= read -r test; do
+            echo "== $test"
+            node "$test" || failed=1
+          done < <(find scripts -type f \( -name '*_test.js' -o -name '*_test.cjs' \))
+          exit "$failed"
+      - name: Isolated native server lifecycle
+        run: .venv/bin/python scripts/macos_native_test.py --live

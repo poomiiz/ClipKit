@@ -81,6 +81,8 @@ def _self_update() -> None:
 
 def _app_icon() -> None:
     """Team machines get the ClipKit desktop icon and the 12-hour update check on their first run."""
+    if sys.platform != "win32":
+        return
     import subprocess
     icon = Path(__file__).with_name("app_icon.ps1")
     desk = Path.home() / "Desktop" / "ClipKit.lnk"

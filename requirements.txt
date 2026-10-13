@@ -8,3 +8,5 @@ fastapi==0.143.0
 uvicorn==0.53.0
 pillow==12.3.0
 opencv-python==4.14.0.94  # OpenCV 5 dropped CascadeClassifier (face finding)
+fonttools==4.63.0  # subtitle font metrics on clean installations
+psutil==7.2.2  # verify ownership before controlling local server/preview processes

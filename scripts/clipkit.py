@@ -59,7 +59,7 @@ def cmd_transcribe(a):
     sys.path.insert(0, str(Path(__file__).resolve().parent / "capcut"))
     import kitconfig
     a.model = a.model or kitconfig.CFG.get("whisper_model") or "large-v3"
-    a.device = a.device or kitconfig.CFG.get("whisper_device") or "cuda"
+    a.device = a.device or kitconfig.CFG.get("whisper_device") or ("cpu" if sys.platform == "darwin" else "cuda")
     if a.device == "cuda":
         add_cuda_dll_dirs()
     from faster_whisper import WhisperModel

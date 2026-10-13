@@ -1,54 +1,52 @@
-# EditorKrab open-source launch kit
+# Launch kit
 
-## Repository description
+Release and announcement materials for version 0.29.0. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) for availability. No social or community posts have been sent as part of this preparation.
 
-Open-source short-video editing workflow with Thai subtitles, CapCut drafts, HyperFrames, local editing and team review.
+Use the [promotion drafts](promotion.md) for copy and a 30-second demo plan. Check [Releases](https://github.com/poomiiz/EditorKrab/releases) before telling users to update.
 
-## ข้อความเปิดตัว
+## Project description
 
-เปิดตัว EditorKrab 🦀 เครื่องมือโอเพนซอร์สสำหรับคนตัดคลิปพูดและทีมคอนเทนต์
+EditorKrab is an open source tool that prepares short-video drafts from talking-head footage, with editable subtitles, covers and CapCut projects.
 
-ช่วยเตรียมเรื่องจากฟุต ทำซับไทย ตัดช่วงเงียบ จัดปกและ preset แล้วแก้ต่อผ่านหน้าตัดต่อในเครื่อง CapCut หรือ HyperFrames ได้ ใช้ร่วมกับ Claude Code และ Codex ได้ด้วย
+Windows uses the existing installer. Mac support is experimental and uses CPU transcription. Every draft needs human review. Editing-time savings are unmeasured; CapCut projects on Mac and team features still need testing with real users and devices.
 
-เปิดซอร์สให้ทุกคนช่วยแก้ ปรับ preset และเพิ่มความสามารถ
+## Existing assets
 
-รุ่นนี้เป็น early access สำหรับ Windows ต้องตรวจซับและผลตัดก่อนส่งงาน ส่วนระบบบัญชีทีมและ Google login ยังอยู่ระหว่างตั้งค่าและตรวจใช้งานจริง
+| Asset | Use |
+|---|---|
+| [logo.svg](brand/logo.svg), [logo.png](brand/logo.png) | Wordmark on a light background |
+| [logo-dark.svg](brand/logo-dark.svg), [logo-dark.png](brand/logo-dark.png) | Wordmark on a dark background |
+| [icon.svg](brand/icon.svg), [512 px](brand/icon-512.png), [1024 px](brand/icon-1024.png) | App icon |
+| [GitHub banner](brand/github-banner.png) | Repository social preview |
+| [Existing promo](brand/promo.mp4), [GIF preview](brand/promo.gif) | 33-second motion graphic |
+| [Existing voice-over](brand/promo-voiceover.md) | Timing reference for the older motion graphic |
 
-ซอร์สและวิธีติดตั้ง: https://github.com/poomiiz/EditorKrab
+The existing promo is a generated graphic. Some captions promise results that have not been verified. Use the new demo plan and reviewed copy for a release announcement. The older graphic provides no evidence of measured savings or Mac compatibility.
 
-ใบอนุญาต MIT · ยินดีรับ issue และ PR ภาษาไทยหรืออังกฤษ
+Editable SVG sources are included. The existing palette uses navy, coral and off-white. The Windows icon is [editorkrab.ico](../app/static/editorkrab.ico).
 
-## English announcement
+The plugin ID `clip-kit` and existing `clipkit` file-format names remain unchanged for compatibility.
 
-Meet EditorKrab: an open-source workflow for turning talking-head footage into short videos.
+## Release and announcement checks
 
-Prepare story cuts, Thai subtitles, covers and presets, then continue in the local editor, CapCut or HyperFrames. Agent workflows are available for Claude Code and Codex.
+| Check | Required evidence | Current status |
+|---|---|---|
+| Release delivery | Published tag/Release at the intended commit; Update verified in a disposable clone | Check the published tag and its Update verification log |
+| Software checks | CI at the release commit and required original security hotfix ancestry | Recheck before publishing |
+| Windows editing | A real source, exported pilot and the quality checklist | Record the actual result; software tests alone are insufficient |
+| Mac editing | Installation, transcription, export and CapCut review on intended Mac devices | Experimental; still needs testing on real devices |
+| Timing claim | Completed human benchmark with CSV and trial-scoped log | UNKNOWN; no real percentage available |
+| Team service | Real Google sign-in, team permissions and two-device synchronization | Still needs testing with real accounts and devices |
+| Public assets | Consent for demo footage, no private data, third-party attribution reviewed | Review selected assets before posting |
 
-This is an early-access Windows project. Check subtitles and edits before delivery. Hosted team accounts and Google sign-in are still awaiting live setup and acceptance.
+When publishing an early access release, state the unresolved checks plainly. Before calling a release stable, try the editing, installation and team service with real users and devices.
 
-Source, installation and contributions: https://github.com/poomiiz/EditorKrab
+## Prepare the announcement
 
-MIT licensed. Issues and pull requests in Thai or English are welcome.
+1. Use consented footage or a purpose-made sample. Keep client names, private paths and account details out of the capture.
+2. Record the steps in the [demo shot list](promotion.md#30-second-demo-plan). Show the draft review before the final MP4.
+3. Use the English or Thai copy for the chosen channel after verifying the release availability.
+4. Link to the repository, installation guide and known limitations.
+5. Upload the banner as GitHub's social preview and post the announcement only when the owner is ready to publish.
 
-## Assets
-
-- `docs/brand/logo.svg` and `logo.png`: transparent wordmark for light backgrounds
-- `docs/brand/logo-dark.svg` and `logo-dark.png`: wordmark for dark backgrounds
-- `docs/brand/icon.svg`, `icon-512.png`, `icon-1024.png`: app icon
-- `app/static/editorkrab.ico`: Windows icon, sizes 16–256
-- `docs/brand/github-banner.png`: repository social preview, 1280 × 640
-- `docs/brand/promo.mp4`: 33 s vertical promo with English captions (silent); voice-over lines and times in `docs/brand/promo-voiceover.md`, generator `scripts/make_promo.py`
-
-Palette: navy #17243B, coral #FF785C, paper #F7F5EF. Mark: crab with a play symbol. Wordmark: Segoe UI / Arial. Editable SVG sources and raster exports are included.
-
-The `clip-kit` plugin ID and `clipkit` file-format keys retain their existing names for compatibility. The previous `clipkit.ico` path remains an alias for existing shortcuts.
-
-## Before announcing a stable release
-
-- Verify installation on a clean Windows machine and review a real exported pilot clip.
-- Finish hosted Supabase migrations and Google OAuth setup; test real sign-in and role isolation.
-- Verify two-device external synchronization and project handover procedures.
-- Review repository contents for client data, credentials and third-party licensing.
-- Upload `github-banner.png` as the repository social preview in GitHub Settings → General.
-
-Prepared copy only; this change does not publish an announcement or stable release.
+Copy, shot list and asset references are prepared here. A new demo video, social posts and paid media generation are separate actions.

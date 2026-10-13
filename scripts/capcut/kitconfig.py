@@ -6,9 +6,12 @@ A missing config or key raises - never guess a path.
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 _KIT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_KIT / "app"))
+import host_platform
 _CANDIDATES = [os.environ.get("CLIP_KIT_CONFIG"), _KIT / "config.json", Path.home() / ".clip-kit" / "config.json"]
 
 
@@ -21,6 +24,7 @@ def _load():
 
 
 CFG = _load()
+os.environ.update(host_platform.runtime_environment(CFG))
 
 
 def need(key):
@@ -36,8 +40,7 @@ def need(key):
 # folder paths are read when a tool asks for them (module __getattr__ below), so the app can start
 # on a new machine before the Settings page has filled them in; a tool that needs an unset one still raises
 # CapCut's project registry; default location for the current Windows user
-ROOT_META = CFG.get("capcut_root_meta") or str(
-    Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft" / "root_meta_info.json")
+ROOT_META = str(host_platform.capcut_registry(CFG))
 FONT_NAME = CFG.get("card_font")  # optional: editors pick fonts themselves; only previews need one
 FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
 
@@ -59,6 +62,11 @@ def font_file():
     """Absolute path of the card font, for ffmpeg previews."""
     if not FONT_NAME:
         raise RuntimeError("set \"card_font\" in config.json to a font installed on this machine to render previews")
+    if host_platform.is_macos():
+        found = host_platform.find_font(FONT_NAME, CFG)
+        if found:
+            return str(found)
+        raise RuntimeError(f"font '{FONT_NAME}' is not installed")
     for d in (Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts", Path(r"C:\Windows\Fonts")):
         for f in d.glob(FONT_NAME + ".*"):
             return str(f)

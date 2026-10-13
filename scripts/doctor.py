@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
+import kitconfig  # apply the configured tool PATH before checking ffmpeg and Node
 results = []
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -33,9 +34,10 @@ def py():
 
 
 def modules():
-    missing = [m for m in ("faster_whisper", "pythainlp", "soundfile", "ctranslate2", "fastapi", "uvicorn", "cv2") if not importlib.util.find_spec(m)]
+    missing = [m for m in ("faster_whisper", "pythainlp", "soundfile", "ctranslate2", "fastapi", "uvicorn", "cv2", "fontTools", "psutil") if not importlib.util.find_spec(m)]
     if missing:
-        raise RuntimeError("missing: " + ", ".join(missing) + " - run scripts/setup.ps1")
+        setup = "scripts/setup.sh" if sys.platform == "darwin" else "scripts/setup.ps1"
+        raise RuntimeError("missing: " + ", ".join(missing) + " - run " + setup)
 
 
 def tools():
@@ -81,7 +83,7 @@ def font():
 
 def gpu():
     import kitconfig
-    if kitconfig.CFG.get("whisper_device", "cuda") != "cuda":
+    if kitconfig.CFG.get("whisper_device", "cpu" if sys.platform == "darwin" else "cuda") != "cuda":
         return "CPU mode (slow)"
     if not shutil.which("nvidia-smi"):
         raise RuntimeError("no NVIDIA GPU found; set whisper_device to cpu in config.json")
@@ -125,8 +127,12 @@ def asr():
 
 
 for n, f in [("python", py), ("python packages", modules), ("ffmpeg", tools), ("node", node), ("config + folders", config),
-             ("team workspace", team_workspace), ("GPU", gpu), ("speech model", model), ("disk space", disk)]:
+             ("team workspace", team_workspace), ("GPU", gpu), ("disk space", disk)]:
     check(n, f)
+if "--skip-model" in sys.argv:
+    print("WARN speech model       skipped by request; transcription readiness has not been checked", flush=True)
+else:
+    check("speech model", model)
 # fonts are each editor's own choice; only the preview render needs "card_font" installed
 check("preview font", font, optional=True)
 if "--asr" in sys.argv:
