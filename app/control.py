@@ -55,9 +55,16 @@ def assert_owned(owner: ProcessIdentity) -> None:
         raise RuntimeError("Port is not owned by this EditorKrab Python server")
 
 
+def _changed_fields(before: ProcessIdentity, current: ProcessIdentity) -> list[str]:
+    return [name for name in ("pid", "created", "parent", "executable", "command")
+            if getattr(before, name) != getattr(current, name)]
+
+
 def assert_same(owner: ProcessIdentity) -> None:
-    if not same_process(owner, process_identity(owner.pid)):
-        raise RuntimeError("Process identity changed; refusing to control a replacement")
+    current = process_identity(owner.pid)
+    if not same_process(owner, current):
+        changed = ", ".join(_changed_fields(owner, current))
+        raise RuntimeError(f"Process identity changed ({changed}); refusing to control a replacement")
 
 
 def _request(port: int, path: str, method: str = "GET") -> dict:
@@ -108,6 +115,33 @@ def wait_ready(port: int, owner: ProcessIdentity, timeout: float = 60) -> int:
     raise RuntimeError("EditorKrab did not become ready; check video_editor.log")
 
 
+def _capture_started_owner(port: int, launched: ProcessIdentity, timeout: float) -> ProcessIdentity:
+    """Freeze identity after this exact spawned process has finished exec and binds its listener.
+
+    CPython's macOS framework launcher re-execs its Python.app runtime with a different
+    executable/argv[0]. PID, creation time, user (process_identity), and parent must remain
+    unchanged throughout bootstrap. Existing listeners never use this allowance.
+    """
+    def same_birth(current: ProcessIdentity) -> None:
+        changed = [name for name in ("pid", "created", "parent")
+                   if getattr(launched, name) != getattr(current, name)]
+        if changed:
+            raise RuntimeError("Launched process identity changed (" + ", ".join(changed) +
+                               "); refusing to adopt a replacement")
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        same_birth(process_identity(launched.pid))
+        listener = port_owner(port)
+        if listener:
+            same_birth(listener)
+            assert_owned(listener)
+            assert_same(listener)
+            return listener
+        time.sleep(0.25)
+    raise RuntimeError("The launched EditorKrab process did not bind its port; check video_editor.log")
+
+
 def start_server(port: int, python: str) -> int:
     executable = Path(python).expanduser()
     if not executable.is_absolute() or not executable.is_file():
@@ -120,9 +154,10 @@ def start_server(port: int, python: str) -> int:
         proc = subprocess.Popen([str(executable), str(APP)], cwd=str(APP.parent), env=env,
                                 stdin=subprocess.DEVNULL, stdout=out, stderr=err,
                                 close_fds=True, start_new_session=True)
-    owner = process_identity(proc.pid)
-    assert_owned(owner)
-    return wait_ready(port, owner)
+    deadline = time.monotonic() + 60
+    launched = process_identity(proc.pid)
+    owner = _capture_started_owner(port, launched, max(0, deadline - time.monotonic()))
+    return wait_ready(port, owner, max(0, deadline - time.monotonic()))
 
 
 def _children(owner: ProcessIdentity) -> list[ProcessIdentity]:

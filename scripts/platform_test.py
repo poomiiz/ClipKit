@@ -320,6 +320,49 @@ class ControlTests(unittest.TestCase):
         self.owner = host.ProcessIdentity(4201, 123.0, 100, str(Path(sys.executable).resolve()),
                                           (sys.executable, str(control.APP)))
 
+    def test_spawned_framework_python_freezes_full_identity_only_after_its_listener(self):
+        launcher = replace(self.owner, executable=sys.executable + ".bootstrap",
+                           command=(sys.executable + ".bootstrap", str(control.APP)))
+        with patch.object(control, "process_identity", side_effect=[launcher, self.owner, self.owner]), \
+                patch.object(control, "port_owner", side_effect=[None, self.owner]), \
+                patch.object(control.time, "sleep"), patch.object(control, "_request") as request:
+            stable = control._capture_started_owner(8770, launcher, 5)
+            self.assertEqual(stable, self.owner)
+            request.assert_not_called()
+        # Once frozen, even the same PID/create time may not silently re-exec again.
+        with patch.object(control, "process_identity", return_value=launcher):
+            with self.assertRaisesRegex(RuntimeError, r"identity changed \(executable, command\)"):
+                control.assert_same(stable)
+
+    def test_bootstrap_does_not_accept_reused_pid_changed_birth_or_changed_parent(self):
+        for field, value in (("pid", 4202), ("created", 124.0), ("parent", 200)):
+            replacement = replace(self.owner, **{field: value})
+            with patch.object(control, "process_identity", return_value=replacement), \
+                    patch.object(control, "port_owner") as port:
+                with self.assertRaisesRegex(RuntimeError, field):
+                    control._capture_started_owner(8770, self.owner, 5)
+                port.assert_not_called()
+
+    def test_bootstrap_never_adopts_another_process_that_takes_the_listener(self):
+        with patch.object(control, "process_identity", return_value=self.owner), \
+                patch.object(control, "port_owner", return_value=replace(self.owner, pid=4202)), \
+                patch.object(control, "_request") as request:
+            with self.assertRaisesRegex(RuntimeError, "pid"):
+                control._capture_started_owner(8770, self.owner, 5)
+            request.assert_not_called()
+
+    def test_framework_controller_uses_current_venv_wrapper_and_same_runtime_identity(self):
+        runtime = replace(self.owner, executable=str(ROOT / "Python.app" / "Contents" / "MacOS" / "Python"))
+        controller = replace(runtime, pid=4202, parent=4201, command=(
+            sys.executable, str(ROOT / "app" / "control.py"), "--action", "restart", "--port", "8770",
+            "--python", sys.executable, "--expected-pid", "4201", "--expected-created", "123.0",
+            "--issued-at", str(int(time.time()))))
+        self.assertTrue(host._is_controller(controller, runtime))
+        self.assertFalse(host._is_controller(replace(controller, executable=sys.executable + ".foreign"), runtime))
+        altered = list(controller.command)
+        altered[7] = str(ROOT / "other-python")
+        self.assertFalse(host._is_controller(replace(controller, command=tuple(altered)), runtime))
+
     def test_foreign_or_relative_command_never_receives_exit(self):
         for command in ((sys.executable, "app.py"), (sys.executable, str(ROOT / "other" / "app.py"))):
             with patch.object(control, "port_owner", return_value=replace(self.owner, command=command)), \

@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -284,7 +285,8 @@ def _is_controller(child: ProcessIdentity, owner: ProcessIdentity) -> bool:
                 int(options["--expected-pid"]) == owner.pid and
                 float(options["--expected-created"]) == owner.created and
                 1 <= int(options["--port"]) <= 65535 and
-                str(Path(options["--python"]).resolve()) == owner.executable and
+                Path(options["--python"]).is_absolute() and
+                Path(options["--python"]).resolve() == Path(sys.executable).resolve() and
                 -5 <= time.time() - int(options["--issued-at"]) <= 20)
     except (ValueError, OSError):
         return False

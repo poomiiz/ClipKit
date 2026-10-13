@@ -49,6 +49,12 @@ def main() -> None:
         assert invoke("shutdown")["instance"] is None
         assert control.port_owner(port) is None and control.port_free(port)
         owner = None
+    except Exception:
+        for name in ("video_editor.log", "video_editor.out.log"):
+            log = ROOT / "app" / name
+            if log.is_file():
+                print(name + ":\n" + log.read_text(encoding="utf-8", errors="replace")[-6000:], file=sys.stderr)
+        raise
     finally:
         # A failed check may only stop the exact test instance it started.
         if owner:
