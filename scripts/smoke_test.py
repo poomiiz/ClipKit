@@ -474,6 +474,26 @@ def progress_bar_fills_over_the_clip():
         pass
 
 
+def emoji_pops_on_keywords():
+    # one emoji per keyword phrase, 2.5 s apart at least, none under the clip title; drawn only during its beat
+    import render
+    import numpy as np
+    beats = render.emoji_beats([(0.5, 2.0, "วันนี้ได้เงินเยอะ"), (1.0, 3.0, "ไฟไหม้"), (4.0, 5.0, "ธรรมดา"),
+                                (6.0, 7.0, "I have an idea")])
+    assert [(b["at"], Path(b["file"]).stem) for b in beats] == [(0.5, "1f4b0"), (6.0, "1f4a1")], beats
+    assert render.emoji_beats([(0.5, 2.0, "เงิน")], skip_until=3) == []
+    for code in render.EMOJI:
+        assert (render.EMOJI_DIR / f"{code}.png").is_file(), code
+    piece, out = render.emoji_overlay("[vo]", 1, 0, {"at": 0.5, "dur": 1.0, "file": ""}, 320, 568)
+    es, ex, ey = render.emoji_box(320, 568)
+    for at, shown in ((0.2, False), (0.9, True), (1.8, False)):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x568:r=25:d=2",
+                            "-loop", "1", "-i", str(render.EMOJI_DIR / "1f525.png"),
+                            "-filter_complex", "[0:v]null[vo]" + piece, "-map", out, "-ss", str(at), "-frames:v", "1",
+                            "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True)
+        box = np.frombuffer(r.stdout, np.uint8).reshape(568, 320)[ey:ey + es, ex:ex + es]
+        assert ((box > 40).mean() > 0.3) == shown, (at, (box > 40).mean())
+
 for name, fn in list(globals().items()):
     if callable(fn) and fn.__module__ == "__main__" and not name.startswith("_") and name != "check":
         check(name, fn)
