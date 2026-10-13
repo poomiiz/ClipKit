@@ -592,6 +592,7 @@
       <div class="clip-right">
         <div class="card">
           <h2>📝 ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
+          <textarea id="brief" rows="2" maxlength="2000" style="width:100%;margin-bottom:8px" placeholder="อยากได้คลิปแบบไหน (ไม่ใส่ก็ได้) เช่น vlog สบายๆ เน้นช่วงตลก คลิปละไม่เกิน 1 นาที"></textarea>
           <button class="ghost" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเสียงและแบ่งเรื่อง</button>
           <div id="storyPlan" style="margin-top:10px"></div>
         </div>
@@ -1291,6 +1292,8 @@ function pickFile(f) {
   document.getElementById('result').className = 'msg';
   storyList = [];
   document.getElementById('storyPlan').innerHTML = '';
+  document.getElementById('brief').value = '';
+  api('brief?file=' + encodeURIComponent(f.path)).then(r => { if (state.file.path === f.path) document.getElementById('brief').value = r.brief; }).catch(e => { document.getElementById('storyPlan').textContent = '❌ ' + ckErr(e); });
   go('s-clip');
   findFocus();
   planStories(true);
@@ -1850,7 +1853,7 @@ async function planStories(saved) {
   document.getElementById('planStoriesBtn').disabled = true;
   try {
     let job;
-    if (!saved) job = await api('story-plan', {file});
+    if (!saved) job = await api('story-plan', {file, brief: document.getElementById('brief').value});
     else try { job = await api('story-plan?file=' + encodeURIComponent(file)); }
     catch (e) { if (ckErr(e) === 'no plan started for this file') return; throw e; }
     while (job.status === 'running' || job.status === 'waiting') {
