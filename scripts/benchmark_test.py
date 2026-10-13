@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,8 +27,11 @@ def _machine(rows):
 
 class BenchmarkTests(unittest.TestCase):
     def test_cli_main_scopes_complete_attempts_and_keeps_retry_status(self):
-        import run_clip
         with tempfile.TemporaryDirectory() as folder:
+            config = Path(folder) / "config.json"
+            config.write_text(json.dumps({"output_dir": folder, "capcut_drafts": folder}), encoding="utf-8")
+            with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+                import run_clip  # fresh CI machines have no personal configuration
             source = Path(folder) / "talk.mp4"
             source.touch()  # no media is opened: the pipeline is replaced with a stub
             codes = iter((2, 0))
