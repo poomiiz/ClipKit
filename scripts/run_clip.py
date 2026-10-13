@@ -128,7 +128,7 @@ def stories(raw: str, max_s: int, no_ai: bool = False) -> list[dict] | None:
     tf = video_edit.transcript_file(raw)
     if not tf.is_file():
         say(step="ถอดเสียงทั้งไฟล์")
-        phrases = video_edit.transcribe(raw, 0, video_edit.probe(raw)["duration"], "th", None)
+        phrases = video_edit.transcribe(raw, 0, video_edit.probe(raw)["duration"])  # config.json "speech_language"
         tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
     video_edit.STORY_MAX_S, video_edit.STORY_AIM_S = max_s, int(max_s * 0.65)
     phrases = json.loads(tf.read_text(encoding="utf-8"))
@@ -147,7 +147,7 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str 
     path = r["draft_path"]
     got = capcut_edit.transcribe_draft(path)
     capcut_edit.set_subtitles(path, got["subtitles"])
-    capcut_edit.subtitles_language(path, "th")
+    capcut_edit.subtitles_language(path, "th")  # "th" = the spoken lines as heard, any language (not a translation)
     capcut_edit.trim_pauses(path)
     capcut_edit.tidy_subtitles(path)  # long lines: two lines at a Thai break, or a new subtitle
     (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "preset": preset, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")

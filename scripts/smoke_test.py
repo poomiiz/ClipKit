@@ -243,6 +243,24 @@ def stories_are_not_transcribed_twice():
         assert capcut_edit._from_transcript(str(video), 11.0, 15.0) is None, "a phrase cut by the edge was reused"
 
 
+def run_clip_follows_speech_language():
+    # run_clip passed "th" to the whole-file transcribe, so config.json "speech_language" never reached the CLI
+    import run_clip
+    import video_edit
+    asked = []
+    keep = video_edit.transcribe, video_edit.probe
+    video_edit.transcribe = lambda path, start, end, language=None, model_size=None: asked.append(language) or []
+    video_edit.probe = lambda path: {"duration": 10.0}
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            video = Path(t) / "talk.mp4"
+            video.write_bytes(b"x")
+            run_clip.stories(str(video), 60)
+    finally:
+        video_edit.transcribe, video_edit.probe = keep
+    assert asked == [None], f"run_clip chose the language itself: {asked}"
+
+
 def saved_stories_come_back_after_restart():
     # the split is saved beside the video; after ClipKit restarts, opening the file shows it again with no new AI round
     import video_editor
