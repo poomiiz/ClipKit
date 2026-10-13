@@ -23,6 +23,8 @@ Regression cases cover same-named sources in different directories, historical t
 
 GitHub CI evidence is separate from these local results; see the checks on PR #98 at its current revision.
 
+The first CI run exposed a test assertion that compared a Windows 8.3 temporary path with its expanded spelling. The assertion now checks actual file identity with `samefile()`. Pipeline source resolution was already correct.
+
 ## Remaining acceptance
 
 Choose eight source files (A/B at each of 1/5/20/60 minutes), then run sixteen sessions with two editors. Keep the agreed brief, hardware, software revision, permitted CapCut tools and cache conditions in the human test log. Real savings, live CapCut compatibility and long-form/batch performance remain unmeasured.

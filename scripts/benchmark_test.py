@@ -33,7 +33,7 @@ class BenchmarkTests(unittest.TestCase):
             codes = iter((2, 0))
             def pipeline(args, raw):
                 self.assertEqual(args.trial_id, "cli-trial")
-                self.assertEqual(Path(raw), source)
+                self.assertTrue(Path(raw).samefile(source))  # Windows temp paths may use 8.3 aliases
                 return run_clip.timed("stub", lambda: next(codes))
             previous = run_clip.TIMING
             with patch.object(run_clip.cutlog, "logs_dir", return_value=Path(folder)), \
