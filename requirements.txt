@@ -1,6 +1,7 @@
 # Exact versions so every machine and CI install the same thing; bump on purpose and rerun the tests.
 faster-whisper==1.2.1
 pythainlp==5.4.0
+budoux==0.9.3  # Japanese / Chinese phrase breaks (Google, Apache-2.0)
 soundfile==0.14.0
 fastapi==0.143.0
 uvicorn==0.53.0

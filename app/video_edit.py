@@ -49,6 +49,8 @@ WHISPER_CPU_FALLBACK = os.environ.get("VIDEO_WHISPER_CPU_MODEL", "medium")
 
 # languages written without spaces between words: every recogniser word piece may start a line
 NO_SPACES = {"ja", "zh", "yue", "lo", "km", "my", "bo"}
+PHRASE_PARSERS = {"ja": "load_default_japanese_parser", "zh": "load_default_simplified_chinese_parser",
+                  "yue": "load_default_traditional_chinese_parser"}
 
 
 def speech_language() -> str:
@@ -477,12 +479,19 @@ THAI_LEADING = "เแโใไ"  # vowels written before their consonant: never
 
 def _word_starts(words: list[list], language: str = "th") -> list[bool]:
     """Which recogniser word pieces begin a whole word. Thai pieces can end mid-syllable ("นั่|งสมาธิ"),
-    so a piece counts only where pythainlp also puts a word boundary; elsewhere a word starts after a space."""
-    if language != "th":
+    so a piece counts only where pythainlp (BudouX for Japanese / Chinese) also puts a boundary; elsewhere a word
+    starts after a space."""
+    text = "".join(w[2] for w in words)
+    if language == "th":
+        from pythainlp.tokenize import word_tokenize
+        tokens = word_tokenize(text, engine="newmm", keep_whitespace=True)
+    elif language in PHRASE_PARSERS:  # Japanese / Chinese: BudouX phrases (LibriVox test: "およ|そ正午" without it)
+        import budoux
+        tokens = getattr(budoux, PHRASE_PARSERS[language])().parse(text)
+    else:
         return [i == 0 or language in NO_SPACES or w[2][:1].isspace() for i, w in enumerate(words)]
-    from pythainlp.tokenize import word_tokenize
     bounds, at = set(), 0
-    for token in word_tokenize("".join(w[2] for w in words), engine="newmm", keep_whitespace=True):
+    for token in tokens:
         bounds.add(at)
         at += len(token)
     starts, at = [], 0
