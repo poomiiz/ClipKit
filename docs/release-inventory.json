@@ -7,7 +7,8 @@
     {"commit": "0d35fff9173f295b5c0b1a2dcc7bbc6425b5a0a3", "reason": "Required sign-in"},
     {"commit": "e745479008dd4b6aefac739ff330888b88ecc892", "reason": "Relative/private project rename bypass guard"},
     {"commit": "52e6f849078c946347de36d8a18af0626b42a827", "reason": "Owner authorization middleware"},
-    {"commit": "63a2d0652dfbe8250bd3b25fe08de3ce2cf4b9c3", "reason": "Host, Origin and CSP restrictions"}
+    {"commit": "63a2d0652dfbe8250bd3b25fe08de3ce2cf4b9c3", "reason": "Host, Origin and CSP restrictions"},
+    {"commit": "0073eafaaefdfe69db6f601303d6d032e21d70aa", "reason": "Valid CSP transport when helper origins are empty"}
   ],
   "provenance": "Reviewed repository history and platform.tasks commit_refs/context on 2026-10-13. Original commit ancestry is required; equivalent code does not substitute for it.",
   "examined_not_required": [
