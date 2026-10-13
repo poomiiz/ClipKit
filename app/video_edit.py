@@ -47,6 +47,18 @@ WHISPER_MODEL = os.environ.get("VIDEO_WHISPER_MODEL", "large-v3")
 WHISPER_CPU_FALLBACK = os.environ.get("VIDEO_WHISPER_CPU_MODEL", "medium")
 
 
+# languages written without spaces between words: every recogniser word piece may start a line
+NO_SPACES = {"ja", "zh", "yue", "lo", "km", "my", "bo"}
+PHRASE_PARSERS = {"ja": "load_default_japanese_parser", "zh": "load_default_simplified_chinese_parser",
+                  "yue": "load_default_traditional_chinese_parser"}
+
+
+def speech_language() -> str:
+    """The language people speak in the clips: config.json "speech_language", a Whisper code ("th", "en", ...)
+    or "auto" = the recogniser decides once per file. Thai unless set."""
+    return kitconfig._load().get("speech_language") or "th"
+
+
 def whisper_model() -> str:
     """The model chosen in Settings, re-read on each call so a change applies to the next transcription."""
     return kitconfig._load().get("whisper_model") or WHISPER_MODEL
@@ -344,9 +356,10 @@ def english_terms(text: str) -> str:
     return "\n".join(line.strip() for line in text.split("\n"))
 
 
-def transcribe(path: str, start: float, end: float, language: str = "th",
+def transcribe(path: str, start: float, end: float, language: str | None = None,
                model_size: str | None = None, window: float = 15.0) -> list[dict[str, Any]]:
-    """Thai speech to timed phrases, in clip-relative seconds.
+    """Speech to timed phrases, in clip-relative seconds. language None = speech_language(); "auto" = detected
+    once from the start of the file, so every window is read as the same language.
 
     The audio is cut into fixed 15 s windows: on a long file the recogniser sometimes returns nothing for the
     first half-minute, which silently loses subtitles, and 30 s windows lost about a quarter of the words.
@@ -359,6 +372,9 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
     full = Path(os.environ.get("TEMP", "/tmp")) / f"ve_{uuid.uuid4().hex}.wav"
     try:
         _extract_audio(path, start, end, full)
+        language = language or speech_language()
+        if language == "auto":
+            language = _detect_language(model, full)
         if kitconfig._load().get("whisper_batched", True):
             phrases = _batched(model, full, language, window)
         else:
@@ -368,8 +384,30 @@ def transcribe(path: str, start: float, end: float, language: str = "th",
     import spelling
     known = spelling.load()  # this person's own fixes (spelling.learn)
     for phrase in phrases:
-        phrase["text"] = spelling.fix(english_terms(thai_spacing(phrase["text"])), known)
+        if language == "th":  # both tidy a Thai line: english_terms would capitalise every English word
+            phrase["text"] = english_terms(thai_spacing(phrase["text"]))
+        phrase["text"] = spelling.fix(phrase["text"], known)
     return phrases
+
+
+def _detect_language(model, wav: Path, samples: int = 5, lowest: float = 0.5) -> str:
+    """The language spoken across the file: the recogniser's odds averaged over up to `samples` 30 s windows
+    spread through it. Its own detection reads only the first 30 s and stops at 0.5: physicsworks.wav
+    (English) came out Dutch at 0.52 and half its subtitles were Dutch. Below `lowest` it raises."""
+    from faster_whisper.audio import decode_audio
+    audio = decode_audio(str(wav), sampling_rate=16000)
+    n = 30 * 16000
+    last = max(len(audio) - n, 0)
+    starts = sorted({last * i // max(samples - 1, 1) for i in range(samples)})
+    odds: dict[str, float] = {}
+    for at in starts:
+        for lang, p in model.detect_language(audio[at:at + n])[2]:
+            odds[lang] = odds.get(lang, 0.0) + p / len(starts)
+    lang = max(odds, key=odds.get)
+    if odds[lang] < lowest:
+        raise VideoEditError(f"cannot tell the spoken language (best guess {lang}, {odds[lang]:.2f}): "
+                             'set config.json "speech_language" to its code, e.g. "en"')
+    return lang
 
 
 def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.0) -> list[dict[str, Any]]:
@@ -395,7 +433,7 @@ def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.
         piece = [[round(w.start, 2), round(w.end, 2), w.word] for w in (seg.words or []) if w.word.strip()]
         if not piece:
             continue
-        whole = _word_starts(piece)
+        whole = _word_starts(piece, language)
         hi = int(seg.start // window) * window + window + overlap / 2
         # start after the last whole word the window before kept; stop after the whole word on this seam
         begin = next((i for i in range(len(piece)) if whole[i] and (not words or piece[i][0] >= words[-1][1] - 0.1)),
@@ -403,7 +441,7 @@ def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.
         stop = next((i for i in range(begin + 1, len(piece)) if whole[i] and piece[i][0] >= hi), len(piece))
         words += piece[begin:stop]
     words = _drop_loops(words)
-    return _lines(words) if words else []
+    return _lines(words, language) if words else []
 
 
 def _drop_loops(words: list[list], most: int = 2) -> list[list]:
@@ -439,12 +477,21 @@ THAI_MARKS = "\u0e31\u0e34-\u0e3a\u0e47-\u0e4e"  # vowels above/below and tone m
 THAI_LEADING = "เแโใไ"  # vowels written before their consonant: never end a line
 
 
-def _word_starts(words: list[list]) -> list[bool]:
-    """Which recogniser word pieces begin a whole Thai word. The pieces can end mid-syllable ("นั่|งสมาธิ"),
-    so a piece counts only where pythainlp also puts a word boundary."""
-    from pythainlp.tokenize import word_tokenize
+def _word_starts(words: list[list], language: str = "th") -> list[bool]:
+    """Which recogniser word pieces begin a whole word. Thai pieces can end mid-syllable ("นั่|งสมาธิ"),
+    so a piece counts only where pythainlp (BudouX for Japanese / Chinese) also puts a boundary; elsewhere a word
+    starts after a space."""
+    text = "".join(w[2] for w in words)
+    if language == "th":
+        from pythainlp.tokenize import word_tokenize
+        tokens = word_tokenize(text, engine="newmm", keep_whitespace=True)
+    elif language in PHRASE_PARSERS:  # Japanese / Chinese: BudouX phrases (LibriVox test: "およ|そ正午" without it)
+        import budoux
+        tokens = getattr(budoux, PHRASE_PARSERS[language])().parse(text)
+    else:
+        return [i == 0 or language in NO_SPACES or w[2][:1].isspace() for i, w in enumerate(words)]
     bounds, at = set(), 0
-    for token in word_tokenize("".join(w[2] for w in words), engine="newmm", keep_whitespace=True):
+    for token in tokens:
         bounds.add(at)
         at += len(token)
     starts, at = [], 0
@@ -455,10 +502,10 @@ def _word_starts(words: list[list]) -> list[bool]:
     return starts
 
 
-def _lines(words: list[list], gap: float = 0.3, shortest: float = 1.0, longest: float = 3.5) -> list[dict[str, Any]]:
+def _lines(words: list[list], language: str = "th", gap: float = 0.3, shortest: float = 1.0, longest: float = 3.5) -> list[dict[str, Any]]:
     """Group timed words into subtitle lines: break at a pause of `gap` s, then split any line over `longest` s
     at its widest pause; never inside a Thai word, never leaving a line under `shortest` s."""
-    ok = _word_starts(words)
+    ok = _word_starts(words, language)
     ok[0] = False
     cuts, last = [], 0
     for i in range(1, len(words)):
