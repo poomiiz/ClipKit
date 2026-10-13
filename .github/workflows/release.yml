@@ -1,0 +1,19 @@
+name: release
+
+# Editors' machines update to the newest vX.Y.Z tag (scripts/update.py), so pushing a tag is shipping:
+#   git tag v0.29.0 && git push origin v0.29.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GitHub Release with the merged PRs as notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes --verify-tag

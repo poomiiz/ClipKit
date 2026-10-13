@@ -817,17 +817,14 @@ def config() -> dict[str, Any]:
 
 @router.post("/update")
 def update() -> dict[str, Any]:
-    """The Update button: take the newest ClipKit from GitHub (team clones), then restart the app."""
+    """The Update button: take the newest ClipKit release from GitHub (team clones), then restart the app."""
     root = Path(__file__).resolve().parents[1]
-    git = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, timeout=120)  # noqa: E731
-    if git("fetch", "-q").returncode != 0:
-        raise HTTPException(400, "ต่อ GitHub ไม่ได้ ลองเช็กเน็ตแล้วกดใหม่")
-    if git("rev-parse", "HEAD").stdout == git("rev-parse", "@{u}").stdout:
-        return {"updated": False, "note": "เป็นตัวล่าสุดแล้ว"}
     import sys
-    r = subprocess.run([sys.executable, str(root / "scripts" / "update.py")], capture_output=True, text=True, timeout=300)
+    r = subprocess.run([sys.executable, str(root / "scripts" / "update.py")], capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
         raise HTTPException(400, "อัปเดตไม่ได้: " + (r.stderr or r.stdout).strip()[-300:])
+    if r.stdout.startswith("already the newest"):
+        return {"updated": False, "note": "เป็นตัวล่าสุดแล้ว"}
     import threading
     def restart():
         import os

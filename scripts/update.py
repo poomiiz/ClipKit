@@ -1,13 +1,16 @@
-"""Move this ClipKit clone to the newest commit on GitHub, even when the clone has its own commits or edits.
+"""Move this ClipKit clone to the newest release (a vX.Y.Z tag) on GitHub, even when the clone has its own commits
+or edits. Releases, not every merge to main, reach the editors' machines, so a bad merge can wait for a fix.
 
 `git pull --ff-only` stops with "Not possible to fast-forward" as soon as the clone has a commit GitHub does not
 (an autosave, a local fix). Instead: edited files go to a stash, the clone's own commits stay on a backup branch,
-then the clone is reset to GitHub's newest. Nothing is thrown away and the update never dead-ends.
+then the clone is reset to the newest release. Nothing is thrown away and the update never dead-ends.
 
-    python scripts/update.py
+    python scripts/update.py           # update, and reinstall packages when requirements.txt changed
+    python scripts/update.py --check   # JSON: newest release, how many commits behind, their subjects
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
@@ -24,21 +27,44 @@ def git(*args: str) -> str:
     return r.stdout.strip()
 
 
+def release() -> str:
+    """The newest vX.Y.Z tag on GitHub."""
+    git("fetch", "-q", "--tags", "--force")
+    tags = git("tag", "--list", "v*", "--sort=-v:refname").split()
+    if not tags:
+        raise SystemExit("no release on GitHub yet (a vX.Y.Z tag)")
+    return tags[0]
+
+
+def check() -> None:
+    target = release()
+    n = int(git("rev-list", "--count", f"HEAD..{target}"))
+    changes = git("log", "--format=%s", "-8", f"HEAD..{target}").splitlines() if n else []
+    print(json.dumps({"release": target, "count": n, "changes": changes}, ensure_ascii=False))
+
+
 def main() -> None:
-    git("fetch", "-q")
-    if git("rev-list", "--count", "HEAD..@{u}") == "0":
-        print("already the newest ClipKit")
+    target = release()
+    if git("rev-list", "--count", f"HEAD..{target}") == "0":
+        print(f"already the newest ClipKit ({target})")
         return
     stamp = time.strftime("%Y%m%d-%H%M%S")
     if git("status", "--porcelain", "--untracked-files=no"):
         git("stash", "push", "-m", f"clipkit-update {stamp}")
         print(f"edited files saved: git stash list -> clipkit-update {stamp}")
-    if git("rev-list", "--count", "@{u}..HEAD") != "0":
+    if git("rev-list", "--count", f"{target}..HEAD") != "0":
         git("branch", f"backup/local-{stamp}")
         print(f"this copy's own commits saved on branch backup/local-{stamp}")
-    git("reset", "--hard", "-q", "@{u}")
-    print("updated to " + git("log", "-1", "--format=%h %s"))
+    old = git("rev-parse", "HEAD")
+    git("reset", "--hard", "-q", target)
+    print(f"updated to {target}: " + git("log", "-1", "--format=%h %s"))
+    if "requirements.txt" in git("diff", "--name-only", old, "HEAD").split():
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")],
+                           check=False)
+        if r.returncode != 0:
+            raise SystemExit("updated, but installing the new packages failed - run scripts/setup.ps1")
+        print("packages updated")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(check() if "--check" in sys.argv else main())
