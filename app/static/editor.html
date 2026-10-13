@@ -243,7 +243,7 @@ function side() {
 function back() { return '<button onclick="SEL=null;drawTL();side()">‹ ตั้งค่าทั้งคลิป</button>'; }
 function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
-  s.innerHTML = `<h3>ตั้งค่าทั้งคลิป</h3>
+  s.innerHTML = `<h3>⚙️ ตั้งค่าทั้งคลิป</h3>
     <div class="steps"><b>ทำคลิปใน 3 ขั้น</b><ol><li>กด <b>ทำให้ครบ</b> ด้านบน แล้วรอ ระบบตัด ใส่ซับ ใส่หัวคลิปให้เอง</li><li>ดูคลิปทางซ้าย ซับผิดตรงไหน กดข้อความบนแถบล่างแล้วแก้ทางขวา</li><li>กด <b>ส่งออก</b> ได้ไฟล์วิดีโอพร้อมโพสต์</li></ol></div>
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <h4>หัวคลิป (4 วินาทีแรก)</h4>
@@ -327,7 +327,7 @@ function sideClip(s) {
 }
 function sidePhrase(s, p) {
   const line = T.phrases.filter(x => x.line === p.line);
-  s.innerHTML = `${back()}<h3>ข้อความ ${mm(p.start)}</h3>
+  s.innerHTML = `${back()}<h3>💬 ข้อความ ${mm(p.start)}</h3>
     <div class="hint">ประโยค: ${esc(p.line)}</div>
     <div class="row"><label for="pl">ตัวขาว</label><input id="pl" style="flex:1"></div>
     <div class="row"><label for="pp">คำเน้น</label><input id="pp" style="flex:1"></div>
@@ -364,7 +364,7 @@ function sidePhrase(s, p) {
   };
 }
 function sideBroll(s, b, i) {
-  s.innerHTML = `${back()}<h3>ภาพประกอบ ${mm(b.start)}</h3>
+  s.innerHTML = `${back()}<h3>🖼️ ภาพประกอบ ${mm(b.start)}</h3>
     ${b.thumb ? `<img src="${b.thumb}" style="width:100%;border-radius:10px">` : `<div class="hint">${esc(b.file)}</div>`}
     <div class="row"><label for="bs">เริ่ม (วิ)</label><input type="number" step="0.1" id="bs" value="${b.start}" style="width:90px"><label style="min-width:auto">ยาว</label><input type="number" step="0.5" id="bd" value="${b.dur}" style="width:80px"></div>
     <div class="row"><label for="bq">คำค้น</label><input id="bq" style="flex:1" value="${esc(b.query)}"><button id="bf">ค้น Pixabay</button></div>
@@ -390,13 +390,13 @@ function sideBroll(s, b, i) {
   };
 }
 function sideMotion(s, m) {
-  s.innerHTML = `${back()}<h3>ข้อความใหญ่กลางจอ ${mm(m.start)}</h3><div class="hint">${esc(m.text)}</div>
+  s.innerHTML = `${back()}<h3>🔠 ข้อความใหญ่กลางจอ ${mm(m.start)}</h3><div class="hint">${esc(m.text)}</div>
     <div class="row"><button id="mdel" style="color:#fca5a5">ลบ</button></div>`;
   $('mdel').onclick = () => del();
 }
 function sideMusic(s) {
   const q = encodeURIComponent((T.style && T.style.music_mood) || 'corporate background');
-  s.innerHTML = `${back()}<h3>เพลง</h3>
+  s.innerHTML = `${back()}<h3>🎶 เพลง</h3>
     <div class="row"><select id="ms" style="flex:1"><option>กำลังอ่านคลังเพลง…</option></select></div>
     <div class="row"><button id="mown">ใช้ไฟล์ของเรา</button><button id="mweb">🔎 หาเพลงฟรีใน Pixabay</button></div>
     <audio id="ma" controls style="width:100%"></audio>
