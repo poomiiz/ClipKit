@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 import capcut_edit
+import host_platform
 import video_edit
 from video_edit import VideoEditError
 
@@ -1549,9 +1550,11 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
         args += ["--quality", "draft"]
     tmp = Path(out) / "exports" / ".render-tmp"  # frames go next to the exports, not onto a nearly full C: drive
     tmp.mkdir(parents=True, exist_ok=True)
+    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1", "TEMP": str(tmp), "TMP": str(tmp)}
+    if host_platform.is_macos():
+        args = host_platform.hyperframes_command(args, page.parent, env)
     r = subprocess.run(args, cwd=str(page.parent), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env={**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1", "TEMP": str(tmp), "TMP": str(tmp)},
-                       timeout=3600)
+                       env=env, timeout=3600)
     shutil.rmtree(tmp, ignore_errors=True)
     if r.returncode != 0 or not target.is_file():
         raise HTTPException(500, "render failed: " + (r.stderr or r.stdout).strip()[-800:])

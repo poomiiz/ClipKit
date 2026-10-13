@@ -246,7 +246,7 @@ class PlatformTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as folder, patch.object(host, "is_macos", return_value=True), \
                     patch.object(host, "process_identity", return_value="owned-snapshot") as identity, \
-                    patch.object(kit_settings, "_mac_preview_command", return_value=["node", "preview", "--foreground"]) as safe_command, \
+                    patch.object(host, "hyperframes_command", return_value=["node", "preview", "--foreground"]) as safe_command, \
                     patch("shutil.which", return_value="npx"), \
                     patch.object(kit_settings, "_stop_studio"), \
                     patch.object(kit_settings.subprocess, "Popen", return_value=Mock(pid=4321)) as popen, \
@@ -271,47 +271,87 @@ class PlatformTests(unittest.TestCase):
             kit_settings._hf_preview.clear()
             kit_settings._hf_preview.update(previous)
 
-    def test_mac_preview_private_copy_disables_only_the_orphan_sweep(self):
-        source = b'const orphansKilled = killOrphanedProcesses();\nexport default {};\n'
+    def test_mac_private_cache_guards_preview_and_render_without_touching_other_code(self):
+        source = b'function killOrphanedProcesses() {\n  return sweep();\n}\nexport { killOrphanedProcesses };\n'
         with tempfile.TemporaryDirectory(prefix="preview ' ") as folder:
             root = Path(folder)
-            original = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/preview-MOKQFMZS.js"
+            original = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
             original.parent.mkdir(parents=True)
             original.write_bytes(source)
+            cli = original.parent.parent / "bin/hyperframes.mjs"
+            cli.parent.mkdir()
+            cli.touch()
             env = {}
-            with patch.object(kit_settings, "KIT", root), \
-                    patch.object(kit_settings, "MAC_HF_PREVIEW_SHA", hashlib.sha256(source).hexdigest()), \
+            with patch.object(host, "__file__", str(root / "app/host_platform.py")), \
+                    patch.object(host, "is_macos", return_value=True), \
+                    patch.object(host, "HF_CLEANUP_SHA", hashlib.sha256(source).hexdigest()), \
                     patch("shutil.which", return_value="node"), \
-                    patch.object(kit_settings.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as install:
-                command = kit_settings._mac_preview_command(
+                    patch.object(host.subprocess, "run") as install, \
+                    patch.object(host.atomic, "write_text", side_effect=lambda p, t, **kw: p.write_bytes(t.encode("utf-8"))):
+                # Model macOS LF writes while this fixture also runs on Windows.
+                command = host.hyperframes_command(
                     ["npx", "--yes", "hyperframes@0.8.101", "preview", "--port", "3002", "--no-open"], root, env)
-            self.assertEqual(original.read_bytes(), source)
-            self.assertEqual(original.with_name("editorkrab-preview.js").read_text(),
-                             'const orphansKilled = 0;\nexport default {};\n')
+                render = host.hyperframes_command(
+                    ["npx", "--yes", "hyperframes@0.8.101", "render", "--format", "mp4"], root, env)
+                install.assert_not_called()
+            self.assertEqual(original.read_bytes(), source.replace(b'function killOrphanedProcesses() {',
+                             b'function killOrphanedProcesses() {\n  return 0;'))
             self.assertEqual(env["npm_config_cache"], str(root / "state/hyperframes-npm"))
-            self.assertEqual(install.call_args.args[0], ["npx", "--yes", "hyperframes@0.8.101", "--help"])
-            self.assertIn("foreground:true,open:false,json:false", command[3])
-            self.assertEqual(command[-4:], ["3002", "hyperframes@0.8.101", "preview", "--foreground"])
+            self.assertEqual(env["PWD"], str(root.resolve()))
+            self.assertEqual(command, ["node", str(cli), "preview", "--port", "3002", "--no-open", "--foreground"])
+            self.assertEqual(render, ["node", str(cli), "render", "--format", "mp4"])
 
     def test_mac_preview_changed_module_fails_before_writing_or_launching(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            module = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/preview-MOKQFMZS.js"
+            module = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
             module.parent.mkdir(parents=True)
             module.write_text("unexpected module")
-            with patch.object(kit_settings, "KIT", root), patch("shutil.which", return_value="node"), \
-                    patch.object(kit_settings.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            with patch.object(host, "__file__", str(root / "app/host_platform.py")), \
+                    patch.object(host, "is_macos", return_value=True), patch("shutil.which", return_value="node"):
                 with self.assertRaisesRegex(RuntimeError, "module changed"):
-                    kit_settings._mac_preview_command(
+                    host.hyperframes_command(
                         ["npx", "--yes", "hyperframes@0.8.101", "preview", "--port", "3002"], root, {})
-            self.assertFalse(module.with_name("editorkrab-preview.js").exists())
+            self.assertEqual(module.read_text(), "unexpected module")
 
     def test_mac_preview_future_version_is_rejected_before_install(self):
-        with patch.object(kit_settings, "HF_VERSION", "0.9.0"), \
-                patch.object(kit_settings.subprocess, "run") as install:
+        with patch.object(host, "is_macos", return_value=True), \
+                patch.object(host.subprocess, "run") as install:
             with self.assertRaisesRegex(RuntimeError, "needs review"):
-                kit_settings._mac_preview_command(["npx", "--yes", "hyperframes@0.9.0", "preview"], ROOT, {})
+                host.hyperframes_command(["npx", "--yes", "hyperframes@0.9.0", "preview"], ROOT, {})
             install.assert_not_called()
+
+    def test_windows_hyperframes_command_is_unchanged(self):
+        command = ["npx", "--yes", "hyperframes@0.8.101", "render"]
+        env = {}
+        with patch.object(host, "is_macos", return_value=False), patch.object(host.subprocess, "run") as run:
+            self.assertIs(host.hyperframes_command(command, ROOT, env), command)
+            self.assertEqual(env, {})
+            run.assert_not_called()
+
+    def test_hyperframes_cli_forwards_flags_and_exit_code_through_host_guard(self):
+        import hf
+        with patch.object(sys, "argv", ["hf.py", "init"]):
+            with self.assertRaises(SystemExit):
+                hf.main()
+        with patch.object(sys, "argv", ["hf.py", "render", "--format", "mp4"]), \
+                patch.dict(sys.modules, kitconfig=SimpleNamespace()), \
+                patch.object(hf.shutil, "which", return_value="npx"), \
+                patch.object(host, "hyperframes_command", return_value=["guarded"]) as guard, \
+                patch.object(hf.subprocess, "call", return_value=7) as call:
+            self.assertEqual(hf.main(), 7)
+            self.assertEqual(guard.call_args.args[0], ["npx", "--yes", "hyperframes@0.8.101", "render", "--format", "mp4"])
+            self.assertEqual(call.call_args.args[0], ["guarded"])
+
+    def test_generated_collection_instructions_use_the_host_guard(self):
+        import motion_collect
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            motion_collect.write_index(out, [])
+            text = (out / "index.md").read_text(encoding="utf-8")
+            self.assertIn("scripts", text)
+            self.assertIn("hf.py", text)
+            self.assertNotIn("npx", text)
 
     def test_mac_setup_uses_bash_with_workspace_as_one_argument(self):
         with patch.object(host, "is_macos", return_value=True), \

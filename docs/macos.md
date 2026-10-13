@@ -29,6 +29,8 @@ Run these from the repository folder. Setup creates `.venv` and your local `conf
 
 Machine paths come from `config.json`. Use your own paths for footage, fonts, drafts and exports. Do not copy Windows drive paths into the Mac configuration.
 
+For HyperFrames, use the app's preview/export actions. When working from a motion project folder in Terminal, run preview or render through `scripts/hf.py` with your EditorKrab Python environment. This applies the same process guard as the app.
+
 ## Check the installation
 
 ```bash

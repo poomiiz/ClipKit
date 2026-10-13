@@ -2,7 +2,7 @@
 
 One folder = one reusable effect (HyperFrames project). Edit the data at the top of index.html, then:
 
-    npx --yes hyperframes@0.8.101 render --format mov -o <out>.mov
+    python ../../scripts/hf.py render --format mov -o <out>.mov
 
 MOV = ProRes 4444 with transparency: drop it on a track above the footage in CapCut.
 Preview over footage: serve this folder and open index.html?bg=<image>.

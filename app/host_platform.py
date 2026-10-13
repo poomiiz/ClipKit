@@ -2,14 +2,62 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import atomic
+
+HF_CLEANUP_SHA = "580371f7be167b57d27cf0ed756d9ec3c6573e609aa350cb9fd2e9120c926777"
+
+
+def hyperframes_command(command: list[str], project: Path, env: dict[str, str]) -> list[str]:
+    """Keep Mac preview/render cleanup inside the process tree EditorKrab owns."""
+    if not is_macos():
+        return command
+    if command[2:3] != ["hyperframes@0.8.101"] or command[3] not in {"preview", "render"}:
+        raise RuntimeError("Mac launcher needs review for this HyperFrames version/command")
+    node = shutil.which("node", path=env.get("PATH"))
+    if not node:
+        raise RuntimeError("Node.js is missing")
+    cache = Path(__file__).resolve().parents[1] / "state" / "hyperframes-npm"
+    if any(p.is_symlink() for p in (cache, cache.parent)):
+        raise RuntimeError("HyperFrames cache must not be linked to another directory")
+    env["npm_config_cache"] = str(cache)
+    env["PWD"] = str(project.resolve())
+    pattern = "_npx/*/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
+    files = list(cache.glob(pattern))
+    if not files:
+        install = subprocess.run([command[0], "--yes", command[2], "--help"], cwd=project, env=env,
+                                 capture_output=True, text=True, timeout=240)
+        if install.returncode:
+            raise RuntimeError("HyperFrames preparation failed: " + (install.stderr or install.stdout)[-600:])
+        files = list(cache.glob(pattern))
+    if len(files) != 1 or not files[0].resolve().is_relative_to(cache.resolve()):
+        raise RuntimeError("Pinned HyperFrames cleanup module not found uniquely in the private cache")
+    source = files[0].read_bytes()
+    entry = b"function killOrphanedProcesses() {"
+    guarded = entry + b"\n  return 0;"
+    original = source.replace(guarded, entry, 1)
+    if hashlib.sha256(original).hexdigest() != HF_CLEANUP_SHA or original.count(entry) != 1:
+        raise RuntimeError("Pinned HyperFrames cleanup module changed; refusing to run it")
+    # shortcut: pinned internal module; use upstream scoped cleanup when it is available.
+    if source == original:
+        atomic.write_text(files[0], source.replace(entry, guarded, 1).decode("utf-8"), encoding="utf-8")
+    cli = files[0].parent.parent / "bin" / "hyperframes.mjs"
+    if not cli.is_file():
+        raise RuntimeError("Pinned HyperFrames launcher is missing")
+    args = command[3:]
+    if args[0] == "preview" and "--foreground" not in args:
+        args = [*args, "--foreground"]
+    return [node, str(cli), *args]
 
 
 def is_macos() -> bool:

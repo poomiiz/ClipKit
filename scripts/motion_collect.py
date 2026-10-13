@@ -51,7 +51,7 @@ def installed(out):
 
 def write_index(out, items):
     lines = ["# HyperFrames collection", "",
-             "Preview: `npx --yes " + HF + " preview` in this folder. Files are in `compositions/`.", "",
+             f'Preview: `python "{ROOT / "scripts/hf.py"}" preview` in this folder. Use the EditorKrab Python environment. Files are in `compositions/`.', "",
              "| name | type | role | mood | thai | vertical | seconds |", "|---|---|---|---|---|---|---|"]
     lines += [f"| {it['name']} | {it['type']} | {it['role']} | {it['mood']} | {it['thai']} | {it['vertical']} | {it['seconds']} |"
               for it in items]
@@ -59,7 +59,7 @@ def write_index(out, items):
               "1. Copy its HTML from `compositions/` (components: `compositions/components/`) to `motion/<name>/index.html`.",
               "2. Add the `<script type=\"application/json\" id=\"clipkit-motion\">` block with its texts and duration.",
               "3. Test with real Thai text (items marked `test` break per-letter effects) and at 1080x1920 (`adapt` items are landscape).",
-              "4. Render once with `npx --yes " + HF + " render` and check the result before using it in a clip."]
+              f'4. Render once with `python "{ROOT / "scripts/hf.py"}" render` and check the result before using it in a clip.']
     (out / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

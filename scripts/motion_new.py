@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "app"))
+import host_platform
 MOTION = ROOT / "motion"
 STARTER = ROOT / "templates" / "motion-starter"
 HF = "hyperframes@0.8.101"
@@ -54,11 +56,21 @@ def create(name: str, source: str | None, label: str | None) -> Path:
 
 
 def render(folder: Path) -> Path:
-    npx = shutil.which("npx")
+    env = None
+    if host_platform.is_macos():
+        sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
+        import kitconfig
+        env = host_platform.runtime_environment(kitconfig._load())
+    npx = shutil.which("npx", path=env["PATH"]) if env is not None else shutil.which("npx")
     if not npx:
         raise SystemExit("npx not found: install Node.js LTS from nodejs.org")
     out = folder / f"{folder.name}-test.mov"
-    r = subprocess.run([npx, "--yes", HF, "render", "--format", "mov", "-o", str(out)], cwd=folder)
+    command = [npx, "--yes", HF, "render", "--format", "mov", "-o", str(out)]
+    if env is None:
+        r = subprocess.run(command, cwd=folder)
+    else:
+        command = host_platform.hyperframes_command(command, folder, env)
+        r = subprocess.run(command, cwd=folder, env=env)
     if r.returncode or not out.is_file():
         raise SystemExit("render failed (see the output above)")
     return out
