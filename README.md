@@ -7,6 +7,8 @@
 
 **ตัดคลิป จัดงาน จบในทีม**
 
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%99%A5-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/poomiiz)
+
 Previously ClipKit. EditorKrab is an **early-access** Windows editing workflow, not a complete replacement for Premiere Pro or CapCut. Existing projects and plugin IDs remain compatible.
 
 Prepare story cuts, Thai subtitles, covers and presets; continue in the local editor, CapCut or HyperFrames. See the [launch kit](docs/launch.md) for announcement copy and brand assets.
