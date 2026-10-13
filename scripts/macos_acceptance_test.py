@@ -1,4 +1,4 @@
-"""Mac CI proof for fonts, Thai ASS rendering and an isolated owned HyperFrames preview.
+"""Mac CI proof for fonts, Thai ASS rendering and an isolated HyperFrames preview/render.
 
 The default/self-check mode never launches preview. --live runs only on a disposable GitHub Mac
 runner; it does not establish file-dialog, Finder Trash, browser or native CapCut acceptance.
@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import select
 import shutil
 import socket
@@ -34,11 +35,14 @@ def require(condition: bool, message: str) -> None:
 
 def prepare_proof(path: Path) -> Path:
     target = path.absolute()
-    allowed = ROOT / "bug_reports"
-    require(not any(parent.is_symlink() for parent in (target, *target.parents)),
+    root = ROOT.resolve()
+    allowed = root / "bug_reports"
+    resolved = target.resolve()
+    require(resolved != allowed and resolved.is_relative_to(allowed), "Proof folder must be inside bug_reports")
+    require(not any(parent.is_symlink() for parent in (target, *target.parents)
+                    if parent.resolve().is_relative_to(root)),
             "Proof folder has a linked parent")
-    target = target.resolve()
-    require(target != allowed and target.is_relative_to(allowed), "Proof folder must be inside bug_reports")
+    target = resolved
     require(not target.exists(), "Proof folder already exists; choose a new proof folder")
     target.mkdir(parents=True)
     return target.resolve()
@@ -110,7 +114,50 @@ def preview_preflight() -> None:
             "Preview acceptance requires a dedicated GitHub-hosted runner")
 
 
-def preview_evidence() -> dict:
+def motion_render_evidence(project: Path, proof: Path, env: dict, version: str) -> dict:
+    import host_platform as host
+    npx = shutil.which("npx", path=env["PATH"])
+    require(npx is not None, "npx is missing")
+    duration = re.search(r'data-composition-id="main"[^>]*data-duration="([0-9.]+)"',
+                         (project / "index.html").read_text(encoding="utf-8"))
+    require(duration is not None, "Motion fixture has no declared duration")
+    expected = float(duration.group(1))
+    output = proof / "generated-motion.mp4"
+    # 12 fps bounds CI work; all other render settings retain the product's CLI defaults.
+    command = host.hyperframes_command([npx, "--yes", f"hyperframes@{version}", "render", "--fps", "12",
+                                       "--output", str(output)], project, env)
+    result = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", timeout=900)
+    require(result.returncode == 0 and output.is_file() and output.stat().st_size > 0,
+            "Generated motion render failed: " + (result.stderr or result.stdout)[-1600:])
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=codec_name,width,height,avg_frame_rate:format=duration", "-of", "json",
+                            str(output)], capture_output=True, text=True, timeout=30)
+    require(probe.returncode == 0, "Generated motion could not be probed")
+    info = json.loads(probe.stdout)
+    actual = float(info["format"]["duration"])
+    video = info["streams"][0]
+    require(abs(actual - expected) < 0.3 and (video["width"], video["height"]) == (1080, 1920),
+            "Generated motion duration or canvas differs from the public fixture")
+    from fractions import Fraction
+    require(Fraction(video["avg_frame_rate"]) == 12, "Generated motion frame rate differs from the CI setting")
+    sample = proof / "generated-motion.png"
+    decoded = subprocess.run(["ffmpeg", "-v", "error", "-ss", "1.5", "-i", str(output),
+                              "-frames:v", "1", "-vf", "scale=270:480", "-threads", "1", str(sample)],
+                             capture_output=True, text=True, timeout=60)
+    require(decoded.returncode == 0 and sample.is_file(), "Generated motion could not be decoded")
+    from PIL import Image
+    with Image.open(sample) as frame:
+        require(frame.size == (270, 480) and sum(value > 100 for value in frame.convert("L").getdata()) > 100,
+                "Decoded motion sample is blank")
+    return {"status": "PASS", "fixture": "motion/sentence-pair", "fps": 12,
+            "fps_reason": "CI resource limit", "expected_duration": expected, "duration": actual,
+            "codec": video["codec_name"], "width": video["width"], "height": video["height"],
+            "bytes": output.stat().st_size, "sha256": file_hash(output), "sample_sha256": file_hash(sample),
+            "editorial_review": "UNRUN"}
+
+
+def preview_evidence(proof: Path) -> dict:
     import control
     import host_platform as host
     import kit_settings as kit
@@ -153,7 +200,7 @@ def preview_evidence() -> dict:
 
     try:
         sentinel = subprocess.Popen([sys.executable, "-u", "-c",
-                                     "import time; print('ready', flush=True); time.sleep(600)",
+                                     "import time; print('ready', flush=True); time.sleep(1800)",
                                      "puppeteer_dev_chrome_profile"],
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         require(bool(select.select([sentinel.stdout], [], [], 10)[0]), "Sentinel did not start")
@@ -161,7 +208,7 @@ def preview_evidence() -> dict:
         sentinel_identity = host.process_identity(sentinel.pid)
         env = {**os.environ, "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",
                "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_TELEMETRY": "1"}
-        kit._start_preview([npx, "--yes", f"hyperframes@{kit.HF_VERSION}", "preview", str(project),
+        kit._start_preview([npx, "--yes", f"hyperframes@{kit.HF_VERSION}", "preview",
                             "--port", str(port), "--no-open"], project, env)
         proc, expected = kit._hf_preview["proc"], kit._hf_preview["identity"]
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -212,6 +259,9 @@ def preview_evidence() -> dict:
                 pass
         require(sentinel.poll() is None and host.same_process(sentinel_identity, host.process_identity(sentinel.pid)),
                 "Preview cleanup affected the unrelated sentinel")
+        rendered = motion_render_evidence(project, proof, env, kit.HF_VERSION)
+        require(sentinel.poll() is None and host.same_process(sentinel_identity, host.process_identity(sentinel.pid)),
+                "Motion render affected the unrelated sentinel")
         require(all(file_hash(source / name) == digest for name, digest in originals.items()),
                 "Public source project changed")
         return {"status": "PASS", "version": kit.HF_VERSION, "source": "motion/sentence-pair",
@@ -219,7 +269,8 @@ def preview_evidence() -> dict:
                 "owned_children_checked": len(descendants), "unrelated_sentinel_survived": True,
                 "sentinel_has_browser_marker": True, "sentinel_is_orphan": False,
                 "flags": ["--foreground", "--no-open"],
-                "automatic_updates_skills_and_telemetry": "disabled", "media_proxy": "default"}
+                "automatic_updates_skills_and_telemetry": "disabled", "media_proxy": "default",
+                "generated_motion_render": rendered}
     finally:
         try:
             if not stopped and kit._hf_preview:
@@ -264,7 +315,7 @@ def main() -> None:
         font, path, family = font_evidence()
         report["checks"]["fonts"] = font
         report["checks"]["thai_ass"] = render_evidence(proof, path, family)
-        report["checks"]["preview"] = preview_evidence()
+        report["checks"]["preview"] = preview_evidence(proof)
         report["status"] = "PASS"
     except Exception as exc:
         report["status"] = "FAIL"
@@ -272,10 +323,40 @@ def main() -> None:
         raise
     finally:
         (proof / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    print("PASS native Mac font discovery, Thai ASS pixels and owned HyperFrames preview cleanup")
+    print("PASS native Mac font discovery, Thai ASS pixels, owned preview cleanup and generated motion render")
 
 
 class SelfChecks(unittest.TestCase):
+    def test_motion_render_routes_through_shared_helper_and_checks_readback(self):
+        import host_platform as host
+        from types import SimpleNamespace
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as folder:
+            fixture = Path(folder)
+            project, proof = fixture / "project", fixture / "proof"
+            project.mkdir()
+            proof.mkdir()
+            shutil.copyfile(ROOT / "motion" / "sentence-pair" / "index.html", project / "index.html")
+            def fake_run(command, **kwargs):
+                if command[0] == "safe-node":
+                    (proof / "generated-motion.mp4").write_bytes(b"test-only mocked output")
+                    stdout = ""
+                elif command[0] == "ffprobe":
+                    stdout = json.dumps({"format": {"duration": "8"}, "streams": [{"codec_name": "h264",
+                        "width": 1080, "height": 1920, "avg_frame_rate": "12/1"}]})
+                else:
+                    Image.new("RGB", (270, 480), "white").save(proof / "generated-motion.png")
+                    stdout = ""
+                return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+            with patch.object(shutil, "which", return_value="npx"), \
+                    patch.object(host, "hyperframes_command", return_value=["safe-node"]) as launcher, \
+                    patch.object(subprocess, "run", side_effect=fake_run):
+                evidence = motion_render_evidence(project, proof, {"PATH": "fixture-bin"}, "test-version")
+            self.assertEqual(evidence["status"], "PASS")
+            self.assertEqual(evidence["editorial_review"], "UNRUN")
+            self.assertEqual(launcher.call_args.args[0][2:6], ["hyperframes@test-version", "render", "--fps", "12"])
+            self.assertEqual(launcher.call_args.args[1], project)
+
     def test_real_thai_ass_fixture_renders_without_opening_a_preview(self):
         import host_platform as host
         with tempfile.TemporaryDirectory() as folder:

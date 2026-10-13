@@ -35,7 +35,8 @@ def main() -> None:
     if not args.expected_release or not args.proof:
         parser.error("--live requires --expected-release and --proof")
     proof_path = args.proof.absolute()
-    assert not proof_path.exists() and not any(p.is_symlink() for p in (proof_path, *proof_path.parents)), \
+    assert not proof_path.exists() and not any(p.is_symlink() for p in (proof_path, *proof_path.parents)
+                                             if p.resolve().is_relative_to(ROOT.resolve())), \
         "proof must be a new file without linked parents"
     assert proof_path.resolve().is_relative_to((ROOT / "bug_reports").resolve()), "proof must be inside bug_reports"
     remote = run(ROOT, "git", "remote", "get-url", "origin")
