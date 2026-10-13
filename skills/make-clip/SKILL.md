@@ -46,6 +46,8 @@ to upload and imports its JSON answer (`prompts/web_ai/schema.md`). The files it
 
 ### `ClipKit: แบ่งเรื่อง "<video path>"`
 1. Read `<video path>.transcript.json` (list of `{start, end, text}`, seconds). Missing = tell the person to press the button in the app again.
+   If `<video path>.brief.txt` is there, it is what the person wants from this video in their own words (style, mood, which parts):
+   choose and shape the stories to match it, still following every rule below.
 2. Split it following every rule in `prompts/story_split.md` (one point each, length follows the content (1-3 min; the clip step trims it), start on the hook, end on a finished sentence, skip greetings).
 3. Write `<video path>.stories.json` as UTF-8 JSON: `[{"title": "...", "summary": "...", "start": 12.3, "end": 95.0}]` with start/end taken from transcript lines.
 4. Reply with the list (number, title, length). The app picks the file up by itself within a few seconds.
