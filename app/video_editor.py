@@ -292,13 +292,9 @@ def _run_story_plan(file: str) -> None:
     job = _story_jobs[file]
     try:
         tf = video_edit.transcript_file(file)
-        if tf.is_file():
-            phrases = json.loads(tf.read_text(encoding="utf-8"))
-        else:
-            duration = video_edit.probe(file)["duration"]
+        if not tf.is_file():
             job["step"] = "ถอดเสียง"
-            phrases = video_edit.transcribe(file, 0, duration)  # one model: video_edit.whisper_model()
-            atomic.write_text(tf, json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+        phrases = video_edit.transcribe_file(file)  # one model: video_edit.whisper_model()
         job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
                    command=video_edit.agent_command("stories", file),
                    duration=round(phrases[-1]["end"] if phrases else 0, 1),
