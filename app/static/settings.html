@@ -43,13 +43,13 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
 <body>
 <main>
   <div class="top">
-    <h1>ตั้งค่า</h1>
+    <h1>⚙️ ตั้งค่า</h1>
   </div>
   <div class="tabs" id="tabs">
-    <button data-go="machine">เครื่อง</button>
-    <button data-go="folders">โฟลเดอร์</button>
-    <button data-go="packs">แพ็ก preset</button>
-    <button data-go="team">ระบบทีม</button>
+    <button data-go="machine">💻 เครื่อง</button>
+    <button data-go="folders">📁 โฟลเดอร์</button>
+    <button data-go="packs">📦 แพ็ก preset</button>
+    <button data-go="team">👥 ระบบทีม</button>
   </div>
 
   <div class="card" data-tab="team">
@@ -71,7 +71,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
 
   <div class="card" data-tab="folders">
-    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">โฟลเดอร์</h2>
+    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">📁 โฟลเดอร์</h2>
       <p class="sub" style="margin:2px 0 0">เลือกโฟลเดอร์หลักครั้งเดียว ระบบสร้างโฟลเดอร์ย่อยให้ครบ</p></div>
       <button id="bWsPick">เลือกโฟลเดอร์หลัก</button></div>
     <input id="ws" type="hidden"><span class="msg" id="mWs"></span>
@@ -79,7 +79,7 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
   </div>
 
   <div class="card" data-tab="machine">
-    <h2>ตัวเลือก</h2>
+    <h2>🎛️ ตัวเลือก</h2>
     <div class="row"><label for="o_whisper_device">ถอดเสียงด้วย</label><select id="o_whisper_device"><option value="cuda">การ์ดจอ (เร็ว)</option><option value="cpu">CPU (ช้า ใช้เมื่อไม่มีการ์ดจอ)</option></select></div>
     <div class="row"><label for="o_whisper_model">โมเดลถอดเสียง</label><select id="o_whisper_model"><option value="large-v3">large-v3 (แม่นสุด)</option><option value="large-v3-turbo">turbo (เร็วกว่าราว 4 เท่า สะกดผิดบ้าง)</option></select></div>
     <div class="row"><label for="o_pixabay_key">รหัส Pixabay</label><input id="o_pixabay_key" placeholder="วางรหัสที่ได้ตอนสมัคร" style="flex:1">
@@ -89,14 +89,14 @@ pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:10
     <div class="row"><button id="bSave">บันทึก</button><span class="msg" id="mSave"></span></div>
   </div>
   <div class="card" data-tab="packs">
-    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">ลงแพ็ก preset</h2>
+    <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">📥 ลงแพ็ก preset</h2>
       <p class="sub" style="margin:2px 0 0">ไฟล์ .editorkrab ที่เพื่อนในทีมส่งมา: ซับ+คำเน้น ปก โมชั่น · ชื่อซ้ำกับที่มีอยู่จะไม่ลงทับ</p></div>
       <button id="bPackPick">เลือกไฟล์ .editorkrab</button></div>
     <span class="msg" id="mPack"></span>
   </div>
 
   <div class="card" data-tab="packs">
-    <h2>ทำแพ็กส่งให้ทีม</h2>
+    <h2>📤 ทำแพ็กส่งให้ทีม</h2>
     <div class="row"><label for="pkName">ชื่อแพ็ก</label><input id="pkName" placeholder="เช่น Vlog โทนอุ่น" style="flex:1"></div>
     <div class="row"><label for="pkId">รหัสแพ็ก</label><input id="pkId" placeholder="a-z 0-9 - เช่น vlog-warm" style="flex:1"></div>
     <div class="row"><label for="pkAuthor">คนทำ</label><input id="pkAuthor" style="flex:1"></div>
