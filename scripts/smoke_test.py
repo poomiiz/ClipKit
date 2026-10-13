@@ -261,6 +261,30 @@ def run_clip_follows_speech_language():
     assert asked == [None], f"run_clip chose the language itself: {asked}"
 
 
+def run_clip_logs_step_times_for_the_benchmark():
+    # The CLI adapter must associate step records with the active trial, not just a basename.
+    import run_clip
+    from benchmark_timing import TimingLog
+    with tempfile.TemporaryDirectory() as t:
+        keep = run_clip.TIMING
+        log = Path(t) / "timings.jsonl"
+        run_clip.TIMING = TimingLog(log, str(Path(t) / "talk.mp4"), "smoke")
+        try:
+            run_clip.timed("step", lambda: None)
+        finally:
+            run_clip.TIMING = keep
+        row = json.loads(log.read_text(encoding="utf-8"))
+    assert (row["video"], row["trial_id"], row["event"]) == ("talk.mp4", "smoke", "step"), row
+
+
+def benchmark_measurements_are_isolated():
+    import unittest
+    import benchmark_test
+    result = unittest.TestResult()
+    unittest.defaultTestLoader.loadTestsFromModule(benchmark_test).run(result)
+    assert result.wasSuccessful(), result.failures + result.errors
+
+
 def saved_stories_come_back_after_restart():
     # the split is saved beside the video; after ClipKit restarts, opening the file shows it again with no new AI round
     import video_editor
