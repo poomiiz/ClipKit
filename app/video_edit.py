@@ -917,6 +917,16 @@ def stories_file(video: str) -> Path:
     return Path(video).with_suffix(Path(video).suffix + ".stories.json")
 
 
+def brief_file(video: str) -> Path:
+    """What the person wants from this video, in their own words (style, mood, which parts), typed before the split."""
+    return Path(video).with_suffix(Path(video).suffix + ".brief.txt")
+
+
+def read_brief(video: str) -> str:
+    f = brief_file(video)
+    return f.read_text(encoding="utf-8").strip() if f.is_file() else ""
+
+
 def agent_command(kind: str, target: str) -> str:
     """The line the editor pastes into Claude / Codex chat; the ClipKit skill knows what to do with it."""
     return {"stories": f'ClipKit: แบ่งเรื่อง "{target}"',
