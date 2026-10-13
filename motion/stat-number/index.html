@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="th" data-resolution="portrait">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, height=1920">
+<!--
+  ClipKit motion stock - infographic "stat number": a big number counts up from 0 to the spoken figure,
+  its unit pops in beside it, and a short label types in underneath (e.g. "87" "%" / "ของคนทำงานเคยหมดไฟ").
+  Transparent background for an overlay; preview over footage with ?bg=<image>&number=87&unit=%25&label=...
+-->
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; }
+  #root { position: absolute; inset: 0; }
+  #bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .stat { position: absolute; inset: 0; opacity: 0; font-weight: 700; }
+  .card { position: absolute; left: 50%; top: 1080px; width: 900px; padding: 48px 40px 56px; border-radius: 44px;
+          background: rgba(10, 14, 28, .78); box-shadow: 0 20px 60px rgba(0,0,0,.45); text-align: center; }
+  .big { width: max-content; margin: 0 auto; white-space: nowrap; line-height: 1.05; color: #fff; }
+  .num { font-size: 260px; font-variant-numeric: tabular-nums; color: var(--accent); }
+  .unit { display: inline-block; font-size: 130px; margin-left: 14px; color: #fff; }
+  .bar { height: 14px; margin: 26px auto 30px; width: 0; border-radius: 7px; background: var(--accent); }
+  .label { white-space: nowrap; font-size: 74px; line-height: 1.25; color: #fff; }
+</style>
+<script type="application/json" id="clipkit-motion">
+{"role": "ตัวเลข/ข้อมูล", "mood": "ทั่วไป", "label": "ตัวเลข · นับขึ้น + หน่วย + คำอธิบาย", "length": "duration",
+   "fields": [{"key": "number", "label": "ตัวเลข", "type": "text", "default": "87", "required": true,
+               "pattern": "\\d[\\d,]*(\\.\\d+)?"},
+              {"key": "unit", "label": "หน่วย", "type": "text", "default": "%"},
+              {"key": "label", "label": "คำอธิบาย", "type": "text", "default": "ของคนทำงานเคยหมดไฟ"},
+              {"key": "color", "label": "สี", "type": "select", "default": "yellow",
+               "options": [["yellow", "เหลือง"], ["red", "แดง"], ["blue", "ฟ้า"], ["green", "เขียว"]]},
+              {"key": "duration", "label": "ยาว (วินาที)", "type": "number", "default": 4},
+              {"key": "font", "label": "ฟอนต์", "type": "font", "default": ""}]}
+</script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1080" data-height="1920">
+  <img id="bg" class="clip" data-start="0" data-duration="4" data-track-index="0" alt="" style="display:none">
+</div>
+<script>
+  // values come from ?number=... in the preview URL, or window.KIT injected by the ClipKit app before render
+  const ARGS = { ...Object.fromEntries(new URLSearchParams(location.search)), ...(window.KIT || {}) };
+  const RAW = String(ARGS.number ?? "87").replace(/,/g, "").trim();
+  if (!/^\d+(\.\d+)?$/.test(RAW)) throw new Error("number must be digits like 87, 3.5 or 1,250: " + ARGS.number);
+  const NUM = parseFloat(RAW), DEC = (RAW.split(".")[1] || "").length;
+  const COLORS = { yellow: "#ffd23f", red: "#ff3b3b", blue: "#3fb7ff", green: "#3fe08a" };
+  const ACCENT = COLORS[ARGS.color || "yellow"];
+  if (!ACCENT) throw new Error("unknown color: " + ARGS.color);
+  const UNIT = ARGS.unit ?? "%", LABEL = ARGS.label ?? "ของคนทำงานเคยหมดไฟ";
+  const DUR = parseFloat(ARGS.duration) || 4, SPEED = parseFloat(ARGS.speed) || 1;
+  const FONT = '"Sukhumvit Set", "DB Heavent", sans-serif';
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = (v) => v.toLocaleString("en-US", { minimumFractionDigits: DEC, maximumFractionDigits: DEC });
+
+  const root = document.getElementById("root");
+  root.dataset.duration = DUR; document.getElementById("bg").dataset.duration = DUR;
+  if (ARGS.bg) { const im = document.getElementById("bg"); im.src = ARGS.bg; im.style.display = "block"; }
+
+  const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);
+  const h = document.createElement("div");
+  h.className = "stat clip"; h.dataset.start = 0; h.dataset.duration = DUR; h.dataset.trackIndex = 1;
+  h.style.fontFamily = ARGS.font ? `"${ARGS.font}", ${FONT}` : FONT;
+  h.style.setProperty("--accent", ACCENT);
+  h.innerHTML = `<div class="card">
+      <div class="big"><span class="num">${fmt(NUM)}</span><span class="unit">${esc(UNIT)}</span></div>
+      <div class="bar"></div>
+      <div class="label">${seg(LABEL).map(c => `<span class="ch">${esc(c)}</span>`).join("")}</div></div>`;
+  root.appendChild(h);
+
+  const card = h.querySelector(".card"), big = h.querySelector(".big"), num = h.querySelector(".num");
+  const unit = h.querySelector(".unit"), bar = h.querySelector(".bar"), label = h.querySelector(".label");
+  const chars = label.querySelectorAll(".ch");
+  // the final (widest) number and a long label must stay inside the 900 px card
+  const fit = () => {
+    num.style.fontSize = "260px"; unit.style.fontSize = "130px"; label.style.fontSize = "74px";
+    const shown = num.textContent; num.textContent = fmt(NUM);   // size for the final (widest) value
+    const k = Math.min(1, 820 / big.offsetWidth);
+    num.textContent = shown;
+    num.style.fontSize = 260 * k + "px"; unit.style.fontSize = 130 * k + "px";
+    if (label.scrollWidth > 820) label.style.fontSize = 74 * 820 / label.scrollWidth + "px";
+  };
+  fit(); document.fonts.ready.then(fit);
+
+  const T = (s) => s / SPEED;
+  const tl = gsap.timeline({ paused: true });
+  gsap.set(card, { xPercent: -50 });
+  tl.set(h, { opacity: 1 }, 0);
+  tl.fromTo(card, { y: 120, opacity: 0, scale: 0.92 }, { y: 0, opacity: 1, scale: 1, duration: T(0.35), ease: "back.out(1.6)" }, 0);
+  // count-up: the shown value is a pure function of time, so any seek draws the same frame
+  const c = { v: 0 };
+  tl.fromTo(c, { v: 0 }, { v: NUM, duration: T(1.2), ease: "power2.out", onUpdate: () => { num.textContent = fmt(c.v); } }, T(0.2));
+  tl.fromTo(unit, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: T(0.25), ease: "back.out(2)" }, T(1.25));
+  tl.fromTo(bar, { width: 0 }, { width: 520, duration: T(0.5), ease: "power2.out" }, T(0.3));
+  tl.set(chars, { visibility: "hidden" }, 0);   // not display: the label keeps its width (centred, measurable)
+  chars.forEach((ch, k) => tl.set(ch, { visibility: "visible" }, T(1.0) + T(0.6) * (k + 1) / chars.length));
+  tl.to(card, { opacity: 0, y: -40, duration: T(0.25), ease: "power2.in" }, Math.max(T(1.8), DUR - 0.3));
+  tl.set(h, { opacity: 0 }, DUR);
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["main"] = tl;
+</script>
+</body>
+</html>
