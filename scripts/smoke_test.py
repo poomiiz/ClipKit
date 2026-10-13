@@ -262,24 +262,27 @@ def run_clip_follows_speech_language():
 
 
 def run_clip_logs_step_times_for_the_benchmark():
-    # docs/benchmark.md needs machine time per step on disk; run_clip only printed it, so a run left no evidence
-    import bench
-    import cutlog
+    # The CLI adapter must associate step records with the active trial, not just a basename.
     import run_clip
+    from benchmark_timing import TimingLog
     with tempfile.TemporaryDirectory() as t:
-        keep = cutlog.logs_dir
-        cutlog.logs_dir = lambda: Path(t)
-        run_clip.VIDEO = "talk.mp4"
+        keep = run_clip.TIMING
+        log = Path(t) / "timings.jsonl"
+        run_clip.TIMING = TimingLog(log, str(Path(t) / "talk.mp4"), "smoke")
         try:
             run_clip.timed("step", lambda: None)
         finally:
-            cutlog.logs_dir = keep
-        machine = bench.machine_minutes(Path(t) / "timings.jsonl")
-    assert list(machine) == ["talk.mp4"], machine
-    rows = [{"video": "a.mp4", "length_group": "5", "format": "short", "mode": "manual", "human_min": "60", "fixes": "", "qc_pass": "y"},
-            {"video": "talk.mp4", "length_group": "5", "format": "short", "mode": "editorkrab", "human_min": "15", "fixes": "3", "qc_pass": "y"}]
-    r = bench.summarize(rows, {"talk.mp4": 5.0})[0]
-    assert (r["editor_time_saved_pct"], r["faster_x"], r["wall_clock_saved_pct"]) == (75, 4.0, 67), r
+            run_clip.TIMING = keep
+        row = json.loads(log.read_text(encoding="utf-8"))
+    assert (row["video"], row["trial_id"], row["event"]) == ("talk.mp4", "smoke", "step"), row
+
+
+def benchmark_measurements_are_isolated():
+    import unittest
+    import benchmark_test
+    result = unittest.TestResult()
+    unittest.defaultTestLoader.loadTestsFromModule(benchmark_test).run(result)
+    assert result.wasSuccessful(), result.failures + result.errors
 
 
 def saved_stories_come_back_after_restart():
