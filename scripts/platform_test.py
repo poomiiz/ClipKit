@@ -274,8 +274,8 @@ class PlatformTests(unittest.TestCase):
     def test_mac_private_cache_guards_preview_and_render_without_touching_other_code(self):
         source = b'function killOrphanedProcesses() {\n  return sweep();\n}\nexport { killOrphanedProcesses };\n'
         with tempfile.TemporaryDirectory(prefix="preview ' ") as folder:
-            root = Path(folder)
-            original = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
+            root = Path(folder).resolve()
+            original = root / "state/hyperframes/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
             original.parent.mkdir(parents=True)
             original.write_bytes(source)
             cli = original.parent.parent / "bin/hyperframes.mjs"
@@ -303,8 +303,8 @@ class PlatformTests(unittest.TestCase):
 
     def test_mac_preview_changed_module_fails_before_writing_or_launching(self):
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            module = root / "state/hyperframes-npm/_npx/fixture/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
+            root = Path(folder).resolve()
+            module = root / "state/hyperframes/node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
             module.parent.mkdir(parents=True)
             module.write_text("unexpected module")
             with patch.object(host, "__file__", str(root / "app/host_platform.py")), \
@@ -320,6 +320,30 @@ class PlatformTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "needs review"):
                 host.hyperframes_command(["npx", "--yes", "hyperframes@0.9.0", "preview"], ROOT, {})
             install.assert_not_called()
+
+    def test_mac_hyperframes_installs_privately_even_with_a_global_cli(self):
+        source = b'function killOrphanedProcesses() {\n  return sweep();\n}\n'
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            runtime = root / "state/hyperframes"
+            def install(command, **options):
+                self.assertEqual(command[:4], ["npm", "install", "--prefix", str(runtime)])
+                self.assertEqual(command[-1], "hyperframes@0.8.101")
+                module = runtime / "node_modules/hyperframes/dist/chunk-LAOCA3MQ.js"
+                module.parent.mkdir(parents=True)
+                module.write_bytes(source)
+                cli = module.parent.parent / "bin/hyperframes.mjs"
+                cli.parent.mkdir()
+                cli.touch()
+                return SimpleNamespace(returncode=0)
+            with patch.object(host, "__file__", str(root / "app/host_platform.py")), \
+                    patch.object(host, "is_macos", return_value=True), \
+                    patch.object(host, "HF_CLEANUP_SHA", hashlib.sha256(source).hexdigest()), \
+                    patch("shutil.which", side_effect=lambda tool, **kw: tool), \
+                    patch.object(host.subprocess, "run", side_effect=install), \
+                    patch.object(host.atomic, "write_text", side_effect=lambda p, t, **kw: p.write_bytes(t.encode("utf-8"))):
+                command = host.hyperframes_command(["/global/npx", "--yes", "hyperframes@0.8.101", "render"], root, {})
+                self.assertEqual(Path(command[1]), runtime / "node_modules/hyperframes/bin/hyperframes.mjs")
 
     def test_windows_hyperframes_command_is_unchanged(self):
         command = ["npx", "--yes", "hyperframes@0.8.101", "render"]
