@@ -1,5 +1,7 @@
 ﻿# ClipKit one-time machine setup (Windows). Safe to re-run.
-#   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Workspace D:\EditorKrab
+# -Workspace (optional) also makes config.json and every folder under it, then runs the full check.
+param([string]$Workspace = "")
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 
@@ -28,7 +30,7 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
 
 if (-not (Test-Path "$root\config.json")) {
     Copy-Item "$root\config.example.json" "$root\config.json"
-    Write-Host "Created config.json - open it and set your folders, then run the check below."
+    if (-not $Workspace) { Write-Host "Created config.json - open it and set your folders, then run the check below." }
 }
 
 # Desktop icon for the Video -> CapCut app
@@ -42,5 +44,10 @@ $s.Description = "EditorKrab — ตัดคลิป จัดงาน จบ
 $s.Save()
 Write-Host "Desktop icon created: $lnk"
 
-python "$root\scripts\fetch_model.py"
-python "$root\scripts\doctor.py"
+function Run([string[]]$cmd) {
+    & python @cmd
+    if ($LASTEXITCODE -ne 0) { throw "failed: python $($cmd -join ' ')" }
+}
+if ($Workspace) { Run "$root\scripts\setup_workspace.py", $Workspace }
+Run "$root\scripts\fetch_model.py"
+if ($Workspace) { Run "$root\scripts\doctor.py", "--asr" } else { Run "$root\scripts\doctor.py" }
