@@ -6,6 +6,7 @@ and report through GET /api/kit/job/{name}.
 from __future__ import annotations
 
 import atomic
+import host_platform
 import jobstore
 import json
 import subprocess
@@ -27,19 +28,21 @@ FOLDER_KEYS = ["work_root", "capcut_drafts", "stock_video", "stock_music", "sfx"
 TEXT_KEYS = ["card_font", "whisper_device", "whisper_model", "bot_api_url", "workspace",
              "pixabay_key"]
 # standard layout under one workspace folder: every machine in the team looks the same
-WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": "stock\\video", "stock_music": "stock\\music",
+WORKSPACE_LAYOUT = {"work_root": "footage", "stock_video": str(Path("stock") / "video"),
+                    "stock_music": str(Path("stock") / "music"),
                     "sfx": "sfx", "output_dir": "output", "models_dir": "models"}
 
 
 def capcut_default_drafts() -> str:
-    """Where CapCut keeps this Windows user's projects, or '' if CapCut was never opened.
+    """Where CapCut keeps this user's projects, or '' if CapCut was never opened.
     1. the folder chosen in CapCut's settings (Config/globalSetting currentCustomDraftPath)
     2. the folder most of CapCut's listed projects sit in (root_meta_info.json)
     3. CapCut's default folder"""
     import os
     import re
     from collections import Counter
-    data = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data"
+    cfg = _read_config()
+    data = host_platform.capcut_data_root(cfg)
     setting = data / "Config" / "globalSetting"
     if setting.is_file():
         m = re.search(r"^currentCustomDraftPath=(.+)$", setting.read_text(encoding="utf-8", errors="replace"), re.M)
@@ -47,7 +50,7 @@ def capcut_default_drafts() -> str:
         if custom and custom.is_dir():
             return str(custom)
     default = data / "Projects" / "com.lveditor.draft"
-    meta = default / "root_meta_info.json"
+    meta = host_platform.capcut_registry(cfg)
     if meta.is_file():
         try:
             store = json.loads(meta.read_text(encoding="utf-8")).get("all_draft_store") or []
@@ -179,6 +182,17 @@ HF_PORT = 3002
 _hf_preview: dict[str, Any] = {}
 
 
+def _start_preview(command: list[str], project: Path, env: dict[str, str], *, window_flags: bool = False) -> None:
+    """Remember the exact preview process for scoped macOS cleanup."""
+    options = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if window_flags else {}
+    if host_platform.is_macos() and "--foreground" not in command:
+        command = [*command, "--foreground"]
+    _hf_preview["proc"] = subprocess.Popen(command, cwd=str(project), env=env,
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
+    if host_platform.is_macos():
+        _hf_preview["identity"] = host_platform.process_identity(_hf_preview["proc"].pid)
+
+
 @router.post("/hyperframes")
 def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
     """Create a HyperFrames project from a raw clip under <output_dir>/hyperframes and open its Studio."""
@@ -226,10 +240,9 @@ def hyperframes_project(body: HyperframesRequest) -> dict[str, Any]:
     atomic.write_text((project / "clipkit.json"), json.dumps({"raw": body.file, "start": body.start, "end": body.end},
                                                      ensure_ascii=False), encoding="utf-8")
     _stop_studio()
-    _hf_preview["proc"] = subprocess.Popen(
+    _start_preview(
         [npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT), "--no-open"],
-        cwd=str(project), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        project, env, window_flags=True)
     import urllib.request
     for _ in range(60):  # wait until the studio answers
         try:
@@ -581,14 +594,14 @@ def capcut_detect() -> dict[str, str]:
 @router.post("/browse")
 def browse(start: str = "") -> dict[str, str]:
     """Folder pick (settings): same Windows Open dialog; a picked file means its folder."""
-    r = pick(start)
+    r = pick(start, "folder") if host_platform.is_macos() else pick(start)
     return {"path": r["path"] if r["kind"] != "file" else str(Path(r["path"]).parent)}
 
 
 @router.post("/browse-file")
 def browse_file(start: str = "") -> dict[str, str]:
     """File pick (cover background): same Windows Open dialog; a folder is not an answer here."""
-    r = pick(start)
+    r = pick(start, "file") if host_platform.is_macos() else pick(start)
     if r["kind"] == "folder":
         raise HTTPException(400, "เลือกไฟล์วิดีโอหรือรูป ไม่ใช่โฟลเดอร์")
     return {"path": r["path"]}
@@ -617,17 +630,27 @@ if ($d.ShowDialog($f) -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::U
 
 
 @router.post("/pick")
-def pick(start: str = "") -> dict[str, str]:
+def pick(start: str = "", kind: str = "both") -> dict[str, str]:
     """Windows' own Open dialog: pick a video file, or open a folder and press Open to take the whole folder
     (the classic 'file name = select this folder' trick, since Windows has no single file-or-folder dialog)."""
-    script = Path(tempfile_dir()) / "clipkit_pick.ps1"
-    atomic.write_text(script, PICK_PS, encoding="utf-8-sig")   # BOM: Windows PowerShell reads Thai text correctly
-    # CREATE_NO_WINDOW: no black console window behind the dialog (only the Open dialog shows)
-    p = subprocess.run(["powershell", "-NoProfile", "-STA", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
-                        "-File", str(script), start],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    out = p.stdout.strip()
+    if kind not in {"both", "file", "folder"}:
+        raise HTTPException(400, "Invalid picker kind")
+    if host_platform.is_macos():
+        try:
+            out = host_platform.pick_path(start, kind)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, str(exc)) from exc
+    else:
+        script = Path(tempfile_dir()) / "clipkit_pick.ps1"
+        atomic.write_text(script, PICK_PS, encoding="utf-8-sig")   # BOM: Windows PowerShell reads Thai text correctly
+        # CREATE_NO_WINDOW: no black console window behind the dialog (only the Open dialog shows)
+        p = subprocess.run(["powershell", "-NoProfile", "-STA", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+                            "-File", str(script), start],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        out = p.stdout.strip()
     if not out:
         return {"path": "", "kind": ""}
     path = Path(out)
@@ -709,6 +732,12 @@ def _project(path: str) -> tuple[str, Path]:
 def _stop_studio() -> None:
     # npx starts node underneath: kill the whole tree, or the studio keeps the project files open
     old = _hf_preview.get("proc")
+    if host_platform.is_macos():
+        if old and old.poll() is None:
+            host_platform.stop_owned_preview(old, _hf_preview.get("identity"))
+        _hf_preview.pop("identity", None)
+        _hf_preview.pop("proc", None)
+        return
     if old and old.poll() is None:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(old.pid)], capture_output=True, timeout=60)
         old.wait(timeout=10)
@@ -919,6 +948,8 @@ def hf_projects() -> dict[str, Any]:
 
 
 def _capcut_running() -> bool:
+    if host_platform.is_macos():
+        return host_platform.capcut_running()
     r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq CapCut.exe", "/NH"], capture_output=True, text=True, timeout=60)
     return "CapCut.exe" in r.stdout
 
@@ -980,6 +1011,14 @@ def draft_open(body: DraftPath) -> dict[str, str]:
     kind, p = _project(body.path)
     if kind == "hyperframes":
         return _open_hf_studio(p)
+    if host_platform.is_macos():
+        try:
+            host_platform.open_capcut(_read_config())
+        except FileNotFoundError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, str(exc)) from exc
+        return {"opened": "CapCut"}
     exe = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "Apps" / "CapCut.exe"
     if not exe.is_file():
         raise HTTPException(400, f"CapCut not found at {exe}")
@@ -995,9 +1034,8 @@ def _open_hf_studio(project: Path) -> dict[str, str]:
         raise HTTPException(400, "Node.js (npx) is not installed - run setup")
     _stop_studio()
     env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
-    _hf_preview["proc"] = subprocess.Popen([npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT),
-                                            "--no-open", "--foreground"], cwd=str(project), env=env,
-                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _start_preview([npx, "--yes", f"hyperframes@{HF_VERSION}", "preview", "--port", str(HF_PORT),
+                    "--no-open", "--foreground"], project, env)
     for _ in range(60):
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{HF_PORT}/", timeout=1)
@@ -1016,6 +1054,14 @@ def draft_delete(body: DraftPath) -> dict[str, str]:
     import os
     if (p / "index.html").is_file():
         _stop_studio()
+    if host_platform.is_macos():
+        if not (p / "index.html").is_file() and _capcut_running():
+            raise HTTPException(409, "ปิด CapCut ก่อนเปลี่ยนชื่อ (CapCut จะเขียนรายชื่อโปรเจกต์ทับ)")
+        try:
+            host_platform.move_to_trash(p)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(500, str(exc)) from exc
+        return {"recycled": str(p)}
     ps = ("Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory("
           "$env:CLIPKIT_TARGET, 'OnlyErrorDialogs', 'SendToRecycleBin')")
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
@@ -1030,6 +1076,10 @@ def draft_delete(body: DraftPath) -> dict[str, str]:
 
 @router.post("/setup")
 def run_setup() -> dict[str, Any]:
+    if host_platform.is_macos():
+        workspace = _read_config().get("workspace")
+        return _start("setup", ["/bin/bash", str(KIT / "scripts" / "setup.sh")] +
+                      ([str(workspace)] if workspace else []))
     return _start("setup", ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                             str(KIT / "scripts" / "setup.ps1")])
 
@@ -1052,6 +1102,14 @@ def job(name: str) -> dict[str, Any]:
 @router.get("/fonts")
 def fonts() -> dict[str, Any]:
     """Font families installed on this machine (what the browser and the renderer can use by name)."""
+    if host_platform.is_macos():
+        try:
+            names = host_platform.font_names(_read_config())
+        except (OSError, ValueError) as exc:
+            raise HTTPException(500, "could not read installed fonts: " + str(exc)[-200:]) from exc
+        if not names:
+            raise HTTPException(500, "could not read installed fonts")
+        return {"fonts": names}
     ps = ("Add-Type -AssemblyName System.Drawing; [Console]::OutputEncoding=[Text.Encoding]::UTF8; "
           "(New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }")
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import StreamingResponse
+import host_platform
 
 _shutdown_lock = threading.Lock()
 _shutdown_timer: threading.Timer | None = None
@@ -27,13 +28,21 @@ def launch_control(action: str, port: int) -> None:
     if action not in {"restart", "shutdown"} or not 1 <= port <= 65535:
         raise ValueError("Invalid ClipKit control action")
     here = Path(__file__).resolve().parent
+    if host_platform.is_macos():
+        created = host_platform.process_identity(os.getpid()).created
+        command = [sys.executable, str(here / "control.py"), "--action", action, "--port", str(port),
+                   "--python", sys.executable, "--expected-pid", str(os.getpid()),
+                   "--expected-created", str(created), "--issued-at", str(int(time.time()))]
+    else:
+        command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                   str(here / "control.ps1"), "-Action", action, "-Port", str(port),
+                   "-Python", sys.executable, "-ExpectedPid", str(os.getpid()),
+                   "-IssuedAt", str(int(time.time()))]
     with (here / "control.log").open("ab") as log:
-        subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                          str(here / "control.ps1"), "-Action", action, "-Port", str(port),
-                          "-Python", sys.executable, "-ExpectedPid", str(os.getpid()),
-                          "-IssuedAt", str(int(time.time()))],
+        subprocess.Popen(command,
                          cwd=str(here), stdout=log, stderr=subprocess.STDOUT,
-                         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                         **({"start_new_session": True} if host_platform.is_macos() else {}))
 
 
 def window_router(port: int, exit_server: Callable[[], None],
@@ -53,13 +62,19 @@ def window_router(port: int, exit_server: Callable[[], None],
 
     @router.get("/health")
     def health():
-        return {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy(), "helper": helper_url}
+        result = {"ready": ready(), "managed": False, "instance": os.getpid(), "busy": busy(), "helper": helper_url}
+        if host_platform.is_macos():
+            result["created_at"] = host_platform.process_identity(os.getpid()).created
+        return result
 
     def control(action: str, control_version: str):
         global _shutdown_timer
         # Cached pages from before explicit controls must not issue a delayed restart.
         if control_version != "v2":
             raise HTTPException(409, "หน้านี้เก่าเกินไป กรุณารีเฟรช ClipKit ก่อนสั่งระบบ")
+        if host_platform.is_macos() and (busy() or host_platform.server_has_active_helpers(
+                host_platform.process_identity(os.getpid()))):
+            raise HTTPException(409, "A job is running; finish it before restarting or shutting down")
         try:
             if action == "shutdown":
                 with _shutdown_lock:
@@ -99,9 +114,14 @@ def window_router(port: int, exit_server: Callable[[], None],
         return {"action": "cancel-shutdown", "cancelled": pending}
 
     @router.post("/exit", status_code=202, include_in_schema=False)
-    def exit_after_response(instance: int, background_tasks: BackgroundTasks):
+    def exit_after_response(instance: int, background_tasks: BackgroundTasks, created_at: float | None = None):
         if instance != os.getpid():
             raise HTTPException(409, "ClipKit instance changed")
+        if host_platform.is_macos():
+            if created_at != host_platform.process_identity(os.getpid()).created:
+                raise HTTPException(409, "ClipKit instance changed")
+            if busy() or host_platform.server_has_active_helpers(host_platform.process_identity(os.getpid())):
+                raise HTTPException(409, "A job is running; finish it before shutting down")
         background_tasks.add_task(exit_server)
         return {"accepted": True}
 

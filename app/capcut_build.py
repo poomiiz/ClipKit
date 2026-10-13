@@ -10,6 +10,7 @@ Built from the same timeline as the MP4 export (render.render_draft dry run) int
 from __future__ import annotations
 
 import atomic
+import host_platform
 import copy
 import json
 import shutil
@@ -29,6 +30,8 @@ def _machine_paths(text: str) -> str:
     """The templates name CapCut's fonts and effects by {LOCALAPPDATA} / {CAPCUT_APP}: point them at this
     machine's folders (the newest installed CapCut version)."""
     import os
+    if host_platform.is_macos():
+        return host_platform.mac_template_paths(text, capcut_edit.kitconfig._load())
     local = Path(os.environ.get("LOCALAPPDATA", "")).as_posix()
     apps = sorted((Path(local) / "CapCut" / "Apps").glob("*.*.*"), key=lambda p: [int(x) for x in p.name.split(".") if x.isdigit()])
     app = apps[-1].as_posix() if apps else f"{local}/CapCut/Apps/missing"

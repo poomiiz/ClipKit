@@ -60,12 +60,17 @@ def main():
         launch.assert_not_called()
         assert client.post("/api/window/exit?instance=0").status_code == 409
         assert not app.state.server.should_exit
-        assert client.post("/api/window/exit?instance=" + str(os.getpid())).status_code == 202
+        exit_url = "/api/window/exit?instance=" + str(os.getpid())
+        created = client.get("/api/window/health").json().get("created_at")
+        if created is not None:
+            exit_url += "&created_at=" + str(created)
+        assert client.post(exit_url).status_code == 202
         assert app.state.server.should_exit
         assert client.get("/api/window/health").json()["ready"] is False
     app.state.exit_requested = False
     app.state.server.should_exit = False
-    helper_check()
+    if sys.platform == "win32":
+        helper_check()
     print("ok manual controls: legacy flag, explicit actions, graceful exit, CORS, ownership, helper order")
 
 

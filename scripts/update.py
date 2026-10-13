@@ -62,7 +62,8 @@ def main() -> None:
         r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")],
                            check=False)
         if r.returncode != 0:
-            raise SystemExit("updated, but installing the new packages failed - run scripts/setup.ps1")
+            setup = "bash scripts/setup.sh" if sys.platform == "darwin" else "scripts/setup.ps1"
+            raise SystemExit("updated, but installing the new packages failed - run " + setup)
         print("packages updated")
 
 
