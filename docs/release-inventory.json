@@ -9,7 +9,8 @@
     {"commit": "52e6f849078c946347de36d8a18af0626b42a827", "reason": "Owner authorization middleware"},
     {"commit": "63a2d0652dfbe8250bd3b25fe08de3ce2cf4b9c3", "reason": "Host, Origin and CSP restrictions"},
     {"commit": "0073eafaaefdfe69db6f601303d6d032e21d70aa", "reason": "Valid CSP transport when helper origins are empty"},
-    {"commit": "a1d012001c3af9370116b291844126943c832137", "reason": "Mac preview bypasses unrelated orphan-Chrome cleanup and retains owned process shutdown"}
+    {"commit": "a1d012001c3af9370116b291844126943c832137", "reason": "Mac preview bypasses unrelated orphan-Chrome cleanup and retains owned process shutdown"},
+    {"commit": "89c0cfaf07f5a35e17edae37fa5b772e97d96b5a", "reason": "Shared private Mac guard also disables the render worker's unrelated orphan-Chrome cleanup"}
   ],
   "provenance": "Reviewed repository history and platform.tasks commit_refs/context on 2026-10-13. Original commit ancestry is required; equivalent code does not substitute for it.",
   "examined_not_required": [

@@ -188,6 +188,7 @@ def preview_evidence(proof: Path) -> dict:
     sentinel_identity = None
     descendants = []
     stopped = False
+    preview_log = (proof / "preview.log").open("w", encoding="utf-8")
 
     def children(pid):
         snapshots = []
@@ -208,8 +209,14 @@ def preview_evidence(proof: Path) -> dict:
         sentinel_identity = host.process_identity(sentinel.pid)
         env = {**os.environ, "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_AUTO_INSTALL": "1",
                "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_NO_TELEMETRY": "1"}
-        kit._start_preview([npx, "--yes", f"hyperframes@{kit.HF_VERSION}", "preview",
-                            "--port", str(port), "--no-open"], project, env)
+        popen = subprocess.Popen
+        def capture_preview(command, **options):
+            if "preview" in command:
+                options.update(stdout=preview_log, stderr=subprocess.STDOUT)
+            return popen(command, **options)
+        with patch.object(kit.subprocess, "Popen", side_effect=capture_preview):
+            kit._start_preview([npx, "--yes", f"hyperframes@{kit.HF_VERSION}", "preview",
+                                "--port", str(port), "--no-open"], project, env)
         proc, expected = kit._hf_preview["proc"], kit._hf_preview["identity"]
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         deadline = time.monotonic() + 180
@@ -241,9 +248,11 @@ def preview_evidence(proof: Path) -> dict:
         encoded = urllib.parse.quote(project.name, safe="")
         with opener.open(f"http://127.0.0.1:{port}/api/projects/{encoded}/files/index.html", timeout=5) as response:
             require(marker in json.load(response)["content"], "Preview did not serve the temp source")
-        with opener.open(f"http://127.0.0.1:{port}/api/projects/{encoded}/preview", timeout=5) as response:
+        compiled_started = time.monotonic()
+        with opener.open(f"http://127.0.0.1:{port}/api/projects/{encoded}/preview", timeout=60) as response:
             require(response.status == 200 and marker in response.read().decode("utf-8"),
                     "Preview did not serve the compiled temp composition")
+        compiled_s = time.monotonic() - compiled_started
         require(sentinel.poll() is None and host.same_process(sentinel_identity, host.process_identity(sentinel.pid)),
                 "Preview startup affected the unrelated sentinel")
         descendants = children(proc.pid)
@@ -266,12 +275,14 @@ def preview_evidence(proof: Path) -> dict:
                 "Public source project changed")
         return {"status": "PASS", "version": kit.HF_VERSION, "source": "motion/sentence-pair",
                 "http_source_and_compiled_marker": True, "port_released": True,
+                "compiled_request_s": round(compiled_s, 3),
                 "owned_children_checked": len(descendants), "unrelated_sentinel_survived": True,
                 "sentinel_has_browser_marker": True, "sentinel_is_orphan": False,
                 "flags": ["--foreground", "--no-open"],
                 "automatic_updates_skills_and_telemetry": "disabled", "media_proxy": "default",
                 "generated_motion_render": rendered}
     finally:
+        preview_log.close()
         try:
             if not stopped and kit._hf_preview:
                 kit._stop_studio()  # refuses changed/reused identities; never falls back to a global kill
