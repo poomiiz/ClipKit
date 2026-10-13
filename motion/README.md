@@ -12,6 +12,7 @@ No client footage or frames in this repo.
 |---|---|---|
 | sentence-pair | white lead types in, blue punch smears in, both end together | hand-made edit |
 | hook-title | level 0 hook: neon-flicker red keyword + typed sub-line (`?style=straight` for no tilt) | hand-made edit |
+| stat-number | infographic: a number counts up, its unit pops in, a label types in under it (web AI / agent fill `params`) | ClipKit |
 | cover-a | cover: bold headline (orange / blue) + white sub-line, renders a 1080x1920 PNG | hand-made cover |
 
 ## Adding a new effect

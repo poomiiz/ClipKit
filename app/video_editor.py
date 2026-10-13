@@ -7,6 +7,7 @@ import jobstore
 import subprocess
 import sys
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -840,7 +841,55 @@ def update() -> dict[str, Any]:
 
 # --- motion on top of the clip: pick a subtitle line, pick a template, it renders and sits at that time ---
 OVERLAYS = "clipkit_overlays.json"
-MOTION_TEMPLATES = {"hook-title": "หัวคลิป", "sentence-pair": "คำเน้น"}
+# made from the line's own words, so the editor offers them as one-click buttons on every line; any other
+# motion/<name> template (numbers, infographics) needs its fields filled in (params), by the web AI or an agent
+QUICK_MOTION = {"hook-title": "หัวคลิป", "sentence-pair": "คำเน้น"}
+
+
+def motion_labels() -> dict[str, str]:
+    import kit_settings
+    return {k: QUICK_MOTION.get(k, v.get("label", k)) for k, v in kit_settings.motion_templates().items()}
+
+
+def motion_params(template: str, params: dict[str, Any], line_len: float) -> tuple[dict[str, Any], float]:
+    """params checked against the template's clipkit-motion fields, defaults filled in, a missing "duration" set to
+    line_len (as long as the line, like the one-click buttons); returns them and the length in seconds. Raises on an unknown template, an unknown key, a bad value or a missing length."""
+    import kit_settings
+    spec = kit_settings.motion_templates().get(template)
+    if spec is None:
+        raise VideoEditError(f"unknown motion template: {template}")
+    if not isinstance(params, dict):
+        raise VideoEditError(f"{template}: params ต้องเป็น object {{...}}")
+    fields = {f["key"]: f for f in spec.get("fields", [])}
+    if extra := sorted(set(params) - set(fields)):
+        raise VideoEditError(f"{template}: ไม่มีช่อง {', '.join(extra)} (มี {', '.join(fields)})")
+    if missing := [k for k, f in fields.items() if f.get("required") and k not in params]:
+        raise VideoEditError(f"{template}: ต้องมีช่อง {', '.join(missing)}")
+    # a text the AI left out stays empty: the defaults are the motion page's demo words, not this clip's
+    out = {k: "" if f["type"] == "text" else f["default"] for k, f in fields.items()
+           if f["type"] not in ("pairs", "font") and f.get("default") is not None}
+    for k, v in params.items():
+        f = fields[k]
+        if f["type"] == "number" and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
+            raise VideoEditError(f"{template}.{k} ต้องเป็นตัวเลขมากกว่า 0 (ได้ {v!r})")
+        if f["type"] in ("text", "font") and not isinstance(v, str):
+            raise VideoEditError(f"{template}.{k} ต้องเป็นข้อความ (ได้ {v!r})")
+        if f.get("pattern") and not re.fullmatch(f["pattern"], v):
+            raise VideoEditError(f"{template}.{k} รูปแบบไม่ถูก (ได้ {v!r})")
+        if f["type"] == "select" and v not in [o[0] for o in f["options"]]:
+            raise VideoEditError(f"{template}.{k} ต้องเป็นหนึ่งใน {[o[0] for o in f['options']]} (ได้ {v!r})")
+        if f["type"] == "pairs" and (not isinstance(v, list) or not v or any(
+                not isinstance(x, list) or len(x) != 5 for x in v)):
+            raise VideoEditError(f"{template}.{k} ต้องเป็น [[start, end, ขาว, เน้น, delay], ...] (ได้ {v!r})")
+        out[k] = v
+    if "duration" in fields and "duration" not in params:
+        out["duration"] = line_len
+    how = spec.get("length", "duration")
+    try:
+        length = max(float(x[1]) for x in out["pairs"]) if how == "pairs" else float(out[how])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise VideoEditError(f"{template}: ไม่มีความยาว ({how})") from exc
+    return out, round(length, 2)
 
 
 def _overlays(path: str) -> list[dict[str, Any]]:
@@ -866,7 +915,7 @@ def draft_overlays(path: str = Query(...)) -> dict[str, Any]:
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"subs": [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in d["subtitles"]],
-            "overlays": _overlays(path), "templates": MOTION_TEMPLATES}
+            "overlays": _overlays(path), "templates": motion_labels(), "quick": QUICK_MOTION}
 
 
 class OverlayRequest(BaseModel):
@@ -875,17 +924,24 @@ class OverlayRequest(BaseModel):
     start: float = Field(ge=0)
     end: float
     text: str
+    params: dict[str, Any] | None = None   # the template's fields; None = made from text (QUICK_MOTION only)
 
 
 @router.post("/draft/overlay")
 def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     import kit_settings
-    if req.template not in MOTION_TEMPLATES:
-        raise HTTPException(400, f"unknown template: {req.template}")
-    a, b = _split2(req.text)
     dur = round(min(6.0, max(3.0, req.end - req.start)), 2)
-    params = ({"key": a, "sub": b, "duration": dur} if req.template == "hook-title"
-              else {"pairs": [[0, dur, a, b, 0.8]]})
+    try:
+        if req.params is not None:
+            params, dur = motion_params(req.template, req.params, dur)
+        elif req.template in QUICK_MOTION:
+            a, b = _split2(req.text)
+            params = ({"key": a, "sub": b, "duration": dur} if req.template == "hook-title"
+                      else {"pairs": [[0, dur, a, b, 0.8]]})
+        else:
+            raise VideoEditError(f"{req.template} ต้องกรอกช่องของมันเอง (params)")
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
     mov = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params))["file"]
     items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]  # one motion per moment
