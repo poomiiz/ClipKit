@@ -180,13 +180,56 @@ class HyperframesRequest(BaseModel):
 HF_VERSION = "0.8.101"
 HF_PORT = 3002
 _hf_preview: dict[str, Any] = {}
+MAC_HF_PREVIEW_SHA = "6bb744f45aad23c98f45188df0e7554ac48c05351b020ac47da8df186f045480"
+
+
+def _mac_preview_command(command: list[str], project: Path, env: dict[str, str]) -> list[str]:
+    """Use a private pinned copy without HyperFrames' unrelated orphan-Chrome sweep."""
+    import hashlib
+    import shutil
+    package = f"hyperframes@{HF_VERSION}"
+    if package != "hyperframes@0.8.101" or command[2:4] != [package, "preview"]:
+        raise RuntimeError("Mac preview launcher needs review for this HyperFrames version")
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError("Node.js is missing")
+    cache = KIT / "state" / "hyperframes-npm"
+    if any(p.is_symlink() for p in (cache, cache.parent)):
+        raise RuntimeError("HyperFrames cache must not be linked to another directory")
+    env["npm_config_cache"] = str(cache)
+    install = subprocess.run([command[0], "--yes", package, "--help"], cwd=project, env=env,
+                             capture_output=True, text=True, timeout=240)
+    if install.returncode:
+        raise RuntimeError("HyperFrames preparation failed: " + (install.stderr or install.stdout)[-600:])
+    files = list(cache.glob("_npx/*/node_modules/hyperframes/dist/preview-MOKQFMZS.js"))
+    if len(files) != 1:
+        raise RuntimeError("Pinned HyperFrames preview module not found uniquely")
+    if not files[0].resolve().is_relative_to(cache.resolve()):
+        raise RuntimeError("HyperFrames module is outside the private cache")
+    source = files[0].read_bytes()
+    if hashlib.sha256(source).hexdigest() != MAC_HF_PREVIEW_SHA:
+        raise RuntimeError("Pinned HyperFrames preview module changed; refusing to run it")
+    original = source.decode("utf-8")
+    sweep = "const orphansKilled = killOrphanedProcesses();"
+    if original.count(sweep) != 1:
+        raise RuntimeError("HyperFrames orphan cleanup call changed; refusing to run it")
+    patched = files[0].with_name("editorkrab-preview.js")
+    atomic.write_text(patched, original.replace(sweep, "const orphansKilled = 0;"), encoding="utf-8")
+    # shortcut: pinned internal command; use an upstream scoped-cleanup option when available.
+    loader = ("if(parseInt(process.versions.node)<22)throw new Error('HyperFrames requires Node.js 22 or newer');"
+              "const {default: preview} = await import(process.argv[1]);"
+              "await preview.run({args:{dir:process.argv[2],port:process.argv[3],"
+              "foreground:true,open:false,json:false}});")
+    port = command[command.index("--port") + 1]
+    return [node, "--input-type=module", "-e", loader, patched.resolve().as_uri(), str(project.resolve()),
+            port, package, "preview", "--foreground"]
 
 
 def _start_preview(command: list[str], project: Path, env: dict[str, str], *, window_flags: bool = False) -> None:
     """Remember the exact preview process for scoped macOS cleanup."""
     options = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if window_flags else {}
-    if host_platform.is_macos() and "--foreground" not in command:
-        command = [*command, "--foreground"]
+    if host_platform.is_macos():
+        command = _mac_preview_command(command, project, env)
     _hf_preview["proc"] = subprocess.Popen(command, cwd=str(project), env=env,
                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
     if host_platform.is_macos():

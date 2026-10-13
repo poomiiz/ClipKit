@@ -1,6 +1,7 @@
 """Public CapCut templates keep usable fonts in both material and nested text JSON."""
 import copy
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -11,7 +12,11 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
-import capcut_build as build
+with tempfile.TemporaryDirectory() as import_folder:
+    config = Path(import_folder) / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+        import capcut_build as build
 
 ROLES = ("white", "orange", "caption", "title")
 
