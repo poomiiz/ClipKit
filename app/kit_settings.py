@@ -701,7 +701,7 @@ def _project(path: str) -> tuple[str, Path]:
     p = Path(path)
     for kind, root in _project_roots().items():
         marker = "draft_content.json" if kind == "capcut" else "index.html"
-        if str(root) not in ("", ".") and root.is_dir() and p.parent.resolve() == root.resolve() and (p / marker).is_file():
+        if str(root) not in ("", ".") and root.is_dir() and p.resolve().parent == root.resolve() and (p / marker).is_file():
             return kind, p
     raise HTTPException(400, f"not a ClipKit project folder: {path}")
 
