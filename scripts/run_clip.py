@@ -65,18 +65,12 @@ def _self_update() -> None:
     try:
         if "ClipKit-Team" not in git("remote", "get-url", "origin").stdout or os.environ.get("CLIPKIT_UPDATED"):
             return
-        if git("fetch", "-q").returncode != 0:
-            print('{"update": "skipped: no connection to GitHub"}', flush=True)
-            return
-        if git("rev-parse", "HEAD").stdout == git("rev-parse", "@{u}").stdout:
-            return
-        changed = git("diff", "--name-only", "HEAD", "@{u}").stdout.split()
         r = subprocess.run([sys.executable, str(root / "scripts" / "update.py")], capture_output=True, text=True)
         if r.returncode != 0:
             print(json.dumps({"update": "skipped: " + (r.stderr or r.stdout).strip()[-300:]}), flush=True)
             return
-        if "requirements.txt" in changed:
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(root / "requirements.txt")])
+        if r.stdout.startswith("already the newest"):
+            return
         print('{"update": "updated to the newest ClipKit - restarting"}', flush=True)
         os.environ["CLIPKIT_UPDATED"] = "1"
         sys.exit(subprocess.run([sys.executable, *sys.argv]).returncode)
