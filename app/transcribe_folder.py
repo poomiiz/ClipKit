@@ -37,7 +37,7 @@ def main() -> int:
             status["takes"].append({"take": take, "status": "existing", "file": str(target)})
             continue
         print(f"START Take {take}: {source.name}", flush=True)
-        phrases = transcribe(str(source), 0, file["duration"], "th", None)  # one model for everything: video_edit.whisper_model() (Settings)
+        phrases = transcribe(str(source), 0, file["duration"])  # one model for everything: video_edit.whisper_model() (Settings)
         payload = {"take": take, "source": str(source), "duration": file["duration"],
                    "folder": file.get("folder", ""),
                    "phrases": phrases}
