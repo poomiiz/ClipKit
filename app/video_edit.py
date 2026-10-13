@@ -960,6 +960,76 @@ def transcript_file(video: str) -> Path:
     return Path(video).with_suffix(Path(video).suffix + ".transcript.json")
 
 
+def lines_file(video: str) -> Path:
+    """The transcript without word times, for the agent that splits stories: an hour of speech is about a fifth the size."""
+    return Path(video).with_suffix(Path(video).suffix + ".lines.json")
+
+
+CHUNK_S = 600   # a longer file is transcribed this many seconds at a time, each piece saved as it finishes
+
+
+def transcribe_file(video: str) -> list[dict[str, Any]]:
+    """The whole file's phrases, saved to <video>.transcript.json (and <video>.lines.json); reused once there.
+    A file over 1.5 x CHUNK_S goes CHUNK_S at a time, each piece cut at a pause and kept in
+    <video>.transcript.part.json, so a crash at minute 50 of an hour resumes at minute 50."""
+    tf, lf = transcript_file(video), lines_file(video)
+    if tf.is_file():
+        phrases = json.loads(tf.read_text(encoding="utf-8"))
+    else:
+        part = tf.with_suffix(".part.json")
+        st = Path(video).stat()
+        mark = [st.st_size, int(st.st_mtime)]
+        done = json.loads(part.read_text(encoding="utf-8")) if part.is_file() else None
+        if not done or done["source"] != mark:  # no pieces yet, or the video changed under them
+            done = {"source": mark, "end": 0.0, "language": None, "phrases": []}
+        total = probe(video)["duration"]
+        while done["end"] < total - 0.5:
+            start = done["end"]
+            if total - start <= CHUNK_S * 1.5:
+                end = total
+            else:
+                done["language"] = done["language"] or _file_language(video)  # every piece read as one language
+                end = _quiet_point(video, start + CHUNK_S)
+            for p in transcribe(video, start, end, done["language"]):
+                done["phrases"].append({**p, "start": round(p["start"] + start, 2), "end": round(p["end"] + start, 2),
+                                        "words": [[round(a + start, 2), round(b + start, 2), w] for a, b, w in p.get("words", [])]})
+            done["end"] = end
+            if end < total:
+                atomic.write_text(part, json.dumps(done, ensure_ascii=False), encoding="utf-8")
+        phrases = done["phrases"]
+        atomic.write_text(tf, json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+        part.unlink(missing_ok=True)
+    if not lf.is_file() or lf.stat().st_mtime < tf.stat().st_mtime:
+        atomic.write_text(lf, json.dumps([{k: p[k] for k in ("start", "end", "text")} for p in phrases],
+                                         ensure_ascii=False, indent=1), encoding="utf-8")
+    return phrases
+
+
+def _file_language(video: str) -> str:
+    """speech_language(), with "auto" detected once across the whole file (not per piece)."""
+    language = speech_language()
+    if language != "auto":
+        return language
+    model, _engine = _get_model()
+    wav = Path(os.environ.get("TEMP", "/tmp")) / f"ve_{uuid.uuid4().hex}.wav"
+    try:
+        _extract_audio(video, 0, probe(video)["duration"], wav)
+        return _detect_language(model, wav)
+    finally:
+        wav.unlink(missing_ok=True)
+
+
+def _quiet_point(video: str, near: float, reach: float = 30.0) -> float:
+    """The middle of the longest pause within `reach` s of `near`, so no word is split between two pieces.
+    quiet_spans marks the quietest fifth of the stretch, so a pause is always found in speech."""
+    lo = max(near - reach, 0.0)
+    spans = quiet_spans(video, lo, near + reach, min_len=0.2)
+    if not spans:
+        raise VideoEditError(f"no pause near {near:.0f} s to split the transcription at")
+    mid = max(spans, key=lambda s: (s["length"], -abs(lo + s["start"] - near)))  # equal pauses: the nearest
+    return round(lo + (mid["start"] + mid["end"]) / 2, 2)
+
+
 def stories_file(video: str) -> Path:
     return Path(video).with_suffix(Path(video).suffix + ".stories.json")
 

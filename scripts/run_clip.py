@@ -131,13 +131,10 @@ def detail(exc: Exception) -> str:
 
 
 def stories(raw: str, max_s: int, no_ai: bool = False) -> list[dict] | None:
-    tf = video_edit.transcript_file(raw)
-    if not tf.is_file():
+    if not video_edit.transcript_file(raw).is_file():
         say(step="ถอดเสียงทั้งไฟล์")
-        phrases = video_edit.transcribe(raw, 0, video_edit.probe(raw)["duration"], "th", None)
-        tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+    phrases = video_edit.transcribe_file(raw)  # config.json "speech_language", not always Thai
     video_edit.STORY_MAX_S, video_edit.STORY_AIM_S = max_s, int(max_s * 0.65)
-    phrases = json.loads(tf.read_text(encoding="utf-8"))
     sf = video_edit.stories_file(raw)
     if no_ai and not sf.is_file() and phrases:  # written like the agent's, so a rerun (or a person) can use it
         parts = video_edit._split_long(0, len(phrases) - 1, phrases, Path(raw).stem, "")
