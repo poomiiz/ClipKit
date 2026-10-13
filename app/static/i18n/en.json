@@ -1,4 +1,10 @@
 {
+"แถบความคืบหน้าด้านล่าง": "Progress bar at the bottom",
+"แถบเต็มจากซ้ายไปขวาตามความยาวคลิป": "fills left to right over the clip",
+"อีโมจิเด้งตามคำสำคัญ": "Emoji pop on keywords",
+"ภาพประกอบเร่งสปีดตอนเข้า": "Speed-ramp B-roll in",
+"ภาพประกอบที่เป็นวิดีโอเข้ามาเร็ว 3 เท่า แล้วช้าลงเป็นปกติใน 0.6 วิ": "video B-roll comes in at 3x and slows to normal over 0.6 s",
+"เช่น เงิน 💰 ไฟ 🔥 ไอเดีย 💡 เว้นห่างกันอย่างน้อย 2.5 วิ": "e.g. money 💰 fire 🔥 idea 💡, at least 2.5 s apart",
 "เปิดลิงก์ Drive": "Open Drive link",
 "แก้ลิงก์ Drive": "Edit Drive link",
 "วางลิงก์ Drive": "Paste Drive link",
@@ -884,6 +890,7 @@
 "ไม่เจอ ลองคำอื่น": "Nothing found. Try another term",
 "ไม่ได้ระบุโปรเจกต์": "No project specified",
 "อยากได้คลิปแบบไหน (ไม่ใส่ก็ได้) เช่น vlog สบายๆ เน้นช่วงตลก คลิปละไม่เกิน 1 นาที": "What kind of clips do you want? (optional) e.g. a relaxed vlog, focus on the funny parts, under 1 minute each",
+"เปิดโปรเจกต์นี้ในหน้านี้ไม่ได้": "This project can't be opened here",
 "ไล่สีทีละคำ": "Word-by-word color fill",
 "— ยังไม่มีอนิเมชันสำหรับ": "— no animation yet for",
 "— ไม่มีเพลง —": "— No music —",
