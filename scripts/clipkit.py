@@ -55,12 +55,18 @@ def add_cuda_dll_dirs():
 
 
 def cmd_transcribe(a):
+    # unset flags follow config.json like the app does: whisper_model, whisper_device and the models_dir download
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "capcut"))
+    import kitconfig
+    a.model = a.model or kitconfig.CFG.get("whisper_model") or "large-v3"
+    a.device = a.device or kitconfig.CFG.get("whisper_device") or "cuda"
     if a.device == "cuda":
         add_cuda_dll_dirs()
     from faster_whisper import WhisperModel
 
     src = Path(a.input)
-    model = WhisperModel(a.model, device=a.device, compute_type="int8_float16" if a.device == "cuda" else "int8")  # half the VRAM of float16
+    model = WhisperModel(a.model, device=a.device, compute_type="int8_float16" if a.device == "cuda" else "int8",  # half the VRAM of float16
+                         download_root=kitconfig.CFG.get("models_dir") or None)
     segments, info = model.transcribe(str(src), language=a.language, vad_filter=True)
     # Thai: whisper "words" are sub-character byte tokens, so keep segment text (clean) and
     # re-split it on real word boundaries with pythainlp; time each word by its share of characters.
@@ -322,8 +328,8 @@ def main():
     t = sub.add_parser("transcribe")
     t.add_argument("input")
     t.add_argument("--out")
-    t.add_argument("--model", default="large-v3")
-    t.add_argument("--device", default="cuda")
+    t.add_argument("--model", help="default: whisper_model in config.json, else large-v3")
+    t.add_argument("--device", help="default: whisper_device in config.json, else cuda")
     t.add_argument("--language", default="th")
     t.set_defaults(fn=cmd_transcribe)
 
