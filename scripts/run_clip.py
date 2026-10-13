@@ -29,6 +29,7 @@ from urllib.parse import quote
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="One command from a raw video to finished short clips.")
     ap.add_argument("video")
+    ap.add_argument("--trial-id", help="benchmark session ID; reuse it for WAIT/retry invocations of the same trial")
     ap.add_argument("--max", type=int, default=120, help="longest clip in seconds")
     ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
     ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
@@ -111,11 +112,14 @@ def say(**kw) -> None:
     print(json.dumps(kw, ensure_ascii=False), flush=True)
 
 
+TIMING = None  # active benchmark_timing.TimingLog, scoped to one invocation of main()
+
+
 def timed(name: str, fn, *args, **kw):
-    """Run one step and print how long it took, so a slow run shows where the time went."""
+    """Print step time and record it under the current trial and invocation."""
     t = time.perf_counter()
     try:
-        return fn(*args, **kw)
+        return TIMING.timed(name, fn, *args, **kw) if TIMING else fn(*args, **kw)
     finally:
         say(took=name, s=round(time.perf_counter() - t, 1))
 
@@ -128,30 +132,31 @@ def stories(raw: str, max_s: int, no_ai: bool = False) -> list[dict] | None:
     tf = video_edit.transcript_file(raw)
     if not tf.is_file():
         say(step="ถอดเสียงทั้งไฟล์")
-        phrases = video_edit.transcribe(raw, 0, video_edit.probe(raw)["duration"])  # config.json "speech_language"
+        phrases = timed("ถอดเสียง", video_edit.transcribe, raw, 0,
+                        timed("อ่านข้อมูลต้นฉบับ", video_edit.probe, raw)["duration"])  # config.json "speech_language"
         tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
     video_edit.STORY_MAX_S, video_edit.STORY_AIM_S = max_s, int(max_s * 0.65)
     phrases = json.loads(tf.read_text(encoding="utf-8"))
     sf = video_edit.stories_file(raw)
     if no_ai and not sf.is_file() and phrases:  # written like the agent's, so a rerun (or a person) can use it
-        parts = video_edit._split_long(0, len(phrases) - 1, phrases, Path(raw).stem, "")
+        parts = timed("แบ่งเรื่องจากช่วงพัก", video_edit._split_long, 0, len(phrases) - 1, phrases, Path(raw).stem, "")
         sf.write_text(json.dumps([{k: p[k] for k in ("title", "summary", "start", "end")} for p in parts],
                                  ensure_ascii=False, indent=1), encoding="utf-8")
-    return video_edit.stories_from_agent(raw, phrases)
+    return timed("อ่านผลเลือกเรื่อง", video_edit.stories_from_agent, raw, phrases)
 
 
 def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str = "default") -> str:
-    f = video_edit.find_focus(raw, st["start"], st["end"])
-    r = ve.capcut(ve.DraftRequest(file=raw, name=f"{Path(raw).stem} - {n} {st['title']}", start=st["start"], end=st["end"],
+    f = timed("หากรอบคนพูด", video_edit.find_focus, raw, st["start"], st["end"])
+    r = timed("สร้างร่าง", ve.capcut, ve.DraftRequest(file=raw, name=f"{Path(raw).stem} - {n} {st['title']}", start=st["start"], end=st["end"],
                                   via="clipkit", shape=shape, focus_x=f["x"], focus_y=f["y"]))
     path = r["draft_path"]
-    got = capcut_edit.transcribe_draft(path)
-    capcut_edit.set_subtitles(path, got["subtitles"])
-    capcut_edit.subtitles_language(path, "th")  # "th" = the spoken lines as heard, any language (not a translation)
-    capcut_edit.trim_pauses(path)
-    capcut_edit.tidy_subtitles(path)  # long lines: two lines at a Thai break, or a new subtitle
+    got = timed("ซับในร่าง", capcut_edit.transcribe_draft, path)
+    timed("วางซับ", capcut_edit.set_subtitles, path, got["subtitles"])
+    timed("ภาษาซับ", capcut_edit.subtitles_language, path, "th")  # spoken lines as heard, any language
+    timed("ตัดช่วงพัก", capcut_edit.trim_pauses, path)
+    timed("จัดบรรทัดซับ", capcut_edit.tidy_subtitles, path)
     (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "preset": preset, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
-    ve.auto_color(path)
+    timed("ปรับสี", ve.auto_color, path)
     return path
 
 
@@ -333,13 +338,25 @@ a{{color:#8fb8ff}}section{{border:1px solid #333;border-radius:10px;padding:12px
 
 
 def main() -> int:
+    import benchmark_timing
     a = _parser().parse_args()
-    render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
-    say(preset=a.preset)
     raw = str(Path(a.video).resolve())
     if not Path(raw).is_file():
         say(error="file not found", file=raw)
         return 1
+    global TIMING
+    previous = TIMING
+    TIMING = benchmark_timing.TimingLog(cutlog.logs_dir() / "timings.jsonl", raw, a.trial_id)
+    say(trial_id=TIMING.trial_id, run_id=TIMING.run_id)
+    try:
+        return TIMING.run(_pipeline, a, raw)
+    finally:
+        TIMING = previous
+
+
+def _pipeline(a, raw: str) -> int:
+    render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
+    say(preset=a.preset)
     state_f = Path(raw).with_name(Path(raw).name + ".clipkit_run.json")
     state = json.loads(state_f.read_text(encoding="utf-8")) if state_f.is_file() else {}
 
@@ -350,7 +367,7 @@ def main() -> int:
     picked = range(1, len(sts) + 1) if a.all else [1]
     if a.insert_sheet:
         try:
-            md, jpg = sheet(raw, sts, picked, state, a.insert_sheet)
+            md, jpg = timed("เตรียมจับคู่ภาพแทรก", sheet, raw, sts, picked, state, a.insert_sheet)
         except video_edit.VideoEditError as exc:
             say(error=str(exc))
             return 1
@@ -358,7 +375,7 @@ def main() -> int:
         return 0
     if a.insert_from:
         try:
-            say(placed=place(raw, sts, picked, state, a.insert_from, a.insert_plan))
+            say(placed=timed("ย้ายภาพแทรก", place, raw, sts, picked, state, a.insert_from, a.insert_plan))
         except video_edit.VideoEditError as exc:
             say(error=str(exc))
             return 1
@@ -384,7 +401,7 @@ def main() -> int:
                 import web_ai_json  # emphasis + title from an AI in the browser: upload this file, import its answer, run again
                 say(web_ai=str(web_ai_json.export_clip(path)), story=n)
             if a.insert:
-                say(step="ใส่คลิปที่โหลดมา", story=n, files=insert(path))
+                say(step="ใส่คลิปที่โหลดมา", story=n, files=timed("ใส่ภาพแทรก", insert, path))
             note = ""
             try:
                 timed("b-roll Pixabay", ve.broll_fill, path)
@@ -405,14 +422,14 @@ def main() -> int:
                 if a.client:
                     sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
                     import pace
-                    row["pace"] = pace.check(cc, a.client)
+                    row["pace"] = timed("ตรวจจังหวะ", pace.check, cc, a.client)
                     say(pace=row["pace"]["score"], problems=row["pace"]["problems"], story=n)
-            row["safe_zone"] = render.safe_zone(row.get("capcut") or path)
+            row["safe_zone"] = timed("ตรวจพื้นที่ปลอดภัย", render.safe_zone, row.get("capcut") or path)
             if row["safe_zone"]:
                 say(safe_zone=row["safe_zone"], story=n)
             if a.export:
                 say(step="ส่งออก MP4", story=n)
-                row["mp4"] = ve.draft_hf_export(ve.ExportRequest(path=path))["file"]
+                row["mp4"] = timed("ส่งออก MP4", ve.draft_hf_export, ve.ExportRequest(path=path))["file"]
             rows.append(row)
             row["check"] = timed("ตรวจคลิป + log", cutlog.log_run, raw, st, n, path, {k: v for k, v in vars(a).items() if k != "video"}, row["length"])
         except (video_edit.VideoEditError, HTTPException) as exc:
@@ -421,7 +438,7 @@ def main() -> int:
     if waits:
         say(WAIT=waits, then=" ".join(sys.argv))
         return 2
-    say(done=str(page(raw, rows)), clips=[{k: r[k] for k in ("n", "title", "length", "path") if k in r} | {"mp4": r.get("mp4"), "capcut": r.get("capcut"), "capcut_warnings": r.get("capcut_warnings"), "safe_zone": r.get("safe_zone"), "check": r.get("check")}
+    say(done=str(timed("หน้าสรุป", page, raw, rows)), clips=[{k: r[k] for k in ("n", "title", "length", "path") if k in r} | {"mp4": r.get("mp4"), "capcut": r.get("capcut"), "capcut_warnings": r.get("capcut_warnings"), "safe_zone": r.get("safe_zone"), "check": r.get("check")}
                                          for r in rows], stories=len(sts), pilot=not a.all)
     return 0
 
