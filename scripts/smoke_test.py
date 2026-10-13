@@ -243,6 +243,41 @@ def stories_are_not_transcribed_twice():
         assert capcut_edit._from_transcript(str(video), 11.0, 15.0) is None, "a phrase cut by the edge was reused"
 
 
+def long_file_transcribes_in_pieces_and_resumes():
+    # an hour-long file was one Whisper run, saved only at the end: a crash at minute 50 lost it all
+    import video_edit
+    calls, keep = [], (video_edit.transcribe, video_edit.CHUNK_S)
+
+    def fake(path, start, end, language=None, model_size=None):
+        calls.append((start, end, language))
+        if len(calls) == 2:
+            raise RuntimeError("crash")
+        return [{"start": 1.0, "end": 2.0, "text": f"at {start:.0f}", "words": [[1.0, 2.0, "x"]]}]
+    with tempfile.TemporaryDirectory() as t:
+        video = str(Path(t) / "talk.mp4")  # speech on 1.5 s, quiet 0.5 s, for 70 s
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=s=16x16:r=1:d=70", "-f", "lavfi",
+                        "-i", "aevalsrc='sin(2000*t)*lt(mod(t,2),1.5)':s=16000:d=70", "-shortest", video], check=True)
+        video_edit.transcribe, video_edit.CHUNK_S = fake, 20
+        try:
+            try:
+                video_edit.transcribe_file(video)
+                raise AssertionError("the fake crash did not happen")
+            except RuntimeError as exc:
+                assert str(exc) == "crash", exc
+            assert Path(video + ".transcript.part.json").is_file() and not video_edit.transcript_file(video).exists()
+            phrases = video_edit.transcribe_file(video)
+        finally:
+            video_edit.transcribe, video_edit.CHUNK_S = keep
+        assert calls[0][0] == 0 and calls[1][0] == calls[2][0] == calls[0][1], calls  # resumed at the failed piece
+        assert all(c[2] == "th" for c in calls), calls  # config.json "speech_language", the same for every piece
+        pieces = [calls[0]] + calls[2:]
+        assert all(1.5 < a % 2 < 2.0 for a, _, _ in pieces[1:]), pieces  # each seam inside a pause, not a word
+        for (a, _, _), p in zip(pieces, phrases):  # piece times moved to file times
+            assert p["start"] == round(a + 1, 2) and p["words"][0][0] == p["start"], p
+        assert calls[-1][1] >= video_edit.probe(video)["duration"] - 0.5 and not Path(video + ".transcript.part.json").exists()
+        assert json.loads(video_edit.lines_file(video).read_text(encoding="utf-8"))[0] == {"start": 1.0, "end": 2.0, "text": "at 0"}
+
+
 def saved_stories_come_back_after_restart():
     # the split is saved beside the video; after ClipKit restarts, opening the file shows it again with no new AI round
     import video_editor
