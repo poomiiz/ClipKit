@@ -267,6 +267,7 @@ function sideClip(s) {
     <div id="tProb"></div>
     <div class="row"><label><input type="checkbox" id="zc" ${st.zoomcut ? 'checked' : ''}> ตัดสลับด้วยการซูม</label><span class="hint">ซูมเข้า 8% ตรงจุดตัด</span></div>
     <div class="row"><label><input type="checkbox" id="pbar" ${st.progress ? 'checked' : ''}> แถบความคืบหน้าด้านล่าง</label><span class="hint">แถบเต็มจากซ้ายไปขวาตามความยาวคลิป</span></div>
+    <div class="row"><label><input type="checkbox" id="emo" ${st.emoji ? 'checked' : ''}> อีโมจิเด้งตามคำสำคัญ</label><span class="hint">เช่น เงิน 💰 ไฟ 🔥 ไอเดีย 💡 เว้นห่างกันอย่างน้อย 2.5 วิ</span></div>
     <div class="row"><button id="tsave">💾 บันทึกเป็นเทมเพลต</button><span class="hint">${st.template ? 'ใช้เทมเพลต: ' + esc(st.template) + ' · ' : ''}เก็บหน้าตาคลิปนี้ไว้ใช้กับโปรเจกต์ใหม่</span></div>
     <h4>สีภาพ</h4>
     ${[['brightness', 'ความสว่าง', -0.3, 0.3, 0.01], ['contrast', 'ความคม', 0.6, 1.6, 0.01], ['saturation', 'ความสด', 0, 2, 0.01], ['warmth', 'อุณหภูมิสี (อุ่น/เย็น)', -0.3, 0.3, 0.01]]
@@ -310,6 +311,7 @@ function sideClip(s) {
     try { const r = await api('draft/uncut', {path: PATH}); say('ย้อนแล้ว · เหลือย้อนได้อีก ' + r.undo + ' ครั้ง'); await reload(); live(); } catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('pbar').onchange = async e => { await api('draft/look', {path: PATH, style: {progress: e.target.checked}}); T.style.progress = e.target.checked; live(); };
+  $('emo').onchange = async e => { await api('draft/look', {path: PATH, style: {emoji: e.target.checked}}); T.style.emoji = e.target.checked; live(); };
   $('zc').onchange = async e => { await api('draft/look', {path: PATH, style: {zoomcut: e.target.checked}}); T.style.zoomcut = e.target.checked; live(); };
   s.querySelectorAll('[data-c]').forEach(r => r.onchange = async () => {
     const color = {...(T.style.color || {})}; s.querySelectorAll('[data-c]').forEach(x => color[x.dataset.c] = +x.value);  // keeps the auto white balance
