@@ -68,7 +68,11 @@ def export_stories(video: str) -> Path:
     lines = [{"start": round(p["start"], 2), "end": round(p["end"], 2), "text": p["text"]}
              for p in json.loads(tf.read_text(encoding="utf-8"))]
     data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "lines": lines}
-    return _packet(_prompt("stories.md"), data, packet_file("stories", video))
+    prompt, brief = _prompt("stories.md"), video_edit.read_brief(video)
+    if brief:  # the person's own words go first, so the AI picks stories for them
+        prompt = (f"## ความต้องการของผู้ตัดต่อ\n\n{brief}\n\nเลือกและแบ่งเรื่องให้ตรงกับความต้องการนี้ "
+                  f"โดยยังทำตามกฎทุกข้อด้านล่าง\n\n" + prompt)
+    return _packet(prompt, data, packet_file("stories", video))
 
 
 def export_clip(path: str, max_minutes: float | None = None) -> Path:
