@@ -2,6 +2,7 @@
 import atomic
 import json
 import os
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -167,6 +168,17 @@ def submit_export(org:UUID,project:UUID,body:Export,request:Request):
  owned(org,project,request)
  if not body.name.lower().endswith('.mp4') or not file_at(workspace(org)/'exports',body.name,body.size_bytes):raise HTTPException(409,'วาง MP4 ใน exports แล้วรอให้ไฟล์ครบก่อนส่งตรวจ')
  return {'updated':hub.rpc(request,'clipkit_project_action',{'org':str(org),'project_ids':[str(project)],'expected_revisions':{str(project):body.expected_revision},'next_status':'awaiting_review','note':'','export_file':body.name,'export_bytes':body.size_bytes})}
+
+DRIVE_LINK=re.compile(r'https://(drive|docs)[.]google[.]com/\S+')
+class ShareLink(BaseModel):
+ link:str=Field(default='',max_length=500)
+@router.post('/organizations/{org}/projects/{project}/share-link')
+def share_link(org:UUID,project:UUID,body:ShareLink,request:Request):
+ """A Google Drive link for reviewers on a phone; empty clears it. The database decides who may set it."""
+ link=body.link.strip()
+ if link and not DRIVE_LINK.fullmatch(link):raise HTTPException(400,'วางลิงก์แชร์จาก Google Drive (ขึ้นต้นด้วย https://drive.google.com/)')
+ hub.rpc(request,'clipkit_set_share_link',{'org':str(org),'project':str(project),'link':link})
+ return {'share_url':link or None}
 
 @router.get('/organizations/{org}/workspace-files')
 def workspace_files(org:UUID,request:Request):
