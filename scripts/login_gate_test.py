@@ -25,7 +25,10 @@ def main():
         for method, path in [('GET', '/api/video/drafts'), ('POST', '/api/kit/locate'), ('GET', '/api/team/setup'), ('POST', '/api/team/setup'), ('GET', '/docs'), ('GET', '/openapi.json')]:
             assert client.request(method, path).status_code == 401, path
         for asset in ('/login.html', '/login.js', '/login.css', '/logo.svg', '/ui.js', '/i18n/en.json'):
-            assert client.get(asset).status_code == 200, asset
+            response = client.get(asset)
+            assert response.status_code == 200, asset
+            csp = response.headers['content-security-policy']
+            assert csp == csp.strip(), 'CSP header has whitespace rejected by the real HTTP server'
         assert client.get('/api/team/session').json()['signed_in'] is False
         assert client.get('/api/window/health').status_code == 200
         assert client.post('/api/team/google', json={}).status_code == 200

@@ -178,7 +178,7 @@ async def no_cache_html(request, call_next):
         except HTTPException as exc: return JSONResponse({'detail':exc.detail},status_code=exc.status_code)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page else "")
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'self'" + (" " + " ".join(WIDGET_ORIGINS) if is_page and WIDGET_ORIGINS else "")
     if widget_health or widget_control:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
