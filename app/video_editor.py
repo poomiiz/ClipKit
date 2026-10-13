@@ -42,7 +42,7 @@ class TranscribeRequest(BaseModel):
     file: str
     start: float = 0.0
     end: float | None = None
-    language: str = "th"
+    language: str | None = None  # None = config.json "speech_language"
     model: str | None = None
 
 
@@ -296,7 +296,7 @@ def _run_story_plan(file: str) -> None:
         else:
             duration = video_edit.probe(file)["duration"]
             job["step"] = "ถอดเสียง"
-            phrases = video_edit.transcribe(file, 0, duration, "th", None)  # one model: video_edit.whisper_model()
+            phrases = video_edit.transcribe(file, 0, duration)  # one model: video_edit.whisper_model()
             atomic.write_text(tf, json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
         job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
                    command=video_edit.agent_command("stories", file),
