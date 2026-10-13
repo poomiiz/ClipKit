@@ -27,13 +27,6 @@ google.onclick = async () => {
   catch (error) { say(error.message, true); google.disabled = false; }
 };
 retry.onclick = connect;
-document.getElementById('login').onsubmit = async event => {
-  event.preventDefault();
-  const form = event.currentTarget, button = form.querySelector('button');
-  button.disabled = true;
-  try { await account('login', Object.fromEntries(new FormData(form))); form.reset(); location.replace('/video-editor.html'); }
-  catch (error) { say(error.message, true); button.disabled = false; }
-};
 connect();
 const lang = document.getElementById('lang');
 lang.textContent = window.ckLang === 'en' ? 'ภาษาไทย' : 'English';

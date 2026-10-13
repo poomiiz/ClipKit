@@ -273,7 +273,7 @@ def name_check_works():
 
 
 def preset_pack_roundtrip():
-    # a .clipkit made on one machine installs on another, and never overwrites a look that is already there
+    # a .editorkrab made on one machine installs on another, and never overwrites a look that is already there
     import preset_pack as pp
     real = pp.KIT
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
@@ -288,8 +288,11 @@ def preset_pack_roundtrip():
             pp.KIT = src
             f = pp.make_pack(src, {"id": "warm", "name": "Warm", "tier": "team", "subtitles": ["warm"],
                                    "covers": ["cover-warm"], "motion": ["warm-hook"]})
+            assert f.suffix == ".editorkrab", f
             pp.KIT = dst
-            pp.install_pack(f)
+            old = f.with_suffix(".clipkit")   # packs shared before the rename still install
+            shutil.copy(f, old)
+            pp.install_pack(old)
             assert (dst / "presets" / "warm.json").is_file() and (dst / "motion" / "cover-warm" / "index.html").is_file()
             assert pp.items()["motion"] == ["warm-hook"], pp.items()
             try:
@@ -327,6 +330,10 @@ def style_lab_previews_and_keeps():
                 "tracks": [{"type": "text", "segments": [seg("a", -0.3), seg("b", -0.45)]}]}), encoding="utf-8")
             x = style_lab.start(str(proj))
             assert x["status"] == "ready" and Path(x["gif"]).is_file() and Path(x["png"]).is_file(), x
+            # the style page groups by the normal line: same normal, other emphasis = one family, two looks
+            other = {**x["style"], "emphasis": {**x["style"]["emphasis"], "color": "#051192"}}
+            assert style_lab.looks(other)[0] == x["family"] and style_lab.looks(other)[1] != x["look"], (x["family"], x["look"])
+            assert style_lab.looks({**x["style"], "normal": {**x["style"]["normal"], "size": 40}})[0] != x["family"]
             assert style_lab.save(x["folder"], "Mine") == {"parts": ["main"], "preset": "my-mine"}
             got = style_lab.collection()
             assert got["presets"][0]["gif"] and got["parts"]["main"][0]["gif"], "kept style lost its preview"
