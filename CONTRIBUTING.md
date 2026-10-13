@@ -29,4 +29,10 @@ Apps Script / webhook URLs, or fonts you are not allowed to redistribute.
 - Run what you changed on a real clip or draft and say in the PR what you ran and what happened.
 - One topic per pull request.
 
+## Releases
+Editors' machines update to the newest `vX.Y.Z` tag, not to `main` (`scripts/update.py`). Merging only lands the
+change on `main`; to ship, bump `version` in `.claude-plugin/plugin.json`, then `git tag vX.Y.Z` and
+`git push origin vX.Y.Z`. The release workflow makes the GitHub Release with the merged PRs as notes. A bad
+release is fixed by tagging a newer one.
+
 By contributing you agree your work is released under the [MIT License](LICENSE).
