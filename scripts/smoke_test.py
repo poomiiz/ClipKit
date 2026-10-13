@@ -330,6 +330,10 @@ def style_lab_previews_and_keeps():
                 "tracks": [{"type": "text", "segments": [seg("a", -0.3), seg("b", -0.45)]}]}), encoding="utf-8")
             x = style_lab.start(str(proj))
             assert x["status"] == "ready" and Path(x["gif"]).is_file() and Path(x["png"]).is_file(), x
+            # the style page groups by the normal line: same normal, other emphasis = one family, two looks
+            other = {**x["style"], "emphasis": {**x["style"]["emphasis"], "color": "#051192"}}
+            assert style_lab.looks(other)[0] == x["family"] and style_lab.looks(other)[1] != x["look"], (x["family"], x["look"])
+            assert style_lab.looks({**x["style"], "normal": {**x["style"]["normal"], "size": 40}})[0] != x["family"]
             assert style_lab.save(x["folder"], "Mine") == {"parts": ["main"], "preset": "my-mine"}
             got = style_lab.collection()
             assert got["presets"][0]["gif"] and got["parts"]["main"][0]["gif"], "kept style lost its preview"
