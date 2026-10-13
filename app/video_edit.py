@@ -372,8 +372,7 @@ def transcribe(path: str, start: float, end: float, language: str | None = None,
         _extract_audio(path, start, end, full)
         language = language or speech_language()
         if language == "auto":
-            from faster_whisper.audio import decode_audio
-            language = model.detect_language(decode_audio(str(full), sampling_rate=16000))[0]
+            language = _detect_language(model, full)
         if kitconfig._load().get("whisper_batched", True):
             phrases = _batched(model, full, language, window)
         else:
@@ -387,6 +386,26 @@ def transcribe(path: str, start: float, end: float, language: str | None = None,
             phrase["text"] = english_terms(thai_spacing(phrase["text"]))
         phrase["text"] = spelling.fix(phrase["text"], known)
     return phrases
+
+
+def _detect_language(model, wav: Path, samples: int = 5, lowest: float = 0.5) -> str:
+    """The language spoken across the file: the recogniser's odds averaged over up to `samples` 30 s windows
+    spread through it. Its own detection reads only the first 30 s and stops at 0.5: physicsworks.wav
+    (English) came out Dutch at 0.52 and half its subtitles were Dutch. Below `lowest` it raises."""
+    from faster_whisper.audio import decode_audio
+    audio = decode_audio(str(wav), sampling_rate=16000)
+    n = 30 * 16000
+    last = max(len(audio) - n, 0)
+    starts = sorted({last * i // max(samples - 1, 1) for i in range(samples)})
+    odds: dict[str, float] = {}
+    for at in starts:
+        for lang, p in model.detect_language(audio[at:at + n])[2]:
+            odds[lang] = odds.get(lang, 0.0) + p / len(starts)
+    lang = max(odds, key=odds.get)
+    if odds[lang] < lowest:
+        raise VideoEditError(f"cannot tell the spoken language (best guess {lang}, {odds[lang]:.2f}): "
+                             'set config.json "speech_language" to its code, e.g. "en"')
+    return lang
 
 
 def _batched(model, wav: Path, language: str, window: float, overlap: float = 1.0) -> list[dict[str, Any]]:
