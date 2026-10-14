@@ -79,7 +79,7 @@ def _text(draft: dict, role: str, words: str, a: float, b: float, y: float, size
     body.update(text=words, styles=[st])
     mat.update(content=json.dumps(body, ensure_ascii=False), font_size=float(size), name=words[:20])
     seg = _clone(draft, tpl, mat, "texts")
-    seg["target_timerange"] = {"start": _us(a), "duration": max(_us(b - a) - _us(0.034), _us(0.1))}
+    seg["target_timerange"] = {"start": _us(a), "duration": max(_us(b - a), 1)}
     seg["clip"]["transform"] = {"x": 0.0, "y": y}
     seg["clip"]["scale"] = {"x": 1.0, "y": 1.0}
     return seg

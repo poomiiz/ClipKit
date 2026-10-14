@@ -593,8 +593,8 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         return "\n".join(out)
 
     out = []
-    # stays until the next phrase, but not through a long pause after its last word
-    ends = [min(phrases[n + 1][2] if n + 1 < len(phrases) else t1, ph[4] + 1.5) for n, ph in enumerate(phrases)]
+    # Hold both rows until their replacement starts, including pauses in speech.
+    ends = [phrases[n + 1][2] if n + 1 < len(phrases) else t1 for n in range(len(phrases))]
     pairs = stacks([(ph[6] or {}).get("look") for ph in phrases])  # emphasis in two beats, one row each
     thai = look["caption_lang"] == "th"  # the reading subtitle is the whole spoken line, going on with the voice
     for n, (lead, punch, a, hit, last, query, opts) in enumerate(phrases):
@@ -817,7 +817,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     hook = _hook(folder)
     held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption.json", {}),
             "box": safe_box(style), "motions": overlays}
-    for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
+    text_segments = sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"])
+    for line_number, s in enumerate(text_segments):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
             continue
@@ -836,6 +837,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         t0 = s["target_timerange"]["start"] / US
         t1 = t0 + s["target_timerange"]["duration"] / US
         if anim == "pair":
+            t1 = (text_segments[line_number + 1]["target_timerange"]["start"] / US
+                  if line_number + 1 < len(text_segments) else sum(seg["target_timerange"]["duration"] for seg in segs) / US)
             spoken = said.get(body.get("text", ""))
             estimated += not bool(spoken)
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,

@@ -150,7 +150,7 @@ def build(path: str) -> Path:
                 upper = top - {"-100%": block, "0": 0}.get(shift, block / 2)
                 top += min(max(upper, H * box["top"]), H * box["bottom"] - block) - upper
                 tops[i] = top
-                els.append(f'<div id="{i}" class="clip txt" data-start="{pa:.3f}" data-duration="{max(0.001, pb - pa - min(0.034, (pb - pa) / 2)):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
+                els.append(f'<div id="{i}" class="clip txt" data-start="{pa:.3f}" data-duration="{pb - pa:.3f}" data-track-index="3" '
                            f'style="top:{top:.0f}px;left:{5 + x * 50:g}%;transform:translateY({shift}) rotate({rot:g}deg);'
                            f'{"text-shadow:4px 4px 6px rgba(0,0,0,.9);" if shadow else ""}font-size:{px:.0f}px;line-height:{lh};color:{_css_color(fill)};'
                            f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{html.escape(piece)}</div>')

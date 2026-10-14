@@ -18,6 +18,13 @@ import capcut_font_test
 
 
 class SubtitleTimingTests(unittest.TestCase):
+    def test_both_rows_hold_through_pause_until_replacement(self):
+        events = render._pair("normal keyword", [[0, .3, "normal "], [.3, .5, "keyword"]],
+                              0, 4, 1080, 1920, "Kanit", render.DEFAULT_FONT, render.pair_look({}),
+                              picked=[["normal", "keyword"]])
+        self.assertTrue(events)
+        for event in events:
+            self.assertEqual(event.split(",")[2], "0:00:04.00")
     def test_pair_rows_fit_without_overlap_on_both_canvases(self):
         for width, height in ((1920, 1080), (1080, 1920)):
             look = render.pair_look({}, width, height)
@@ -97,7 +104,7 @@ class SubtitleTimingTests(unittest.TestCase):
             self.assertEqual(windows["normal"][0], 0)
             self.assertEqual(windows["keyword"][0], 1.8)
             self.assertAlmostEqual(windows["normal"][1], windows["keyword"][1], places=3)
-            self.assertAlmostEqual(windows["normal"][1], 2.466, places=3)
+            self.assertAlmostEqual(windows["normal"][1], 2.5, places=3)
             harness = capcut_font_test.CapCutFontTests()
             harness.setUp()
             try:
@@ -111,7 +118,7 @@ class SubtitleTimingTests(unittest.TestCase):
                 self.assertEqual(windows["normal"]["start"], 0)
                 self.assertEqual(windows["keyword"]["start"], 1_800_000)
                 ends = [span["start"] + span["duration"] for span in windows.values()]
-                self.assertEqual(ends, [2_466_000, 2_466_000])
+                self.assertEqual(ends, [2_500_000, 2_500_000])
             finally:
                 harness.doCleanups()
 
