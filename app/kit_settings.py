@@ -768,60 +768,16 @@ class BugReport(BaseModel):
     auto: bool = False   # sent by the app on its own when it hit an error, not typed by a person
 
 
-_auto_sent: set[str] = set()   # auto reports already sent by this run, so one error loop sends once
-
-
-def _send_report(report: dict[str, Any]) -> bool:
-    """POST the report to the team hub's bug_reports table (Supabase, anon key: insert only).
-    False when this install has no hub set; raises when the hub refuses or cannot be reached."""
-    import urllib.request
-    cfg = _read_config()
-    url, key = cfg.get("supabase_url", ""), cfg.get("supabase_anon_key", "")
-    if not (url and key):
-        return False
-    home = str(Path.home())   # the hub is not public, but a user folder still has no business in it
-    row = {"text": report["text"].replace(home, "~")[:5000], "page": report["page"][:300],
-           "version": str(report["version"] or "")[:50], "commit": str(report["commit"] or "")[:50],
-           "errors": [e.replace(home, "~")[:1000] for e in report["errors"]]}
-    req = urllib.request.Request(url.rstrip("/") + "/rest/v1/bug_reports", method="POST",
-                                 data=json.dumps(row, ensure_ascii=False).encode("utf-8"),
-                                 headers={"apikey": key, "Authorization": f"Bearer {key}",
-                                          "Content-Type": "application/json", "Prefer": "return=minimal"})
-    urllib.request.urlopen(req, timeout=10).close()
-    return True
-
-
 def report_bug(text: str, page: str = "", errors: list[str] | None = None, auto: bool = False) -> dict[str, Any]:
-    """Keep the report on this machine, send it to the team hub when one is set, else hand back a GitHub issue link."""
-    import platform
+    """Compatibility for old clients: never transmit diagnostics; return a manual GitHub draft."""
     import urllib.parse
+    if auto:
+        return {"sent": False, "skipped": True}
     if not text.strip():
         raise HTTPException(400, "เขียนอาการก่อน")
-    if auto:
-        if not _read_config().get("auto_bug_report", True) or text in _auto_sent:
-            return {"sent": False, "skipped": True}
-        _auto_sent.add(text)
-    v = version()
-    report = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "text": text.strip(), "page": page,
-              "version": v.get("version"), "commit": v.get("commit"), "machine": platform.node(),
-              "errors": (errors or [])[-10:]}
-    folder = KIT / "bug_reports"
-    folder.mkdir(exist_ok=True)
-    f = folder / f"{time.strftime('%Y%m%d-%H%M%S')}.json"
-    atomic.write_text(f, json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    try:
-        if _send_report(report):
-            return {"saved": str(f), "sent": True}
-    except OSError as exc:   # URLError and HTTPError are OSErrors
-        raise HTTPException(502, f"บันทึกในเครื่องแล้ว แต่ส่งถึงทีมไม่ได้: {exc}") from exc
-    md = chr(10).join([report["text"], "", f"- page: {report['page']}",
-                     f"- version: {report['version']} ({report['commit']})",
-                     f"- time: {report['time']}", "", "errors:", "```",
-                     *report["errors"], "```"])
-    md = md.replace(str(Path.home()), "~")   # the issue is public: no machine name or user folder in it
-    title = report["text"].splitlines()[0][:80]
-    url = "https://github.com/poomiiz/EditorKrab/issues/new?" + urllib.parse.urlencode({"title": "[bug] " + title, "body": md[:6000]})
-    return {"saved": str(f), "sent": False, "issue_url": url}
+    url = "https://github.com/poomiiz/EditorKrab/issues/new?" + urllib.parse.urlencode(
+        {"title": "[bug] EditorKrab", "body": text.strip()[:5000]})
+    return {"sent": False, "issue_url": url}
 
 
 @router.post("/bug-report")

@@ -453,6 +453,10 @@
   .make-pair b { font-size: 17px; white-space: nowrap; }
   .make-pair button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px; text-align: center; }
   .make-pair small { font-size: 12.5px; font-weight: 400; opacity: .8; }
+  @media (max-width: 600px) {
+    .make-wrap { width: 100%; }
+    .make-pair { grid-template-columns: minmax(0, 1fr); }
+  }
   .make-pair .ghost, #planStoriesBtn { background: #1b2030; color: #f1f4fb; border: 1px solid #3a4260; border-radius: 12px; }
   .make-pair .ghost:hover, #planStoriesBtn:hover { border-color: #7c5cff; }
   #planStoriesBtn { padding: 10px 16px; width: 100%; }
@@ -541,7 +545,7 @@
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
-<script src="/ui.js?v=2"></script></head>
+<script src="/ui.js?v=3"></script></head>
 <body>
 <div class="app">
 
@@ -2847,7 +2851,7 @@ async function layoutSave() {
   } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
 }
 </script>
-<script src="/shell.js?v=11"></script>
+<script src="/shell.js?v=12"></script>
 <script>
   document.querySelectorAll('[data-ic]').forEach(e => e.innerHTML = `<svg viewBox="0 0 24 24">${CLIPKIT_ICONS[e.dataset.ic]}</svg>`);
   function route() {

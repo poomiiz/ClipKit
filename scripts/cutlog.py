@@ -7,11 +7,10 @@ Everything goes under <output_dir>/logs/ (config.json):
 
     python scripts/cutlog.py feedback "<project folder>" "ซับยาวไป" [--fix "ตัดท่อนเหลือ 8-14 ตัว"]
     python scripts/cutlog.py report            # zip the logs to send back (no video inside)
-    python scripts/cutlog.py sheet "<Apps Script web app URL>"   # also send each row to the team Google Sheet
+    python scripts/cutlog.py sheet "<legacy URL>"   # retained command: automatic uploads are disabled
 
 Every finished clip is also checked against the editing rules (analyze()); the result goes into the log, back to
-the agent through run_clip's output, and - when a sheet URL is set - to the team sheet as numbers and problems
-only (never the spoken words).
+the caller through run_clip's output. Logs remain on this machine; report problems manually on GitHub.
 """
 from __future__ import annotations
 
@@ -132,23 +131,8 @@ def analyze(project: Path, max_s: float | None, length: float, cuts: int | None)
 
 
 def _sheet(row: dict) -> str:
-    """Send one row to the team Google Sheet (Apps Script web app in config.json "report_url")."""
-    import urllib.request
-    sys.path.insert(0, str(ROOT / "app"))
-    import kit_settings
-    # off unless this machine set config.json "report_url" (python scripts/cutlog.py sheet <url>); "off" = do not send
-    url = kit_settings._read_config().get("report_url", "")
-    if url == "off":
-        url = ""
-    if not url:
-        return "sheet: off (no report_url in config.json)"
-    try:
-        req = urllib.request.Request(url, data=json.dumps(row, ensure_ascii=False).encode("utf-8"),
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return "sheet: sent" if r.status == 200 else f"sheet: HTTP {r.status}"
-    except Exception as exc:  # the clip is done either way: say the upload failed, the local log keeps the row
-        return f"sheet: NOT sent ({exc})"
+    """Legacy callback: logs stay local; old webhook settings never transmit automatically."""
+    return "sheet: disabled (local logs only; report issues manually on GitHub)"
 
 
 def log_run(raw: str, story: dict, n: int, project: str, args: dict, length: float) -> dict:
@@ -226,14 +210,7 @@ def main() -> int:
             sys.exit(f"project folder not found: {a.project}")
         feedback(a.project, a.said, a.fix)
     elif a.cmd == "sheet":
-        if not a.url.startswith("https://script.google.com/"):
-            sys.exit("that is not an Apps Script web app URL (https://script.google.com/macros/s/.../exec)")
-        cfg_f = ROOT / "config.json"
-        cfg = json.loads(cfg_f.read_text(encoding="utf-8-sig"))
-        cfg["report_url"] = a.url
-        cfg_f.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(_sheet({"type": "test", "time": time.strftime("%Y-%m-%d %H:%M:%S"), "version": version(),
-                      "problems": "test row from clipkit sheet"}))
+        print(_sheet({}))
     elif a.cmd == "ping":
         print(_sheet({"type": "machine", **_who(), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "version": version(),
                       "video": "(เครื่อง)", "problems": a.event}))
