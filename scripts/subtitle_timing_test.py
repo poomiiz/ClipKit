@@ -18,6 +18,13 @@ import capcut_font_test
 
 
 class SubtitleTimingTests(unittest.TestCase):
+    def test_size_tracks_canvas_ratio_for_all_outputs(self):
+        relative = []
+        for width, height in ((1080, 1920), (1920, 1080), (1080, 1080)):
+            look = render.pair_look({}, width, height)
+            relative.append(look["lead"][0] * render.CAPCUT_PX * min(width, height) / 1080 / height)
+        self.assertAlmostEqual(relative[0], relative[1])
+        self.assertAlmostEqual(relative[0], relative[2])
     def test_both_rows_hold_through_pause_until_replacement(self):
         events = render._pair("normal keyword", [[0, .3, "normal "], [.3, .5, "keyword"]],
                               0, 4, 1080, 1920, "Kanit", render.DEFAULT_FONT, render.pair_look({}),

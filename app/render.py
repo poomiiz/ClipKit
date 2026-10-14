@@ -322,6 +322,11 @@ def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[s
                 "second": part(second) if second else None,
                 "second_at": (float(second.get("x", 0.3)), float(second.get("rotation", -6))) if second else None}
         if W and H:
+            ratio_scale = min(W, H * 1080 / 1920) / min(W, H)
+            for role in ("lead", "punch", "caption", "second"):
+                if look[role]:
+                    values = look[role]
+                    look[role] = (values[0] * ratio_scale, *values[1:])
             box = safe_box(style)
             scale = CAPCUT_PX * min(W, H) / 1080
             heights = [look[role][0] * scale * LINE_H for role in ("lead", "punch")]
