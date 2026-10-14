@@ -117,7 +117,7 @@
   label { font-size: 13px; color: var(--txt-sub); font-weight: 500; }
 
   /* Tile Lists */
-  .list-grid { display: grid; gap: 12px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .list-grid { display: grid; gap: 12px; align-items: start; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
   .recent-list { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
   .recent-list .recent-label { color: var(--mut); font-size: 13px; }
   .recent-list .recent-item { min-height: auto; padding: 2px 0; border: 0; background: transparent; color: var(--txt-sub); font-size: 13px; font-weight: 500; }
@@ -130,7 +130,7 @@
   }
   .tile:hover { background: var(--card-hover); border-color: var(--acc); transform: translateY(-1px); }
   .tile .ico { font-size: 24px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--card2); }
-  .tile .body { flex: 1; min-width: 0; }
+  .tile .body { flex: 1; min-width: 0; max-width: 100%; }
   .tile .t1 { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--txt); }
   .tile .t2 { font-size: 12px; color: var(--mut); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tile .go { color: var(--mut); font-size: 18px; font-weight: bold; }
@@ -1204,7 +1204,7 @@ async function scanFolder(path, autoName) {
       div.innerHTML = '<div class="ico">🎬</div><div class="body"><div class="t1">' + f.name +
         '</div><div class="t2">' + (f.error ? '⚠ เปิดไม่ได้: ' + f.error : mins + ' นาที · ' + shape) +
         '</div></div><div class="go">›</div>';
-      div.title = (f.folder ? f.folder + ' · ' : '') + (f.width ? f.width + '×' + f.height + ' · ' + f.size_mb + ' MB' : '');
+      div.title = f.name + ' · ' + (f.folder ? f.folder + ' · ' : '') + (f.width ? f.width + '×' + f.height + ' · ' + f.size_mb + ' MB' : '');
       if (!f.error) div.onclick = () => pickFile(f);
       box.appendChild(div);
     });
@@ -2803,8 +2803,8 @@ function webAiBox(step, target, note) {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([r.text], {type: 'text/markdown'}));
         a.download = r.name; a.click();
-        navigator.clipboard.writeText('อ่านไฟล์นี้แล้วทำตาม: "' + r.file + '"').catch(() => {});
-        el('msg').textContent = 'บันทึกไว้ที่ ' + r.file + ' · Claude บนเครื่อง: วางข้อความที่คัดลอกให้แล้วในแชต หน้านี้จะนำเข้าเอง · AI บนเว็บ: อัปโหลดไฟล์นี้แล้ววางคำตอบ JSON ด้านล่าง';
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        el('msg').textContent = 'แนบไฟล์ให้ AI บนเว็บได้เลย แล้ววาง JSON ด้านล่าง';
         if (!polling) { polling = true; setTimeout(poll, 3000); }
       } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
     };

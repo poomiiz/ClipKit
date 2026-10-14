@@ -324,7 +324,7 @@ def run_clip_follows_speech_language():
             run_clip.stories(str(video), 60)
     finally:
         video_edit.transcribe, video_edit.probe = keep
-    assert asked == [None], f"run_clip chose the language itself: {asked}"
+    assert asked == [video_edit.speech_language()], f"run_clip ignored the configured language: {asked}"
 
 
 def run_clip_logs_step_times_for_the_benchmark():
@@ -524,6 +524,7 @@ def web_ai_answers_are_checked():
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief="  vlog สบายๆ เน้นช่วงตลก "))
         assert video_editor.brief(str(video)) == {"brief": "vlog สบายๆ เน้นช่วงตลก"}
         packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        assert packet.index("ใช้ AI บนเว็บได้") < packet.index("ทางเลือกสำหรับ AI ที่เขียนไฟล์"), "web AI must not require a local agent"
         assert packet.index("vlog สบายๆ เน้นช่วงตลก") < packet.index("เรื่องเงิน"), packet[:300]
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video)))  # no brief sent: kept
         assert video_editor.brief(str(video))["brief"]

@@ -54,8 +54,11 @@ def answer_file(step: str, target: str) -> Path:
 def _packet(prompt: str, data: dict[str, Any], out: Path) -> Path:
     ans = out.with_suffix(".answer.json")
     ans.unlink(missing_ok=True)  # an answer to an older export must not be imported for this one
-    atomic.write_text(out, f"> ถ้าคุณเขียนไฟล์ในเครื่องนี้ได้ (เช่น Claude Code): ไม่ต้องตอบในแชต ให้บันทึก JSON คำตอบ "
-                   f"(ตามหัวข้อ ตอบกลับ ด้านล่าง ไม่ต้องมี ```) ลงไฟล์ `{ans}` แล้ว ClipKit จะนำเข้าเอง\n\n"
+    atomic.write_text(out, "# คำสั่งสำหรับ AI: ทำงานจากไฟล์แนบนี้ได้ทันที\n\n"
+                   "> ใช้ AI บนเว็บได้โดยไม่ต้องติดตั้ง agent: อ่านคำสั่งและข้อมูลทั้งหมดในไฟล์นี้ "
+                   "ทำงานตามขั้นที่ระบุ แล้วตอบ JSON ตามรูปแบบด้านล่าง ผู้ใช้ไม่ต้องพิมพ์ prompt เพิ่ม "
+                   "และจะนำคำตอบกลับไปวางใน EditorKrab\n\n"
+                   f"> ทางเลือกสำหรับ AI ที่เขียนไฟล์ในเครื่องได้: บันทึก JSON ลง `{ans}` แล้ว EditorKrab จะนำเข้าเอง\n\n"
                    + prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
                    + json.dumps(data, ensure_ascii=False, indent=1) + "\n```\n", encoding="utf-8")
     return out

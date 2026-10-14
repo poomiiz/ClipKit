@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import atomic
 import copy
+import hashlib
 import json
 import os
 import re
@@ -289,18 +290,22 @@ def _has_cuda() -> bool:
         return False
 
 
+def _model_settings(model_size: str | None = None) -> tuple[str, str, str]:
+    if _has_cuda():
+        return model_size or whisper_model(), "cuda", "int8_float16"
+    return model_size or WHISPER_CPU_FALLBACK, "cpu", "int8"
+
+
 def _get_model(model_size: str | None = None):
     """Load once, keep it warm. Returns (model, description)."""
     global _model
     from faster_whisper import WhisperModel
 
-    if _has_cuda():
+    wanted = _model_settings(model_size)
+    if wanted[1] == "cuda":
         _enable_cuda_libs()
         # int8_float16: large-v3 in about half the VRAM of float16 with near-identical accuracy, so it fits on an
         # 8 GB card next to the local LLM that keeps its own share loaded
-        wanted = (model_size or whisper_model(), "cuda", "int8_float16")
-    else:
-        wanted = (model_size or WHISPER_CPU_FALLBACK, "cpu", "int8")
 
     if _model is None or _model[0] != wanted:
         name, device, compute = wanted
@@ -381,6 +386,7 @@ def transcribe(path: str, start: float, end: float, language: str | None = None,
             phrases = _one_by_one(model, full, end - start, language, window)
     finally:
         full.unlink(missing_ok=True)
+    _bound_phrase_times(phrases, end - start)
     import spelling
     known = spelling.load()  # this person's own fixes (spelling.learn)
     for phrase in phrases:
@@ -388,6 +394,15 @@ def transcribe(path: str, start: float, end: float, language: str | None = None,
             phrase["text"] = english_terms(thai_spacing(phrase["text"]))
         phrase["text"] = spelling.fix(phrase["text"], known)
     return phrases
+
+
+def _bound_phrase_times(phrases: list[dict[str, Any]], duration: float) -> None:
+    # Whisper can align the last word beyond the audio; keep every Thai word piece inside its clip.
+    for phrase in phrases:
+        phrase["start"] = max(0, min(phrase["start"], duration))
+        phrase["end"] = max(phrase["start"], min(phrase["end"], duration))
+        phrase["words"] = [[max(0, min(a, duration)), max(0, min(max(a, b), duration)), text]
+                           for a, b, text in phrase.get("words", [])]
 
 
 def _detect_language(model, wav: Path, samples: int = 5, lowest: float = 0.5,
@@ -972,6 +987,79 @@ STORY_PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "story_split.md
 
 def transcript_file(video: str) -> Path:
     return Path(video).with_suffix(Path(video).suffix + ".transcript.json")
+
+
+CHUNK_S = 600
+
+
+def lines_file(video: str) -> Path:
+    return Path(video).with_suffix(Path(video).suffix + ".lines.json")
+
+
+def transcribe_file(video: str) -> list[dict[str, Any]]:
+    """Save each completed piece atomically; resume only the same source and ASR settings."""
+    tf = transcript_file(video)
+    part, meta = tf.with_suffix(".part.json"), tf.with_suffix(".meta.json")
+    cfg = kitconfig._load()
+    engine = _model_settings()
+    with Path(video).open("rb") as source:
+        identity = {"schema_version": 2, "sha256": hashlib.file_digest(source, "sha256").hexdigest(),
+                    "model": "/".join(engine), "models_dir": cfg.get("models_dir"),
+                    "language": speech_language(),
+                    "batched": cfg.get("whisper_batched", True), "chunk_s": CHUNK_S}
+    # shortcut: legacy transcripts have no source identity; retain them until explicitly regenerated.
+    cached = (json.loads(meta.read_text(encoding="utf-8")) == identity) if meta.is_file() else not part.is_file()
+    if tf.is_file() and cached:
+        phrases = json.loads(tf.read_text(encoding="utf-8"))
+    else:
+        done = json.loads(part.read_text(encoding="utf-8")) if part.is_file() else None
+        if done is None or done["source"] != identity:
+            done = {"source": identity, "end": 0.0, "language": None, "phrases": []}
+        total = probe(video)["duration"]
+        while done["end"] < total:
+            start = done["end"]
+            end = total if total - start <= CHUNK_S * 1.5 else _quiet_point(video, start + CHUNK_S)
+            if not start < end <= total:
+                raise VideoEditError("invalid transcription checkpoint boundary")
+            if done["language"] is None:
+                done["language"] = _file_language(video) if total > CHUNK_S * 1.5 else speech_language()
+            piece = transcribe(video, start, end, done["language"], model_size=engine[0])
+            shifted = [{**p, "start": round(p["start"] + start, 2), "end": round(p["end"] + start, 2),
+                        "words": [[round(a + start, 2), round(b + start, 2), w]
+                                  for a, b, w in p.get("words", [])]} for p in piece]
+            done["phrases"].extend(shifted)
+            done["end"] = end
+            atomic.write_text(part, json.dumps(done, ensure_ascii=False), encoding="utf-8")
+        phrases = done["phrases"]
+        atomic.write_text(tf, json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic.write_text(meta, json.dumps(identity), encoding="utf-8")
+        part.unlink(missing_ok=True)
+    atomic.write_text(lines_file(video), json.dumps([{k: p[k] for k in ("start", "end", "text")}
+                                                   for p in phrases], ensure_ascii=False, indent=1), encoding="utf-8")
+    return phrases
+
+
+def _file_language(video: str) -> str:
+    language = speech_language()
+    if language != "auto":
+        return language
+    model, engine = _get_model()
+    wav = Path(os.environ.get("TEMP", "/tmp")) / f"ve_{uuid.uuid4().hex}.wav"
+    try:
+        _extract_audio(video, 0, probe(video)["duration"], wav)
+        return _detect_language(model, wav, model_size=engine.split("/")[0])
+    finally:
+        wav.unlink(missing_ok=True)
+
+
+def _quiet_point(video: str, near: float, reach: float = 30.0) -> float:
+    # shortcut: quietest spans can include speech; review seams before editorial delivery.
+    lo = max(near - reach, 0.0)
+    spans = quiet_spans(video, lo, near + reach, min_len=0.2)
+    if not spans:
+        raise VideoEditError(f"no quiet span near {near:.0f} s to split transcription")
+    span = max(spans, key=lambda s: (s["length"], -abs(lo + (s["start"] + s["end"]) / 2 - near)))
+    return round(lo + (span["start"] + span["end"]) / 2, 2)
 
 
 def stories_file(video: str) -> Path:

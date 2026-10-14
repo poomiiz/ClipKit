@@ -131,14 +131,10 @@ def detail(exc: Exception) -> str:
 
 
 def stories(raw: str, max_s: int, no_ai: bool = False) -> list[dict] | None:
-    tf = video_edit.transcript_file(raw)
-    if not tf.is_file():
+    if not video_edit.transcript_file(raw).is_file():
         say(step="ถอดเสียงทั้งไฟล์")
-        phrases = timed("ถอดเสียง", video_edit.transcribe, raw, 0,
-                        timed("อ่านข้อมูลต้นฉบับ", video_edit.probe, raw)["duration"])  # config.json "speech_language"
-        tf.write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+    phrases = timed("ถอดเสียง", video_edit.transcribe_file, raw)
     video_edit.STORY_MAX_S, video_edit.STORY_AIM_S = max_s, int(max_s * 0.65)
-    phrases = json.loads(tf.read_text(encoding="utf-8"))
     sf = video_edit.stories_file(raw)
     if no_ai and not sf.is_file() and phrases:  # written like the agent's, so a rerun (or a person) can use it
         parts = timed("แบ่งเรื่องจากช่วงพัก", video_edit._split_long, 0, len(phrases) - 1, phrases, Path(raw).stem, "")
@@ -364,7 +360,9 @@ def _pipeline(a, raw: str) -> int:
 
     sts = timed("ถอดเสียง + เรื่อง", stories, raw, a.max, a.no_ai)
     if sts is None:
-        say(WAIT=video_edit.agent_command("stories", raw), then=" ".join(sys.argv))
+        import web_ai_json
+        say(WAIT=video_edit.agent_command("stories", raw), web_ai=str(web_ai_json.export_stories(raw)),
+            import_answer=f'python scripts/web_ai.py import stories "{raw}" <answer.json>', then=" ".join(sys.argv))
         return 2
     picked = range(1, len(sts) + 1) if a.all else [1]
     if a.insert_sheet:
@@ -398,6 +396,9 @@ def _pipeline(a, raw: str) -> int:
                 need.append("clipkit_caption.json")  # the preset has a small translated caption
             if not all((Path(path) / f).is_file() for f in need):
                 waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
+                import web_ai_json
+                say(web_ai=str(web_ai_json.export_clip(path)),
+                    import_answer=f'python scripts/web_ai.py import clip "{path}" <answer.json>', story=n)
                 continue
             if a.no_ai and not (Path(path) / "clipkit_punch.json").is_file():
                 import web_ai_json  # emphasis + title from an AI in the browser: upload this file, import its answer, run again
