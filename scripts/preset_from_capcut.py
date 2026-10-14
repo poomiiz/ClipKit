@@ -46,7 +46,8 @@ def learn(project: str | Path) -> dict:
             if not all(math.isfinite(v) and v > 0 for v in (sx, sy)) or abs(sx - sy) > 0.001:
                 raise ValueError("subtitle preset needs a positive uniform text scale")
             key = (round(float(st["size"]) * sy, 3), _hex(fill), _hex(stroke.get("content", {}).get("solid", {}).get("color", [0, 0, 0])),
-                   round(float(stroke.get("width", 0.04)), 3), round(float(s["clip"]["transform"]["y"]), 6))
+                   round(float(stroke.get("width", 0.04)), 3), round(float(s["clip"]["transform"]["y"]), 6),
+                   (st.get("font") or {}).get("path", ""))
             seen[key] += 1
     if not seen:
         raise ValueError("this project has no subtitles to learn a preset from")
@@ -58,7 +59,9 @@ def learn(project: str | Path) -> dict:
     emphasis = next((k for k in big if not white(k)), None)
     if normal is None or emphasis is None:
         raise ValueError("need both a normal (white) and an emphasis (coloured) subtitle in the project")
-    return {"about": f"Made from the CapCut project '{Path(project).name}'.",
+    if normal[5] != emphasis[5]:
+        raise ValueError("normal and emphasis fonts differ; a shared preset font cannot represent this project")
+    return {"about": f"Made from the CapCut project '{Path(project).name}'.", "fixed_size": True, "font": normal[5],
             "normal": role(normal), "emphasis": role(emphasis),
             "caption": dict(role(small[0]), language="en") if small else None}
 

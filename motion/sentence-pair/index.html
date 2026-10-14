@@ -42,7 +42,12 @@
    "fields": [{"key": "pairs", "label": "ประโยค (บรรทัดละคู่: ตัวขาว / คำเน้น)", "type": "pairs",
                "default": "ผู้รับเหมาก็จะ / ถูกกดดัน\nเรื่องงานที่ต้องเสร็จ / ตามกำหนดเวลา\nเพื่อตอบสนอง / โจทย์ผู้บริโภค",
                "each": 2.5, "delay": 0.8},
-              {"key": "font", "label": "ฟอนต์", "type": "font", "default": ""}]}
+              {"key": "font", "label": "ฟอนต์", "type": "font", "default": ""},
+              {"key": "normal_size", "label": "ขนาดซับ", "type": "number", "default": 70},
+              {"key": "punch_size", "label": "ขนาดตัวเน้น", "type": "number", "default": 150},
+              {"key": "normal_top", "label": "แนวซับ", "type": "number", "default": 1210},
+              {"key": "punch_top", "label": "แนวตัวเน้น", "type": "number", "default": 1300},
+              {"key": "sizing", "label": "ขนาดข้อความ", "type": "select", "default": "fit", "options": [["fit", "ปรับให้พอดี"], ["fixed", "คงที่ตาม preset"]]}]}
 </script>
 </head>
 <body>
@@ -82,10 +87,18 @@
     const chars = seg(lead);
     p.innerHTML = `<div class="lead">${chars.map(c => `<span class="ch">${c}</span>`).join("")}<span class="cur"></span></div><div class="punch">${punch}</div>`;
     root.appendChild(p);
+    if (ARGS.sizing === "fixed") {
+      for (const [role, size, top] of [["lead", ARGS.normal_size, ARGS.normal_top], ["punch", ARGS.punch_size, ARGS.punch_top]]) {
+        const el = p.querySelector("." + role);
+        Object.assign(el.style, {left:"50%", top:top+"px", fontSize:size+"px", lineHeight:"1.2", textAlign:"center", transform:"translateY(-50%)"});
+      }
+      gsap.set(p.querySelector(".lead"), {xPercent:-50});
+    }
     const cur = p.querySelector(".cur"), pu = p.querySelector(".punch");
     // Leave the subtitle safe margins, including outlines and shadows.
     const room = 1080 * .78 - 40;
     const fit = () => [[pu, room], [p.querySelector(".lead"), room]].forEach(([el, max]) => {
+      if (ARGS.sizing === "fixed") return;
       el.style.fontSize = "";
       if (el.offsetWidth > max) el.style.fontSize = parseFloat(getComputedStyle(el).fontSize) * max / el.offsetWidth + "px";
     });

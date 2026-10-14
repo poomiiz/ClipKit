@@ -89,6 +89,7 @@ def build(path: str) -> Path:
     t = render.render_draft(path, "", dry=True)
     W, H, D = t["width"], t["height"], t["duration"]
     st = t["style"] or {}
+    subtitle_font = render._font(render.pair_look(st, W, H).get("font"))[1]
     k = min(W, H) / 1080 * render.CAPCUT_PX
     box, lh = render.safe_box(st), float(st.get("line_h", render.LINE_H))
     fit = t["fit"]
@@ -134,10 +135,10 @@ def build(path: str) -> Path:
                        f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
 
     def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False,
-             x: float = 0, rot: float = 0, shadow: bool = False) -> str:
+             x: float = 0, rot: float = 0, shadow: bool = False, fixed: bool = False) -> str:
         # same as the ffmpeg export: one line only, a long subtitle goes on as the next piece (render.one_line)
         first = ""
-        for piece, pa, pb, px in render.one_line(words, render.DEFAULT_FONT, size * k, W * (box["w"] - abs(x)), a, b, one=True):
+        for piece, pa, pb, px in render.one_line(words, subtitle_font, size * k, W * (box["w"] - abs(x)), a, b, one=True, fixed=fixed):
             for pa, pb in render.visible_spans(pa, pb, t.get("motions", [])):
                 i = nid("t")
                 first = first or i
@@ -183,7 +184,7 @@ def build(path: str) -> Path:
                 continue
             lead_id = ""
             if white:
-                i = lead_id = text(white, *P["lead"], a, b, one=bool(colour))
+                i = lead_id = text(white, *P["lead"], a, b, one=bool(colour), fixed=P["fixed_size"])
                 if i and (p.get("opts") or {}).get("look") != "hold":
                       anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
             if colour:
@@ -194,7 +195,7 @@ def build(path: str) -> Path:
                     i = text(colour, *part, hit, b2)
                     below[pairs[j]] = tops.get(i, 0) + part[0] * k * lh / 2  # the second beat starts under it
                 else:
-                    i = text(colour, *part, hit, b, one=bool(white))
+                    i = text(colour, *part, hit, b, one=bool(white), fixed=P["fixed_size"])
                 if i:
                     anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
             second = (p.get("opts") or {}).get("second")
@@ -250,7 +251,7 @@ def build(path: str) -> Path:
             if b.get("file"):
                 els.append(f'<audio id="{nid("s")}" src="{_local(out, render._sfx("whoosh"))}" data-start="{max(0, b["start"] - 0.15):.3f}" '
                            f'data-duration="{whoosh_s:.2f}" data-track-index="5" data-volume="{0.35 * fx["volume"]:.2f}"></audio>')
-    font = _local(out, render.DEFAULT_FONT)
+    font = _local(out, subtitle_font)
     # the HyperFrames runtime (clip windows, media sync, seeking) for the live player; the renderer brings its own
     runtime = _local(out, str(Path(__file__).with_name("hyperframe.runtime.iife.js")))
     page = f"""<!doctype html>

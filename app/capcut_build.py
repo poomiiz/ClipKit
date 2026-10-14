@@ -96,7 +96,8 @@ def _texts(draft: dict, role: str, words: str, a: float, b: float, y: float, siz
     k = render.CAPCUT_PX * min(W, H) / 1080
     max_w = W * (min(render.safe_box(style)["w"], float(mat.get("line_max_width") or 1)) - abs(x)) - 24
     segs = [_text(draft, role, piece, pa, pb, y, int(px / k * 100) / 100, fill, stroke)
-            for piece, pa, pb, px in render.one_line(words, font, size * k, max_w, a, b, one=True)]
+            for piece, pa, pb, px in render.one_line(words, font, size * k, max_w, a, b, one=True,
+                fixed=render.pair_look(style, W, H)["fixed_size"])]
     for seg in segs:  # off the centre line and tilted (the second person's text)
         seg["clip"]["transform"]["x"] = x
         seg["clip"]["rotation"] = rot
@@ -146,6 +147,13 @@ def build(path: str) -> tuple[Path, list[str]]:
         for mat, body in bodies:
             mat["content"] = json.dumps(body, ensure_ascii=False)
     for mat, body in bodies:
+        preset_font = render.pair_look(render._json(Path(path) / "clipkit_style.json", {})).get("font")
+        if preset_font:
+            _, font_path = render._font(preset_font)
+            for font_style in body.get("styles", []):
+                font_style.setdefault("font", {})["path"] = str(font_path)
+            mat["font_path"] = str(font_path)
+            mat["content"] = json.dumps(body, ensure_ascii=False)
         family, _ = render._font(body["styles"][0]["font"]["path"])
         mat.update(font_name=family, font_title=family)
     _T.update(probe)

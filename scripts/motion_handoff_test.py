@@ -16,6 +16,28 @@ from capcut_font_test import CapCutFontTests
 
 
 class MotionHandoffTests(unittest.TestCase):
+    def test_explicit_motion_uses_fixed_preset_geometry_and_rejects_overflow(self):
+        import kit_settings
+        import video_editor
+        look = render.pair_look({}, 1080, 1920)
+        look.update(fixed_size=True, font=str(render.DEFAULT_FONT))
+        with tempfile.TemporaryDirectory() as folder:
+            req = video_editor.OverlayRequest(path=folder, template="sentence-pair", start=0, end=2,
+                text="normal keyword", params={"pairs": [[0, 2, "normal", "keyword", 1]]})
+            with patch.object(render, "pair_look", return_value=look), \
+                    patch.object(kit_settings, "make_motion", return_value={"file": "fixture.mov"}) as make:
+                video_editor.draft_overlay_add(req)
+                params = make.call_args.args[0].params
+                self.assertEqual(params["sizing"], "fixed")
+                self.assertEqual(params["normal_size"], look["lead"][0] * render.CAPCUT_PX)
+                self.assertEqual(params["punch_top"], 960 * (1 - look["punch"][1]))
+                before = (Path(folder) / "clipkit_overlays.json").read_bytes()
+                req.params["pairs"][0][2] = "overflow " * 100
+                with self.assertRaisesRegex(video_editor.HTTPException, "show"):
+                    video_editor.draft_overlay_add(req)
+                self.assertEqual(make.call_count, 1)
+                self.assertEqual((Path(folder) / "clipkit_overlays.json").read_bytes(), before)
+
     def test_text_is_preserved_on_both_sides_and_boundaries(self):
         motion = [{"start": 3, "duration": 3}]
         self.assertEqual(render.visible_spans(2, 7, motion), [(2, 3), (6, 7)])

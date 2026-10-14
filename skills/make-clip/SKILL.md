@@ -123,6 +123,9 @@ or let the active app AI box import it. Do not use both: a clip answer may cut f
    an important point plain to meet a quota. Review the whole clip for missed emphasis without colouring every word.
    Fit the preset's normal/emphasis roles to the chosen canvas and safe area. Choose another genuine thought
    boundary when necessary; do not make letter-timed fragments just to fit the screen.
+   A learned `fixed_size` preset keeps each role's size and center throughout the clip, including sentence-pair
+   motion. If a phrase overflows, shorten its `show` without changing meaning or split at a real thought/word
+   boundary. Do not shrink individual phrases; keep source lead/punch and word timing intact.
    Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase ("white" = the preset's
    normal text, "colour" = its emphasis text), measured from real hand-edited clips:
    - `pair` (default): white lead + coloured punch.

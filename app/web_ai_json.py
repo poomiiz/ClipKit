@@ -148,6 +148,11 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
                        "words": [{"start": round(s["start"] + a, 3), "end": round(s["start"] + b, 3), "text": w}
                                  for a, b, w in word_times.get(s["text"], [])]} for n, s in enumerate(subs, 1)],
             "motion_templates": _motion_menu()}
+    style = render._json(Path(path) / "clipkit_style.json", {})
+    look = render.pair_look(style)
+    data["subtitle_layout"] = {"fixed_size": look["fixed_size"], "normal_size": look["lead"][0],
+                               "emphasis_size": look["punch"][0], "normal_y": look["lead"][1],
+                               "emphasis_y": look["punch"][1]}
     prompt = _prompt("clip.md")
     if max_minutes:
         prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "

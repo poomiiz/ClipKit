@@ -240,7 +240,8 @@ def _fit(text: str, font_file: Path, size: float, max_w: float, one: bool = Fals
     return lines, size if widest <= max_w else size * max_w / widest
 
 
-def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: float, one: bool = False) -> list[tuple[str, float, float, float]]:
+def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: float, one: bool = False,
+             fixed: bool = False) -> list[tuple[str, float, float, float]]:
     """A subtitle that never takes two lines and never leaves the frame: text too wide for one line becomes
     pieces shown one after another over a..b (cut where the thought breaks, _best_break), each in time with its
     share of the letters. Only a single word wider than the frame is drawn smaller. [(piece, start, end, px)]"""
@@ -248,6 +249,11 @@ def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: f
     from pythainlp.tokenize import word_tokenize
     font = ImageFont.truetype(str(font_file), 100)
     width = lambda t: font.getlength(t) * px / 100  # noqa: E731
+    if fixed:
+        whole = unbreak(text)
+        if width(whole) > max_w:
+            raise VideoEditError(f"ข้อความยาวเกินขนาดคงที่ · แบ่งตามความหมายหรือย่อ show: {whole}")
+        return [(whole, a, b, px)] if whole and b > a else []
     if one:
         whole = unbreak(text)
         return [(whole, a, b, min(px, px * max_w / width(whole)) if width(whole) else px)] if whole and b > a else []
@@ -328,7 +334,8 @@ def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[s
         part = lambda r: (float(r["size"]), float(r["y"]), _rgb(r["color"]), _rgb(r["outline"]),  # noqa: E731
                           float(r["outline_width"]))
         second = p.get("second")
-        look = {"lead": part(p["normal"]), "punch": part(p["emphasis"]),
+        look = {"lead": part(p["normal"]), "punch": part(p["emphasis"]), "fixed_size": bool(p.get("fixed_size")),
+                "font": p.get("font"),
                 "caption": part(p["caption"]) if p.get("caption") else None,
                 "caption_lang": (p.get("caption") or {}).get("language", "en"),
                 "caption_shadow": bool((p.get("caption") or {}).get("shadow")),
@@ -348,7 +355,9 @@ def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[s
             if sum(heights) + gap > H * (box["bottom"] - box["top"]):
                 raise VideoEditError("ขนาดตัวปกติและคำเน้นใหญ่เกินพื้นที่ · ลดขนาดใน preset ก่อนส่งออก")
             normal = H / 2 - look["lead"][1] * H / 2
-            punch = max(H / 2 - look["punch"][1] * H / 2, normal + sum(heights) / 2 + gap)
+            punch = H / 2 - look["punch"][1] * H / 2
+            if not look["fixed_size"]:
+                punch = max(punch, normal + sum(heights) / 2 + gap)
             shift = max(0, punch + heights[1] / 2 - H * box["bottom"])
             for role, center in (("lead", normal - shift), ("punch", punch - shift)):
                 values = look[role]
@@ -601,7 +610,8 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         out = []
         room = W * (held.get("box", safe_box({}))["w"] - abs(x))  # off-centre text has less width before the edge
         shad = 5 if part is look["caption"] and look["caption_shadow"] else 2  # the reading subtitle's dark shadow
-        for piece, pa, pb, px in one_line(words, font_file, size * k, room, a, b, one=True):
+        for piece, pa, pb, px in one_line(words, font_file, size * k, room, a, b, one=True,
+                                         fixed=look.get("fixed_size", False)):
             if px < size * k:  # one word wider than the frame: shown smaller, listed for the editor
                 held.setdefault("shrunk", []).append({"at": round(pa, 2), "text": piece})
             safe = _safe_y(H / 2 - y * H / 2, px, H, held)
@@ -856,12 +866,16 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         t0 = s["target_timerange"]["start"] / US
         t1 = t0 + s["target_timerange"]["duration"] / US
         if anim == "pair":
+            pair = pair_look(style, W, H)
+            if pair.get("font"):
+                fam, fdir = _font(pair["font"])
+                font_files.add(fdir)
             t1 = (text_segments[line_number + 1]["target_timerange"]["start"] / US
                   if line_number + 1 < len(text_segments) else sum(seg["target_timerange"]["duration"] for seg in segs) / US)
             spoken = said.get(body.get("text", ""))
             estimated += not bool(spoken)
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            pair_look(style, W, H), punches.get(body.get("text", "")), marks=marks, held=held)
+                            pair, punches.get(body.get("text", "")), marks=marks, held=held)
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))

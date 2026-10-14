@@ -958,8 +958,29 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
                     raise VideoEditError("หาประโยคและเวลาคำเน้นไม่พบ · เลือกบรรทัดจาก Timeline อีกครั้ง")
                 params = {"pairs": [[max(0, p["start"] - req.start), min(dur, p["end"] - req.start),
                                      p["lead"], p["punch"], max(0, p["hit"] - max(req.start, p["start"]))] for p in phrases]}
+                look = render.pair_look(timeline["style"], timeline["width"], timeline["height"])
+                if look["fixed_size"]:
+                    shown_pairs, held_white = [], ""
+                    for phrase in phrases:
+                        white, colour, _ = render._shown(phrase["lead"], phrase["punch"], phrase.get("opts"), held_white)
+                        held_white = white or held_white
+                        shown_pairs.append([max(0, phrase["start"] - req.start), min(dur, phrase["end"] - req.start),
+                                            white, colour, max(0, phrase["hit"] - max(req.start, phrase["start"]))])
+                    params["pairs"] = shown_pairs
         else:
             raise VideoEditError(f"{req.template} ต้องกรอกช่องของมันเอง (params)")
+        if req.template == "sentence-pair":
+            look = render.pair_look(render._json(Path(req.path) / "clipkit_style.json", {}), 1080, 1920)
+            if look["fixed_size"]:
+                font_file = render._font(look.get("font"))[1]
+                room = 1080 * render.safe_box(render._json(Path(req.path) / "clipkit_style.json", {}))["w"] - 40
+                for a, b, white, colour, _ in params["pairs"]:
+                    for role, text in (("lead", white), ("punch", colour)):
+                        render.one_line(text, font_file, look[role][0] * render.CAPCUT_PX, room, a, b, fixed=True)
+                params.update(sizing="fixed", normal_size=look["lead"][0] * render.CAPCUT_PX,
+                              punch_size=look["punch"][0] * render.CAPCUT_PX,
+                              normal_top=960 * (1 - look["lead"][1]), punch_top=960 * (1 - look["punch"][1]),
+                              font=render._font(look.get("font"))[0])
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"

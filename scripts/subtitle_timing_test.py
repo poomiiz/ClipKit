@@ -23,6 +23,27 @@ import capcut_font_test
 
 
 class SubtitleTimingTests(unittest.TestCase):
+    def test_fixed_subtitles_keep_size_and_reject_overflow(self):
+        for text in ("สั้น", "ข้อความปกติ"):
+            result = render.one_line(text, render.DEFAULT_FONT, 100, 900, 1, 3, fixed=True)
+            self.assertEqual(result, [(text, 1, 3, 100)])
+        with self.assertRaisesRegex(video_edit.VideoEditError, "show"):
+            render.one_line("ข้อความยาว" * 20, render.DEFAULT_FONT, 100, 900, 1, 3, fixed=True)
+
+    def test_fixed_preset_preserves_reference_centers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            preset = json.loads((render.PRESETS / "default.json").read_text(encoding="utf-8"))
+            preset.update(fixed_size=True)
+            preset["normal"].update(size=22.7, y=-.366)
+            preset["emphasis"].update(size=22.136, y=-.484759)
+            (Path(tmp) / "reference.json").write_text(json.dumps(preset), encoding="utf-8")
+            with patch.object(render, "PRESETS", Path(tmp)):
+                look = render.pair_look({"preset": "reference"}, 1080, 1920)
+            self.assertEqual(look["lead"][0], 22.7)
+            self.assertEqual(look["punch"][0], 22.136)
+            # A safe-zone translation moves the complete pair, preserving the reference spacing.
+            self.assertAlmostEqual(look["lead"][1] - look["punch"][1], -.366 + .484759)
+
     def test_size_tracks_canvas_ratio_for_all_outputs(self):
         relative = []
         for width, height in ((1080, 1920), (1920, 1080), (1080, 1080)):

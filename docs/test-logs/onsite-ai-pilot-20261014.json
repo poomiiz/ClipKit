@@ -133,7 +133,7 @@
   "revisions": [
     {
       "revision": 2,
-      "human_feedback": "insufficient emphasis",
+      "human_feedback": "Rejected: size or position changes between phrases",
       "emphasis_count": 22,
       "human_approved": false,
       "build_and_export_seconds": 276.8,
@@ -145,6 +145,28 @@
       "export_sha256": "f54b33b77e518babe0d6492adaceef7330cbd65469638c3d3c0274ace22f9984",
       "elapsed_since_trial_start_seconds": 2950.812,
       "recorded_at": "2026-10-14T15:19:04.812301+00:00",
+      "manual_baseline_seconds": null
+    },
+    {
+      "revision": 3,
+      "human_feedback_target": "consistent typography based on viewer-selected reference",
+      "emphasis_count": 22,
+      "human_approved": false,
+      "build_and_export_seconds": 187.31,
+      "nested_render_seconds": 154.1,
+      "full_decode": "pass",
+      "sampled_new_frames_inspected": 4,
+      "comparison_frames": 8,
+      "native_safe_zone_findings": 0,
+      "normal_font_px": 118,
+      "emphasis_font_px": 115,
+      "native_normal_size": 22.7,
+      "native_emphasis_size": 22.13,
+      "shrunk_phrases": 0,
+      "export_bytes": 100837387,
+      "export_sha256": "13084ae3f3ffac3d857258a52285b32c94c7a680bbc63309eecb7082f9b1562a",
+      "elapsed_since_trial_start_seconds": 4065.945,
+      "recorded_at": "2026-10-14T15:37:39.944989+00:00",
       "manual_baseline_seconds": null
     }
   ]
