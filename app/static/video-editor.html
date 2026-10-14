@@ -596,7 +596,10 @@
       <div class="clip-right">
         <div class="card">
           <h2>📝 ดูเนื้อหาก่อน <span class="hint" style="font-weight:400">(ไม่บังคับ)</span></h2>
-          <textarea id="brief" rows="2" maxlength="2000" style="width:100%;margin-bottom:8px" placeholder="อยากได้คลิปแบบไหน (ไม่ใส่ก็ได้) เช่น vlog สบายๆ เน้นช่วงตลก คลิปละไม่เกิน 1 นาที"></textarea>
+          <textarea id="brief" rows="2" maxlength="2000" style="width:100%;margin-bottom:8px" placeholder="อยากได้คลิปแบบไหน เช่น vlog สบายๆ เน้นช่วงตลก"></textarea>
+          <label for="storyTarget">ความยาวต่อคลิปโดยประมาณ</label>
+          <select id="storyTarget" onchange="storyList=[];document.getElementById('storyPlan').textContent='กดแบ่งเรื่องใหม่เพื่อใช้ความยาวนี้'" style="width:100%;min-height:44px;margin-bottom:8px"><option value="">ตามเนื้อหา</option><option value="0.5">30 วินาที</option><option value="1">1 นาที</option><option value="2">2 นาที</option><option value="3">3 นาที</option><option value="5">5 นาที</option></select>
+          <div class="hint">สั้นกว่าได้ · เกินเล็กน้อยเพื่อจบประเด็น</div>
           <button class="ghost" id="planStoriesBtn" onclick="planStories()">🔍 ถอดเสียงและแบ่งเรื่อง</button>
           <div id="storyPlan" style="margin-top:10px"></div>
         </div>
@@ -1297,7 +1300,14 @@ function pickFile(f) {
   storyList = [];
   document.getElementById('storyPlan').innerHTML = '';
   document.getElementById('brief').value = '';
-  api('brief?file=' + encodeURIComponent(f.path)).then(r => { if (state.file.path === f.path) document.getElementById('brief').value = r.brief; }).catch(e => { document.getElementById('storyPlan').textContent = '❌ ' + ckErr(e); });
+  document.getElementById('storyTarget').value = '';
+  document.getElementById('storyTarget').options[5] = new Option('5 นาที', '5');
+  api('brief?file=' + encodeURIComponent(f.path)).then(r => { if (state.file.path === f.path) {
+    document.getElementById('brief').value = r.brief;
+    const target = document.getElementById('storyTarget');
+    if (r.max_minutes != null && ![...target.options].some(o => o.value === String(r.max_minutes))) target.options[5] = new Option(r.max_minutes + ' นาที (บันทึกไว้)', r.max_minutes);
+    target.value = r.max_minutes == null ? '' : String(r.max_minutes);
+  } }).catch(e => { document.getElementById('storyPlan').textContent = '❌ ' + ckErr(e); });
   go('s-clip');
   findFocus();
   planStories(true);
@@ -1855,9 +1865,10 @@ async function planStories(saved) {
   if (!state.file) { box.textContent = '❌ ยังไม่ได้เลือกไฟล์'; return; }
   const file = state.file.path;
   document.getElementById('planStoriesBtn').disabled = true;
+  document.getElementById('storyTarget').disabled = true;
   try {
     let job;
-    if (!saved) job = await api('story-plan', {file, brief: document.getElementById('brief').value});
+    if (!saved) job = await api('story-plan', {file, brief: document.getElementById('brief').value, max_minutes: document.getElementById('storyTarget').value ? +document.getElementById('storyTarget').value : null});
     else try { job = await api('story-plan?file=' + encodeURIComponent(file)); }
     catch (e) { if (ckErr(e) === 'no plan started for this file') return; throw e; }
     while (job.status === 'running' || job.status === 'waiting') {
@@ -1903,6 +1914,7 @@ async function planStories(saved) {
     box.textContent = '❌ ' + ckErr(e);
   } finally {
     document.getElementById('planStoriesBtn').disabled = false;
+    document.getElementById('storyTarget').disabled = false;
   }
 }
 

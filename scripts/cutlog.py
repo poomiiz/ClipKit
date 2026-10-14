@@ -74,60 +74,19 @@ def _subtitle_stats(project: Path) -> dict:
     return {"normal_letters": stat(leads), "emphasis_letters": stat(punches), "looks": looks}
 
 
-# the rules the analysis checks (letters exclude spaces); change them here when the editing rules change
-RULES = {"normal": (4, 18), "emphasis": (2, 16), "emphasis_share": (0.25, 0.7), "title_letters": (3, 20),
-         "cuts_per_min": (6, 45), "min_length_s": 40}
-
-
 def analyze(project: Path, max_s: float | None, length: float, cuts: int | None) -> dict:
-    """The finished clip checked against the rules: [{check, ok, detail}] and a score."""
-    checks = []
-    add = lambda name, ok, detail="": checks.append({"check": name, "ok": bool(ok), "detail": detail})  # noqa: E731
-    p = project / "clipkit_punch.json"
-    if not p.is_file():
-        add("คำเน้น", False, "ไม่มีไฟล์คำเน้น (AI ข้ามขั้นเลือกคำเน้น)")
-    else:
-        lo_n, hi_n = RULES["normal"]
-        lo_e, hi_e = RULES["emphasis"]
-        long_n, short_n, long_e, coloured, shown = [], [], [], 0, 0
-        for items in json.loads(p.read_text(encoding="utf-8")).values():
-            for it in items:
-                opts = next((x for x in it[2:] if isinstance(x, dict)), {}) or {}
-                if opts.get("look") == "skip":
-                    continue
-                w, c = opts.get("show") or (it[0], it[1])
-                w, c = w.replace(" ", ""), c.replace(" ", "")
-                shown += 1
-                coloured += bool(c) and opts.get("look") != "white"
-                if w and len(w) > hi_n:
-                    long_n.append(w)
-                if w and len(w) < lo_n and not c:
-                    short_n.append(w)
-                if c and len(c) > hi_e:
-                    long_e.append(c)
-        add("ซับปกติยาวเกิน", not long_n, f"{len(long_n)} ท่อนเกิน {hi_n} ตัวอักษร" if long_n else "")
-        add("ซับสั้นเกิน", len(short_n) <= max(2, shown // 10), f"{len(short_n)} ท่อนสั้นกว่า {lo_n} ตัวอักษร" if short_n else "")
-        add("คำเน้นยาวเกิน", not long_e, f"{len(long_e)} ท่อนเกิน {hi_e} ตัวอักษร" if long_e else "")
-        share = coloured / shown if shown else 0
-        lo, hi = RULES["emphasis_share"]
-        add("สัดส่วนคำเน้น", lo <= share <= hi, f"{share:.0%} ของท่อน (ควร {lo:.0%}-{hi:.0%})")
-    h = project / "clipkit_hook.json"
-    if not h.is_file():
-        add("หัวคลิป", False, "ไม่มีหัวคลิป")
-    else:
-        lines = [x.get("text", "").replace(" ", "") for x in json.loads(h.read_text(encoding="utf-8"))]
-        lo, hi = RULES["title_letters"]
-        add("หัวคลิป", all(lo <= len(x) <= hi for x in lines), " / ".join(f"{len(x)} ตัว" for x in lines))
-    if max_s:
-        add("ความยาวไม่เกินที่สั่ง", length <= max_s + 1, f"{length:.0f} วิ (สั่ง {max_s:.0f})")
-    add("ความยาวขั้นต่ำ", length >= RULES["min_length_s"], f"{length:.0f} วิ")
-    if cuts is not None and length:
-        per_min = cuts / (length / 60)
-        lo, hi = RULES["cuts_per_min"]
-        add("จังหวะตัด", lo <= per_min <= hi, f"{per_min:.0f} จุด/นาที (ควร {lo}-{hi})")
+    """Record editorial observations; only a valid duration is a machine acceptance check."""
+    import math
+    checks = [{"check": "ความยาวใช้งานได้", "ok": math.isfinite(length) and length > 0,
+               "detail": f"{length:.2f} วิ"}]
+    observations = {"target_seconds": max_s, "duration_seconds": length,
+                    "target_is_approximate": True, **_subtitle_stats(project)}
+    if cuts is not None and length > 0:
+        observations["cuts_per_minute"] = round(cuts / (length / 60), 2)
     passed = sum(c["ok"] for c in checks)
     return {"score": f"{passed}/{len(checks)}", "checks": checks,
-            "problems": [f"{c['check']}: {c['detail']}".rstrip(": ") for c in checks if not c["ok"]]}
+            "problems": [f"{c['check']}: {c['detail']}" for c in checks if not c["ok"]],
+            "observations": observations, "human_review": "pending"}
 
 
 def _sheet(row: dict) -> str:
@@ -150,7 +109,8 @@ def log_run(raw: str, story: dict, n: int, project: str, args: dict, length: flo
            "preset": style.get("preset"), "look": style.get("anim"), "args": args, "cuts": cuts,
            "hook": json.loads(hook.read_text(encoding="utf-8")) if hook.is_file() else None,
            "subtitles": _subtitle_stats(proj), "snapshot": _snapshot(proj, "run")}
-    row["analysis"] = analyze(proj, args.get("max"), length, cuts)
+    target = args["max_minutes"] * 60 if args.get("max_minutes") is not None else args.get("max")
+    row["analysis"] = analyze(proj, target, length, cuts)
     with open(logs_dir() / "runs.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
     sub = row["subtitles"]

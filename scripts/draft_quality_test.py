@@ -1,6 +1,7 @@
 """Bad timeline/media references fail before export; no GPU, network or user draft changes."""
 import copy
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -8,7 +9,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
-import draft_quality as quality
+with tempfile.TemporaryDirectory() as import_folder:
+    config = Path(import_folder) / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+        import draft_quality as quality
 from video_edit import VideoEditError
 
 

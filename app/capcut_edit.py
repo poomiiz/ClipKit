@@ -453,6 +453,64 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
     return {"name": folder.name, "subtitles": len(text["segments"]), "added": len(made)}
 
 
+def merge_subtitles(path: str, groups: list[tuple[int, int]], *, dry: bool = False) -> list[dict[str, Any]]:
+    """Merge explicit consecutive line ranges; preserve their real word clock and the head's styling."""
+    folder = Path(path)
+    draft = _load(folder)
+    track, index = _text_track(draft), _index(draft)
+    rows = read_draft(path)["subtitles"]
+    if track is None or not rows:
+        raise VideoEditError("ยังไม่มีซับให้รวม")
+    previous = 0
+    for first, last in groups:
+        if (isinstance(first, bool) or isinstance(last, bool) or not isinstance(first, int) or not isinstance(last, int)
+                or first <= previous or not first < last <= len(rows)):
+            raise VideoEditError("ช่วงรวมซับต้องเรียง ไม่ซ้อนกัน และมีอย่างน้อย 2 บรรทัด")
+        previous = last
+    ends = dict(groups)
+    words_file = folder / "clipkit_words.json"
+    said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
+    planned, segments = [], []
+    by_id = {s["id"]: s for s in track["segments"]}
+    n = 1
+    while n <= len(rows):
+        last = ends.get(n, n)
+        members = rows[n - 1:last]
+        head = {**members[0], "n": n, "through": last}
+        if last > n:
+            head.update(text=" ".join(s["text"].replace("\n", " ") for s in members), end=members[-1]["end"])
+        clock = []
+        for row in members:
+            if not said.get(row["text"]):
+                clock = []
+                break
+            offset = row["start"] - head["start"]
+            clock += [[round(a + offset, 6), round(b + offset, 6), word] for a, b, word in said[row["text"]]]
+        head["words"] = clock
+        planned.append(head)
+        if not dry:
+            segment = by_id[head["id"]]
+            if last > n:
+                material = copy.deepcopy(index[segment["material_id"]][1])
+                material["id"] = segment["material_id"] = str(uuid.uuid4()).upper()
+                draft["materials"]["texts"].append(material)
+                body = json.loads(material["content"])
+                body["text"] = head["text"]
+                for style in body.get("styles", []):
+                    style["range"] = [0, len(head["text"])]
+                material["content"] = json.dumps(body, ensure_ascii=False)
+                segment["target_timerange"]["duration"] = round((head["end"] - head["start"]) * US)
+                said[head["text"]] = clock
+            segments.append(segment)
+        n = last + 1
+    if not dry and groups:
+        track["segments"] = segments
+        _save(folder, draft, "merge_subs")
+        atomic.write_text(words_file, json.dumps(said, ensure_ascii=False), encoding="utf-8")
+        atomic.write_text(folder / "clipkit_lines.json", json.dumps([s["text"] for s in planned], ensure_ascii=False), encoding="utf-8")
+    return planned
+
+
 def _borrow_text_style(root: str | None = None) -> tuple[dict, dict]:
     """A subtitle segment + material to model new subtitles on."""
     for folder in sorted(_drafts_root(root).iterdir(),
@@ -471,6 +529,8 @@ def _borrow_text_style(root: str | None = None) -> tuple[dict, dict]:
         seg = copy.deepcopy(track["segments"][0])
         material = index.get(seg["material_id"], (None, None))[1]
         if material:
+            # Borrow typography only; helper IDs belong to the other project's materials.
+            seg["extra_material_refs"], seg["keyframe_refs"], seg["common_keyframes"] = [], [], []
             return seg, copy.deepcopy(material)
     raise VideoEditError("no project on this machine has a subtitle to copy the "
                          "styling from — add one subtitle in CapCut once")

@@ -30,7 +30,7 @@ def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="One command from a raw video to finished short clips.")
     ap.add_argument("video")
     ap.add_argument("--trial-id", help="benchmark session ID; reuse it for WAIT/retry invocations of the same trial")
-    ap.add_argument("--max", type=int, default=120, help="longest clip in seconds")
+    ap.add_argument("--max", type=int, default=None, help="approximate target seconds; shorter or slightly longer for a complete thought; omitted keeps saved target")
     ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
     ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
     ap.add_argument("--look", default="pair", choices=["pair", "karaoke", "pop", "none"])
@@ -130,17 +130,21 @@ def detail(exc: Exception) -> str:
     return exc.detail if isinstance(exc, HTTPException) else str(exc)
 
 
-def stories(raw: str, max_s: int, no_ai: bool = False) -> list[dict] | None:
+def stories(raw: str, max_s: int | None, no_ai: bool = False) -> list[dict] | None:
+    import web_ai_json
+    if max_s is not None:
+        web_ai_json.save_story_target(raw, max_s / 60)
+    target = web_ai_json.story_target(raw)
     if not video_edit.transcript_file(raw).is_file():
         say(step="ถอดเสียงทั้งไฟล์")
     phrases = timed("ถอดเสียง", video_edit.transcribe_file, raw)
-    video_edit.STORY_MAX_S, video_edit.STORY_AIM_S = max_s, int(max_s * 0.65)
     sf = video_edit.stories_file(raw)
     if no_ai and not sf.is_file() and phrases:  # written like the agent's, so a rerun (or a person) can use it
-        parts = timed("แบ่งเรื่องจากช่วงพัก", video_edit._split_long, 0, len(phrases) - 1, phrases, Path(raw).stem, "")
+        parts = timed("แบ่งเรื่องจากช่วงพัก", video_edit._split_long, 0, len(phrases) - 1, phrases, Path(raw).stem, "",
+                      **({"max_s": target * 60 * 1.25, "aim_s": target * 60} if target is not None else {}))
         sf.write_text(json.dumps([{k: p[k] for k in ("title", "summary", "start", "end")} for p in parts],
                                  ensure_ascii=False, indent=1), encoding="utf-8")
-    return timed("อ่านผลเลือกเรื่อง", video_edit.stories_from_agent, raw, phrases)
+    return timed("อ่านผลเลือกเรื่อง", video_edit.stories_from_agent, raw, phrases, split_long=not web_ai_json.has_story_target(raw))
 
 
 def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str = "default") -> str:
@@ -434,7 +438,10 @@ def _pipeline(a, raw: str) -> int:
                 say(step="ส่งออก MP4", story=n)
                 row["mp4"] = timed("ส่งออก MP4", ve.draft_hf_export, ve.ExportRequest(path=path))["file"]
             rows.append(row)
-            row["check"] = timed("ตรวจคลิป + log", cutlog.log_run, raw, st, n, path, {k: v for k, v in vars(a).items() if k != "video"}, row["length"])
+            import web_ai_json
+            log_args = {k: v for k, v in vars(a).items() if k != "video"}
+            log_args.update(max=None, max_minutes=web_ai_json.story_target(raw))
+            row["check"] = timed("ตรวจคลิป + log", cutlog.log_run, raw, st, n, path, log_args, row["length"])
         except (video_edit.VideoEditError, HTTPException) as exc:
             say(error=detail(exc), story=n, title=st["title"])
             return 1

@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import atomic
 import json
+import math
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -74,24 +76,66 @@ def _caption_lang(path: str) -> str | None:
     return look["caption_lang"] if look["caption"] and look["caption_lang"] != "th" else None
 
 
-def export_stories(video: str) -> Path:
+def story_target(video: str) -> float | None:
+    path = Path(video + ".story-preferences.json")
+    value = json.loads(path.read_text(encoding="utf-8")).get("max_minutes") if path.is_file() else None
+    return _target_minutes(value)
+
+
+def has_story_target(video: str) -> bool:
+    return Path(video + ".story-preferences.json").is_file()
+
+
+def _target_minutes(value: float | None) -> float | None:
+    if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0):
+        raise VideoEditError("ความยาวต้องเป็นจำนวนนาทีที่มากกว่า 0")
+    return value
+
+
+def save_story_target(video: str, value: float | None) -> bool:
+    value = _target_minutes(value)
+    changed = not has_story_target(video) or story_target(video) != value
+    if changed:
+        answer = answer_file("stories", video)
+        if answer.is_file():
+            answer.replace(answer.with_name(answer.name + f".before-target-{time.time_ns()}"))
+        stories = video_edit.stories_file(video)
+        if stories.is_file():
+            stories.replace(stories.with_name(stories.name + f".before-target-{time.time_ns()}"))
+        atomic.write_text(Path(video + ".story-preferences.json"), json.dumps({"max_minutes": value}), encoding="utf-8")
+    return changed
+
+
+def export_stories(video: str, max_minutes: float | None = None) -> Path:
+    if max_minutes is not None or not has_story_target(video):
+        save_story_target(video, max_minutes)
+    max_minutes = story_target(video)
     tf = video_edit.transcript_file(video)
     if not tf.is_file():
         raise VideoEditError(f"ยังไม่ได้ถอดเสียง: ไม่มี {tf.name} (กด ถอดเสียงและแบ่งเรื่อง ก่อน)")
     lines = [{"start": round(p["start"], 2), "end": round(p["end"], 2), "text": p["text"]}
              for p in json.loads(tf.read_text(encoding="utf-8"))]
-    data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "lines": lines}
+    data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "max_minutes": max_minutes, "lines": lines}
     prompt, brief = _prompt("stories.md"), video_edit.read_brief(video)
     if brief:  # the person's own words go first, so the AI picks stories for them
         prompt = (f"## ความต้องการของผู้ตัดต่อ\n\n{brief}\n\nเลือกและแบ่งเรื่องให้ตรงกับความต้องการนี้ "
                   f"โดยยังทำตามกฎทุกข้อด้านล่าง\n\n" + prompt)
+    if max_minutes is not None:
+        prompt = (f"## ความยาวเป้าหมาย\n\nเลือกเนื้อหาให้แต่ละคลิปยาวราว {max_minutes:g} นาที "
+                  "เริ่มและจบให้ครบประเด็น สั้นกว่าได้หรือยาวกว่าเล็กน้อย ไม่ใช่เพดานตายตัว "
+                  "อย่าตัดประโยคหรือเติมเนื้อหาเพื่อให้ครบเวลา\n\n" + prompt)
+    else:
+        prompt = "ความยาว: ตามเนื้อหา ผู้ใช้เลือกแล้ว ไม่ต้องถามเพิ่ม เลือกช่วงที่จบครบประเด็น\n\n" + prompt
     return _packet(prompt, data, packet_file("stories", video))
 
 
 def export_clip(path: str, max_minutes: float | None = None) -> Path:
     """max_minutes: about how long the person wants the clip; a rough aim for the cut, not a hard limit."""
-    if max_minutes is not None and max_minutes <= 0:
-        raise VideoEditError(f"ความยาวต้องมากกว่า 0 นาที (ได้ {max_minutes})")
+    if max_minutes is None:
+        meta = Path(path) / "clipkit.json"
+        raw = json.loads(meta.read_text(encoding="utf-8")).get("raw") if meta.is_file() else None
+        max_minutes = story_target(raw) if raw else None
+    max_minutes = _target_minutes(max_minutes)
     subs = capcut_edit.read_draft(path)["subtitles"]
     if not subs:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
@@ -99,7 +143,7 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
     words_file = Path(path) / "clipkit_words.json"
     word_times = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
     atomic.write_text((Path(path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
-    data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "caption_language": _caption_lang(path),
+    data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "max_minutes": max_minutes, "caption_language": _caption_lang(path),
             "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"],
                        "words": [{"start": round(s["start"] + a, 3), "end": round(s["start"] + b, 3), "text": w}
                                  for a, b, w in word_times.get(s["text"], [])]} for n, s in enumerate(subs, 1)],
@@ -190,8 +234,25 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     cut = ans.get("cut") or []
     if not isinstance(cut, list) or any(n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
         raise VideoEditError(f"cut ต้องเป็นรายการเลขบรรทัด 1..{len(subs)} ที่จะตัดทิ้ง และต้องเหลืออย่างน้อย 1 บรรทัด")
+    groups, continuation = [], set()
+    for x in lines:
+        if x["n"] in continuation:
+            if set(x) != {"n"}:
+                raise VideoEditError("บรรทัดต่อของกลุ่มต้องมีแค่ n")
+            continue
+        last = x.get("through", x["n"])
+        if isinstance(last, bool) or not isinstance(last, int) or not x["n"] <= last <= len(subs):
+            raise VideoEditError("through ต้องเป็นเลขบรรทัดสุดท้ายของกลุ่มต่อเนื่อง")
+        if last > x["n"]:
+            if any(n in cut for n in range(x["n"], last + 1)):
+                raise VideoEditError("กลุ่มซับห้ามทับบรรทัดที่ตัด")
+            groups.append((x["n"], last))
+            continuation.update(range(x["n"] + 1, last + 1))
+    merged = capcut_edit.merge_subtitles(path, groups, dry=True) if groups else [
+        {**s, "n": n} for n, s in enumerate(subs, 1)]
     punch, same = {}, []
-    for s, x in zip(subs, lines):
+    for s in merged:
+        x = lines[s["n"] - 1]
         if x["n"] in cut:
             continue
         items = x.get("items")
@@ -202,6 +263,9 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         if got != want:
             raise VideoEditError(f"บรรทัด {x['n']}: lead + punch ต้องเป็นคำพูดเดิมครบทุกตัวอักษรตามลำดับ\n"
                                  f"  ซับ: {want}\n  ได้: {got}")
+        if groups:
+            render._pair(s["text"], s["words"], s["start"], s["end"], 1080, 1920, "Kanit",
+                         render.DEFAULT_FONT, render.pair_look({}), picked=items)
         if s["text"] in punch and punch[s["text"]] != items:
             same.append(x["n"])  # clipkit_punch.json holds one choice per line text: the first one stays
             continue
@@ -215,14 +279,14 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     if lang:
         cap = ans.get("caption")
         if not isinstance(cap, dict) or any(not isinstance(cap.get(str(n)), str) or not cap[str(n)].strip()
-                                            for n in range(1, len(subs) + 1) if n not in cut):
+                                            for n in range(1, len(subs) + 1) if n not in cut and n not in continuation):
             raise VideoEditError(f'preset นี้มีซับแปล ({lang}): caption ต้องเป็น {{"1": "...", ...}} ครบทุกบรรทัด')
-        caption = {s["text"]: cap[str(n)].strip() for n, s in enumerate(subs, 1) if n not in cut}
+        caption = {s["text"]: cap[str(s["n"])].strip() for s in merged if s["n"] not in cut}
     motion = ans.get("motion") or []
     import video_editor
     quick = video_editor.QUICK_MOTION
     if not isinstance(motion, list) or any(not isinstance(m, dict) or m.get("n") not in range(1, len(subs) + 1)
-                                           or m["n"] in cut for m in motion):
+                                           or m["n"] in cut or m["n"] in continuation for m in motion):
         raise VideoEditError('motion ต้องเป็น [{"n": เลขบรรทัด, "template": "...", "params": {...}}]')
     for m in motion:  # checked before anything is written; params only for templates not made from the line
         if m.get("params") is not None:
@@ -231,14 +295,23 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
             raise VideoEditError(f'motion บรรทัด {m["n"]}: "{m.get("template")}" ต้องมี params (ช่องตาม motion_templates)')
 
     folder = Path(path)
+    if groups:
+        if cut:
+            ends = [max(s["end"], nxt["start"]) for s, nxt in zip(subs, subs[1:])] + [subs[-1]["end"]]
+            capcut_edit.trim_pauses(path, ranges=[(subs[n - 1]["start"], ends[n - 1]) for n in sorted(set(cut))])
+        shifted = lambda n: n - sum(k < n for k in set(cut))
+        grouped = capcut_edit.merge_subtitles(path, [(shifted(a), shifted(b)) for a, b in groups])
+        current = dict(zip([s["n"] for s in merged if s["n"] not in cut], grouped))
     written = ["clipkit_punch.json", "clipkit_hook.json"]
+    if groups:
+        written.append("merge_subs")
     atomic.write_text((folder / "clipkit_punch.json"), json.dumps(punch, ensure_ascii=False, indent=1), encoding="utf-8")
     atomic.write_text((folder / "clipkit_hook.json"), json.dumps([{"text": h["text"].strip(), "color": h["color"]} for h in hook],
                                                          ensure_ascii=False, indent=1), encoding="utf-8")
     if caption is not None:
         atomic.write_text((folder / "clipkit_caption.json"), json.dumps(caption, ensure_ascii=False, indent=1), encoding="utf-8")
         written.append("clipkit_caption.json")
-    if cut:  # the footage of each dropped line (up to the next line) goes, its subtitle with it
+    if cut and not groups:  # the footage of each dropped line (up to the next line) goes, its subtitle with it
         ends = [max(s["end"], nxt["start"]) for s, nxt in zip(subs, subs[1:])] + [subs[-1]["end"]]
         capcut_edit.trim_pauses(path, ranges=[(subs[n - 1]["start"], ends[n - 1]) for n in sorted(set(cut))])
         written.append(f"ตัด {len(set(cut))} บรรทัด")
@@ -246,7 +319,7 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         subs = [kept.get(s["text"], s) for s in subs]  # motion goes at the lines' new times
     if motion:  # renders each motion here, the same as the editor's Motion button
         for m in motion:
-            s = subs[m["n"] - 1]
+            s = current[m["n"]] if groups else subs[m["n"] - 1]
             video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"], params=m.get("params"),
                                                                        start=s["start"], end=s["end"], text=s["text"]))
         written.append(video_editor.OVERLAYS)

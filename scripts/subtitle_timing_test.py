@@ -1,5 +1,6 @@
 """Emphasis must follow the spoken word, without re-timing a fitted phrase by letter count."""
 import json
+import os
 import re
 import sys
 import tempfile
@@ -9,7 +10,11 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
-import render
+with tempfile.TemporaryDirectory() as import_folder:
+    config = Path(import_folder) / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+        import render
 import draft_quality
 import hf_build
 import video_edit

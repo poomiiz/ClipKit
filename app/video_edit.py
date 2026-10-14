@@ -1096,7 +1096,7 @@ def agent_command(kind: str, target: str) -> str:
             "spelling": f'ClipKit: ตรวจคำผิด "{target}"'}[kind]
 
 
-def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+def stories_from_agent(video: str, phrases: list[dict[str, Any]], *, split_long: bool = True) -> list[dict[str, Any]] | None:
     """Stories the agent wrote to <video>.stories.json as [{title, summary, start, end}] (seconds).
     None while the file is not there yet; a broken file raises."""
     path = stories_file(video)
@@ -1113,7 +1113,12 @@ def stories_from_agent(video: str, phrases: list[dict[str, Any]]) -> list[dict[s
         idx = [n for n, p in enumerate(phrases) if p["start"] >= start - 0.5 and p["end"] <= end + 0.5]
         if not idx:
             raise VideoEditError(f"story '{title}' ({start}-{end} s) has no speech in the transcript")
-        out.extend(_split_long(idx[0], idx[-1], phrases, title, summary))
+        if split_long:
+            out.extend(_split_long(idx[0], idx[-1], phrases, title, summary))
+        else:
+            out.append({"title": title, "summary": summary, "start": phrases[idx[0]]["start"],
+                        "end": phrases[idx[-1]]["end"], "lines": idx[-1] - idx[0] + 1,
+                        "speech": round(sum(p["end"] - p["start"] for p in phrases[idx[0]:idx[-1] + 1]), 1)})
     return out
 
 
@@ -1121,16 +1126,18 @@ STORY_MAX_S = 300     # a story above this is split (length is trimmed later, in
 STORY_AIM_S = 150
 
 
-def _split_long(first: int, last: int, phrases: list[dict[str, Any]], title: str, summary: str) -> list[dict[str, Any]]:
+def _split_long(first: int, last: int, phrases: list[dict[str, Any]], title: str, summary: str,
+                *, max_s: float | None = None, aim_s: float | None = None) -> list[dict[str, Any]]:
     """The small local model sometimes returns one story for a whole file. Any story longer than STORY_MAX_S
     is cut at the longest pause near every STORY_AIM_S, so each part still ends on a finished sentence."""
     parts, a = [], first
-    while phrases[last]["end"] - phrases[a]["start"] > STORY_MAX_S:
-        target = phrases[a]["start"] + STORY_AIM_S
+    while phrases[last]["end"] - phrases[a]["start"] > (max_s if max_s is not None else STORY_MAX_S):
+        target = phrases[a]["start"] + (aim_s if aim_s is not None else STORY_AIM_S)
         window = [i for i in range(a + 1, last + 1) if abs(phrases[i]["start"] - target) <= 25]
         if not window:
             break
-        cut = max(window, key=lambda i: phrases[i]["start"] - phrases[i - 1]["end"])   # longest pause
+        cut = max(window, key=lambda i: (phrases[i]["start"] - phrases[i - 1]["end"],
+                                         -abs(phrases[i]["start"] - target) if aim_s is not None else 0))
         parts.append((a, cut - 1))
         a = cut
     parts.append((a, last))

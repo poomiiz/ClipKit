@@ -45,10 +45,18 @@ coverage is not proof of alignment to audible speech. Preview and listening chec
  "stories": [{"title": "...", "summary": "...", "start": 12.3, "end": 95.0}]}
 ```
 
-`title` required, `start < end` in seconds, each story must contain speech. Stories longer than `run_clip --max`
-are still split at a pause by ClipKit, as for the local agent.
+`title` required, `start < end` in seconds, each story must contain speech. `max_minutes` in the exported packet
+is the saved approximate target before selecting content: shorter is acceptable and slightly longer can finish
+a complete thought. With a saved target, imported selections are retained rather than split at a hard limit.
 
 ## `clip`
+
+Consecutive ASR transport lines can form one semantic group: put optional `through: <last n>` on its head,
+whose items cover all original text in that group in source order (whitespace may differ). Keep every original
+`n`; continuation entries contain only `{"n": ...}`. Groups cannot overlap or include `cut` lines. Caption and
+motion entries refer only to group heads. Actual word clocks are merged without inventing times; selected
+emphasis without a complete clock is rejected before files are changed. With no `through`, existing answers
+keep their meaning. The manual `/api/video/draft/subs/merge` action uses the same merge helper.
 
 ```json
 {"clipkit_web_ai": 1, "step": "clip", "project": "EP07 - 1 ...",
@@ -61,11 +69,14 @@ are still split at a pause by ClipKit, as for the local agent.
 
 | field | text layer | rule |
 |---|---|---|
-| `hook` | HL Hook | 1-2 lines, `color` white / orange / red |
-| `lines[].items` | Subtitle (lead, white) + เน้น (punch, colour) | every subtitle line, `n` = 1..N in order; lead + punch of all items = the line's exact text (spaces may differ); item `[lead, punch]` + optional search string and/or options `{look: pair|white|color|red|hold|skip, show: [white, colour], color: "#rrggbb", second: "..."}` |
+| `hook` | HL Hook | `[]` is valid; otherwise 1-2 source-supported lines, `color` white / orange / red |
+| `lines[].items` | Subtitle (lead, white) + เน้น (punch, colour) | all original `n` = 1..N in order; group heads have items covering their exact combined text (spaces may differ), continuation entries have only `n`; item `[lead, punch]` + optional search string and/or options `{look: pair|white|color|red|hold|skip, show: [white, colour], color: "#rrggbb", second: "..."}` |
 | `cut` | (footage) | optional; line numbers dropped with their footage (up to the next line), via `trim_pauses(ranges=...)`; whole lines only, order kept; a cut line needs no items / caption / motion; at least one line stays. The project's `draft_content.json` is backed up first (`.bak_trim`). Export again before importing a second answer: line numbers change |
 | `motion` | Motion text | optional; line number + template, rendered here like the editor's Motion button. `hook-title` / `sentence-pair` are made from the line's words; any other template from the export's `motion_templates` needs `params` (its fields; `duration` defaults to the line's length), checked against the template's clipkit-motion block before anything is written |
-| `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per line number |
+| `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per retained group head or ungrouped line number |
+
+Grouping changes subtitle line numbers. Export a fresh packet before another answer; the backup and seal cover
+the merged draft, and no source footage is removed by grouping itself. The group head's styling is retained.
 
 ## `inserts` (downloaded stock files to links)
 

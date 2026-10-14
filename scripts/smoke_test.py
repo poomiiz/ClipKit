@@ -522,14 +522,14 @@ def web_ai_answers_are_checked():
         video_editor._story_jobs.path = Path(t) / "jobs-story-plan.json"
         video_editor._story_jobs[str(video)] = {"status": "waiting"}  # a split already going: no Whisper here
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief="  vlog สบายๆ เน้นช่วงตลก "))
-        assert video_editor.brief(str(video)) == {"brief": "vlog สบายๆ เน้นช่วงตลก"}
+        assert video_editor.brief(str(video)) == {"brief": "vlog สบายๆ เน้นช่วงตลก", "max_minutes": None}
         packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         assert packet.index("ใช้ AI บนเว็บได้") < packet.index("ทางเลือกสำหรับ AI ที่เขียนไฟล์"), "web AI must not require a local agent"
         assert packet.index("vlog สบายๆ เน้นช่วงตลก") < packet.index("เรื่องเงิน"), packet[:300]
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video)))  # no brief sent: kept
         assert video_editor.brief(str(video))["brief"]
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief=""))
-        assert video_editor.brief(str(video)) == {"brief": ""}
+        assert video_editor.brief(str(video)) == {"brief": "", "max_minutes": None}
         assert "ความต้องการของผู้ตัดต่อ" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
         for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},

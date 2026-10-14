@@ -282,6 +282,7 @@ def transcribe(req: TranscribeRequest) -> dict[str, Any]:
 class StoryPlanRequest(BaseModel):
     file: str
     brief: str | None = Field(default=None, max_length=2000)  # None: keep the saved one; "": remove it
+    max_minutes: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 _story_jobs = jobstore.JobStore("story-plan", failed="error")
@@ -296,7 +297,9 @@ def _run_story_plan(file: str) -> None:
         if not tf.is_file():
             job["step"] = "ถอดเสียง"
         phrases = video_edit.transcribe_file(file)
+        import web_ai_json
         job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
+                   max_minutes=web_ai_json.story_target(file),
                    command=video_edit.agent_command("stories", file),
                    duration=round(phrases[-1]["end"] if phrases else 0, 1),
                    speech=round(sum(p["end"] - p["start"] for p in phrases), 1))
@@ -311,13 +314,16 @@ def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
     import threading
     if not Path(req.file).is_file():
         raise HTTPException(status_code=400, detail="file not found")
+    import web_ai_json
+    changed = (web_ai_json.save_story_target(req.file, req.max_minutes)
+               if "max_minutes" in req.model_fields_set else False)
     if req.brief is not None:  # saved before the split, so the agent or the web AI packet reads it
         if req.brief.strip():
             atomic.write_text(video_edit.brief_file(req.file), req.brief.strip(), encoding="utf-8")
         else:
             video_edit.brief_file(req.file).unlink(missing_ok=True)
     job = _story_jobs.get(req.file)
-    if not job or job["status"] == "error":
+    if not job or job["status"] == "error" or (changed and job["status"] != "running"):
         _story_jobs[req.file] = {"status": "running", "step": "เริ่ม"}
         _story_jobs.save()
         threading.Thread(target=_run_story_plan, args=(req.file,), daemon=True).start()
@@ -326,12 +332,16 @@ def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
 
 @router.get("/brief")
 def brief(file: str = Query(...)) -> dict[str, Any]:
-    return {"brief": video_edit.read_brief(file)}
+    import web_ai_json
+    return {"brief": video_edit.read_brief(file), "max_minutes": web_ai_json.story_target(file)}
 
 
 @router.get("/story-plan")
 def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
+    import web_ai_json
     job = _story_jobs.get(file)
+    if job and job["status"] == "done" and job.get("max_minutes") != web_ai_json.story_target(file):
+        _run_story_plan(file)
     if not job and video_edit.stories_file(file).is_file() and video_edit.transcript_file(file).is_file():
         job = _story_jobs[file] = {"status": "running"}  # split before ClipKit restarted: reload it, no Whisper
         _run_story_plan(file)
@@ -340,7 +350,7 @@ def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
     if job["status"] == "waiting":
         try:
             phrases = json.loads(Path(job["transcript"]).read_text(encoding="utf-8"))
-            stories = video_edit.stories_from_agent(file, phrases)
+            stories = video_edit.stories_from_agent(file, phrases, split_long=not web_ai_json.has_story_target(file))
         except VideoEditError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if stories is not None:
@@ -592,6 +602,21 @@ def draft_subs(req: DraftSubsRequest) -> dict[str, Any]:
         return capcut_edit.set_subtitles(
             req.path, [s.model_dump() for s in req.subs], size=req.size, y=req.y,
             color=req.color, stroke=req.stroke, replace=req.replace)
+    except VideoEditError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class MergeSubtitlesRequest(BaseModel):
+    path: str
+    first: int = Field(ge=1, strict=True)
+    last: int = Field(ge=2, strict=True)
+
+
+@router.post("/draft/subs/merge")
+def draft_merge_subtitles(req: MergeSubtitlesRequest) -> dict[str, Any]:
+    try:
+        rows = capcut_edit.merge_subtitles(req.path, [(req.first, req.last)])
+        return {"subtitles": len(rows)}
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1024,7 +1049,7 @@ class WebAiRequest(BaseModel):
     step: str = Field(pattern="^(stories|clip)$")
     target: str  # the video (stories) or the project folder (clip)
     answer: str = ""
-    max_minutes: float | None = Field(default=None, gt=0)  # clip: about how long the person wants the clip
+    max_minutes: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 @router.post("/web-ai/export")
@@ -1032,7 +1057,7 @@ def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
     """The file to upload to an AI in the browser instead of pasting the command to the agent here."""
     import web_ai_json as web_ai
     try:
-        out = (web_ai.export_stories(req.target) if req.step == "stories"
+        out = (web_ai.export_stories(req.target, req.max_minutes) if req.step == "stories"
                else web_ai.export_clip(req.target, req.max_minutes))
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
