@@ -129,5 +129,23 @@
   "playwright_composition_loaded": true,
   "playwright_direct_composition_responsive": false,
   "provider_dubbing_or_stock_used": false,
-  "acceptance": "awaiting human playback review; engineering verification is not acceptance"
+  "acceptance": "awaiting human playback review; engineering verification is not acceptance",
+  "revisions": [
+    {
+      "revision": 2,
+      "human_feedback": "insufficient emphasis",
+      "emphasis_count": 22,
+      "human_approved": false,
+      "build_and_export_seconds": 276.8,
+      "nested_render_seconds": 161.3,
+      "full_decode": "pass",
+      "sampled_frames_inspected": 8,
+      "native_safe_zone_findings": 0,
+      "export_bytes": 98748580,
+      "export_sha256": "f54b33b77e518babe0d6492adaceef7330cbd65469638c3d3c0274ace22f9984",
+      "elapsed_since_trial_start_seconds": 2950.812,
+      "recorded_at": "2026-10-14T15:19:04.812301+00:00",
+      "manual_baseline_seconds": null
+    }
+  ]
 }

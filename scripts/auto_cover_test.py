@@ -1,5 +1,6 @@
 """Long Thai pilot titles reach the cover renderer without losing words."""
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -8,8 +9,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import kit_settings
-import video_edit
-import video_editor
+with tempfile.TemporaryDirectory() as config_folder:
+    config = Path(config_folder) / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+        import video_edit
+        import video_editor
 
 
 class AutoCover(unittest.TestCase):
