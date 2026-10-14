@@ -62,6 +62,25 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
     return "media/" + dst.name
 
 
+def _motion(out: Path, source: str) -> str:
+    """Browser-decodable alpha video; CapCut keeps the original transparent MOV."""
+    import hashlib
+    import subprocess
+    src = Path(source)
+    key = hashlib.sha256(f"{src.resolve()}:{src.stat().st_mtime_ns}:{src.stat().st_size}".encode()).hexdigest()[:16]
+    dst = out / "media" / f"motion_{key}.webm"
+    dst.parent.mkdir(exist_ok=True)
+    if not dst.is_file():
+        temp = dst.with_suffix(".tmp.webm")
+        result = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-i", str(src), "-an", "-c:v", "libvpx-vp9",
+                                 "-lossless", "1", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", str(temp)],
+                                capture_output=True, text=True, timeout=600)
+        if result.returncode:
+            raise render.VideoEditError("could not prepare transparent motion: " + result.stderr[-300:])
+        temp.replace(dst)
+    return "media/" + dst.name
+
+
 def _css_color(rgb: list[float]) -> str:
     return "#%02x%02x%02x" % tuple(max(0, min(255, round(c * 255))) for c in rgb[:3])
 
@@ -118,28 +137,29 @@ def build(path: str) -> Path:
              x: float = 0, rot: float = 0, shadow: bool = False) -> str:
         # same as the ffmpeg export: one line only, a long subtitle goes on as the next piece (render.one_line)
         first = ""
-        for piece, pa, pb, px in render.one_line(words, render.DEFAULT_FONT, size * k, W * (box["w"] - abs(x)), a, b):
-            i = nid("t")
-            first = first or i
-            # a lead grows upward and a punch downward, so the pair never covers each other
-            top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
-            top = max(top, floor) if grow == "down" else top
-            shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
-            # same safe box as the ffmpeg export (render.safe_box): clear of the apps' top bar, buttons and caption
-            block = px * lh
-            upper = top - {"-100%": block, "0": 0}.get(shift, block / 2)
-            top += min(max(upper, H * box["top"]), H * box["bottom"] - block) - upper
-            tops[i] = top
-            els.append(f'<div id="{i}" class="clip txt" data-start="{pa:.3f}" data-duration="{max(0.05, pb - pa - 0.034):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
-                       f'style="top:{top:.0f}px;left:{5 + x * 50:g}%;transform:translateY({shift}) rotate({rot:g}deg);'
-                       f'{"text-shadow:4px 4px 6px rgba(0,0,0,.9);" if shadow else ""}font-size:{px:.0f}px;line-height:{lh};color:{_css_color(fill)};'
-                       f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{html.escape(piece)}</div>')
+        for piece, pa, pb, px in render.one_line(words, render.DEFAULT_FONT, size * k, W * (box["w"] - abs(x)), a, b, one=True):
+            for pa, pb in render.visible_spans(pa, pb, t.get("motions", [])):
+                i = nid("t")
+                first = first or i
+                # a lead grows upward and a punch downward, so the pair never covers each other
+                top = H / 2 - y * H / 2 + {"up": px * 0.625, "down": -px * 0.625}.get(grow, 0)
+                top = max(top, floor) if grow == "down" else top
+                shift = {"up": "-100%", "down": "0"}.get(grow, "-50%")
+                # same safe box as the ffmpeg export (render.safe_box): clear of the apps' top bar, buttons and caption
+                block = px * lh
+                upper = top - {"-100%": block, "0": 0}.get(shift, block / 2)
+                top += min(max(upper, H * box["top"]), H * box["bottom"] - block) - upper
+                tops[i] = top
+                els.append(f'<div id="{i}" class="clip txt" data-start="{pa:.3f}" data-duration="{max(0.001, pb - pa - min(0.034, (pb - pa) / 2)):.3f}" data-track-index="3" '  # one frame short: the next phrase never shares a frame
+                           f'style="top:{top:.0f}px;left:{5 + x * 50:g}%;transform:translateY({shift}) rotate({rot:g}deg);'
+                           f'{"text-shadow:4px 4px 6px rgba(0,0,0,.9);" if shadow else ""}font-size:{px:.0f}px;line-height:{lh};color:{_css_color(fill)};'
+                           f'-webkit-text-stroke:{px * width * 1.2 + 2:.1f}px {_css_color(stroke)}">{html.escape(piece)}</div>')
         return first
 
     tops: dict[str, float] = {}
     look = t["look"]
     if look == "pair":
-        P = render.pair_look(st)
+        P = render.pair_look(st, W, H)
         held = ""
         en = t.get("caption_en") or {}
         thai = P["caption_lang"] == "th"  # the whole spoken line, going on with the voice
@@ -163,19 +183,20 @@ def build(path: str) -> Path:
                 continue
             lead_id = ""
             if white:
-                i = lead_id = text(white, *P["lead"], a, b, "up", one=bool(colour))
-                if (p.get("opts") or {}).get("look") != "hold":
-                    anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
+                i = lead_id = text(white, *P["lead"], a, b, one=bool(colour))
+                if i and (p.get("opts") or {}).get("look") != "hold":
+                      anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
             if colour:
-                hit = min(b - 0.05, max(a + 0.2, a + 0.6)) if white else a
+                hit = p["hit"] if white else a
                 part = P["punch"] if rgb is None else P["punch"][:2] + (rgb,) + P["punch"][3:]
                 if j in pairs:  # first beat: the upper row, on until the second beat is done
                     part, b2 = part[:1] + (render.upper_row(P, W, H),) + part[2:], t["phrases"][pairs[j]]["end"]
                     i = text(colour, *part, hit, b2)
-                    below[pairs[j]] = tops[i] + part[0] * k * lh / 2  # the second beat starts under it
+                    below[pairs[j]] = tops.get(i, 0) + part[0] * k * lh / 2  # the second beat starts under it
                 else:
-                    i = text(colour, *part, hit, b, "down", max(tops.get(lead_id, 0), below.get(j, 0)) + 8, one=bool(white))
-                anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
+                    i = text(colour, *part, hit, b, one=bool(white))
+                if i:
+                    anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
             second = (p.get("opts") or {}).get("second")
             if second and P["second"]:  # the second person's short reaction, off centre and tilted
                 x, rot = P["second_at"]
@@ -187,15 +208,16 @@ def build(path: str) -> Path:
             if t["hook"] and p["start"] < render.HOOK_DUR:
                 continue
             i = text(p["lead"], 16, -0.6, [1, 1, 1], [0, 0, 0], 0.08, p["start"], p["end"])
-            if look == "pop":
-                anim.append(f'tl.fromTo("#{i}",{{scale:0.7}},{{scale:1,duration:0.2,ease:"back.out(2)"}},{p["start"]:.3f});')
+            if i and look == "pop":
+                  anim.append(f'tl.fromTo("#{i}",{{scale:0.7}},{{scale:1,duration:0.2,ease:"back.out(2)"}},{p["start"]:.3f});')
     # clip title: each line punches in, the second a beat after the first
     first = ""
     for j, h in enumerate(t["hook"]):  # j: n is the id counter
         i = text(h["text"], h["size"], h["y"], h["fill"], h["stroke"], h["width"], h["start"], h["end"],
                  h["grow"], tops.get(first, 0) + 8, one=True)
         first = first or i
-        anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{j * 0.15:.2f});')
+        if i:
+            anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{j * 0.15:.2f});')
     # progress bar along the bottom edge, filling over the clip (same as render.progress_bar)
     if t["progress"]:
         els.append(f'<div id="{nid("p")}" class="clip pbar" data-start="0" data-duration="{D:.3f}" data-track-index="6" '
@@ -209,6 +231,10 @@ def build(path: str) -> Path:
         els.append(f'<img id="{i}" class="clip" src="{_local(out, e["file"])}" data-start="{e["at"]:.3f}" data-duration="{e["dur"]:.3f}" '
                    f'data-track-index="7" style="position:absolute;left:{ex}px;top:{ey}px;width:{es}px;height:{es}px">')
         anim.append(f'tl.fromTo("#{i}",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.18,ease:"back.out(2.5)"}},{e["at"]:.3f});')
+    for motion in t.get("motions", []):
+        els.append(f'<video id="{nid("o")}" class="clip" src="{_motion(out, motion["file"])}" muted playsinline '
+                   f'data-start="{motion["start"]:.3f}" data-duration="{motion["duration"]:.3f}" data-media-start="0" '
+                   f'data-track-index="8" style="position:absolute;top:0;left:50%;height:100%;width:auto;transform:translateX(-50%)"></video>')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):

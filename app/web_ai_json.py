@@ -96,9 +96,13 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
     if not subs:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
     lines = [s["text"] for s in subs]
+    words_file = Path(path) / "clipkit_words.json"
+    word_times = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
     atomic.write_text((Path(path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "caption_language": _caption_lang(path),
-            "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"]} for n, s in enumerate(subs, 1)],
+            "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"],
+                       "words": [{"start": round(s["start"] + a, 3), "end": round(s["start"] + b, 3), "text": w}
+                                 for a, b, w in word_times.get(s["text"], [])]} for n, s in enumerate(subs, 1)],
             "motion_templates": _motion_menu()}
     prompt = _prompt("clip.md")
     if max_minutes:
@@ -202,10 +206,10 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
             same.append(x["n"])  # clipkit_punch.json holds one choice per line text: the first one stays
             continue
         punch[s["text"]] = items
-    hook = ans.get("hook")
-    if not isinstance(hook, list) or not 1 <= len(hook) <= 2 or any(
+    hook = ans.get("hook", [])
+    if not isinstance(hook, list) or len(hook) > 2 or any(
             not isinstance(h, dict) or not str(h.get("text", "")).strip() or h.get("color") not in render.HOOK_COLORS for h in hook):
-        raise VideoEditError('hook (HL Hook) ต้องเป็น 1-2 บรรทัด [{"text": "...", "color": "white|orange|red"}]')
+        raise VideoEditError('hook ต้องเป็น [] หรือ 1-2 บรรทัด [{"text": "...", "color": "white|orange|red"}]')
     lang = _caption_lang(path)
     caption = None
     if lang:

@@ -836,6 +836,8 @@ def _from_transcript(source: str, start: float, end: float) -> list[dict[str, An
     and no phrase crosses either edge, so a story is not run through Whisper a second time; None = transcribe."""
     from video_edit import transcript_file
 
+    start, end = round(start, 6), round(end, 6)
+
     tf = transcript_file(source)
     try:
         if tf.stat().st_mtime < Path(source).stat().st_mtime:

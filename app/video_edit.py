@@ -925,6 +925,7 @@ def create_capcut_draft(video_path: str, project_name: str,
         meta["tm_draft_create"] = int(time.time() * 1_000_000)
         meta["tm_draft_modified"] = int(time.time() * 1_000_000)
         for group in meta.get("draft_materials", []):
+            group["value"] = [value for value in (group.get("value") or []) if value.get("metetype") == "video"][:1]
             for value in group.get("value", []) or []:
                 if value.get("metetype") == "video":
                     value["file_Path"] = str(Path(video_path).as_posix())
@@ -938,6 +939,17 @@ def create_capcut_draft(video_path: str, project_name: str,
         atomic.write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     import capcut_edit  # here: capcut_edit imports this module
     capcut_edit.fresh_ids(target)  # own timeline id + the Timelines/<id> copy CapCut 9.x opens
+    # Supplied subtitles still need the existing transcript's word clock for emphasis.
+    heard = {}
+    for segment in segments:
+        start = segment["source_timerange"]["start"] / US
+        length = segment["source_timerange"]["duration"] / US
+        for phrase in capcut_edit._from_transcript(video_path, start, start + length) or []:
+            if phrase["text"] in {s["text"] for s in subs}:
+                heard[phrase["text"]] = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
+                                         for a, b, w in phrase["words"]]
+    if heard:
+        atomic.write_text(target / "clipkit_words.json", json.dumps(heard, ensure_ascii=False), encoding="utf-8")
 
     return {
         "draft_path": str(target),

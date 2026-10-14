@@ -41,16 +41,21 @@ subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the Hyp
 
 ## Commands pasted from the ClipKit app
 The app does the mechanical work; the thinking steps are yours. It shows the person a line to paste here.
-The same two steps (แบ่งเรื่อง, เลือกคำเน้น) can instead go to an AI in the browser: `scripts/web_ai.py` exports a file
-to upload and imports its JSON answer (`prompts/web_ai/schema.md`). The files it writes are the ones below.
+The same two steps (แบ่งเรื่อง, เลือกคำเน้น) use one answer contract for browser AI and optional local agents:
+`scripts/web_ai.py` exports a self-contained packet and imports its JSON answer (`prompts/web_ai/schema.md`).
+Always import the answer through this validator; do not write the resulting sidecars or `draft_content.json` directly.
+Manual editor controls remain available without AI; they edit the same project artifacts.
 
 ### `ClipKit: แบ่งเรื่อง "<video path>"`
 1. Read `<video path>.lines.json` (list of `{start, end, text}`, seconds). Missing = tell the person to press the button in the app again.
    If `<video path>.brief.txt` is there, it is what the person wants from this video in their own words (style, mood, which parts):
    choose and shape the stories to match it, still following every rule below.
 2. Split it following every rule in `prompts/story_split.md` (one point each, length follows the content (1-3 min; the clip step trims it), start on the hook, end on a finished sentence, skip greetings).
-3. Write `<video path>.stories.json` as UTF-8 JSON: `[{"title": "...", "summary": "...", "start": 12.3, "end": 95.0}]` with start/end taken from transcript lines.
-4. Reply with the list (number, title, length). The app picks the file up by itself within a few seconds.
+3. Run `python scripts/web_ai.py export stories "<video path>"`, read the packet, and write its complete answer
+   schema as UTF-8 to `<video path>.web-ai-stories.answer.json` (not directly to `.stories.json`).
+4. Run `python scripts/web_ai.py import stories "<video path>" "<video path>.web-ai-stories.answer.json"`
+   when working from the CLI. In the app, its active AI box polls and imports that saved answer instead; use only
+   one importer. Reply with the list (number, title, length) after validation succeeds.
 
 ### `ClipKit: แปลซับเป็นอังกฤษ "<CapCut project folder>"`
 1. Read `<folder>/clipkit_subs_th.json` (list of `{start, end, text}`).
@@ -86,6 +91,11 @@ to upload and imports its JSON answer (`prompts/web_ai/schema.md`). The files it
 
 ### `ClipKit: เลือกคำเน้น "<CapCut project folder>"`
 For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, in the project's preset).
+First run `python scripts/web_ai.py export clip "<folder>"` and read `<folder>/clipkit_web_ai.md`.
+The rules below describe choices for the packet's `lines`, `hook`, `caption`, and `motion` fields.
+Save one complete answer to `<folder>/clipkit_web_ai.answer.json`; import it with
+`python scripts/web_ai.py import clip "<folder>" "<folder>/clipkit_web_ai.answer.json"` for CLI work,
+or let the active app AI box import it. Do not use both: a clip answer may cut footage.
 1. Read `<folder>/clipkit_lines.json` (list of subtitle line texts, in order) and the whole clip's meaning.
 2. For every line, split it into short phrases of about 2 seconds / 10-18 Thai letters, in speaking order,
    breaking where a thought ends. Each phrase = `[lead, punch]`: the punch is the word or short phrase that
@@ -121,18 +131,18 @@ For the sentence-pair subtitles (normal lead line + bigger emphasis punch line, 
    an emotion on a face), add a third item: a short English stock-footage search, e.g.
    `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. Concrete nouns, 2-4 words, no brand names.
    Skip abstract phrases; never two b-roll phrases in a row.
-4. Write `<folder>/clipkit_punch.json` as `{"<line text>": [item, ...], ...}`, each item
+4. Fill the answer's `lines` with numbered entries and their items; the importer writes `clipkit_punch.json`. Each item is
    `[lead, punch]`, `[lead, punch, query]`, `[lead, punch, options]` or `[lead, punch, query, options]`
    covering every line.
-5. Clip title (every clip has one, on screen for the first 4 s; the subtitles start after it): write
-   `<folder>/clipkit_hook.json` as 1-2 lines `[{"text": "เริ่มทำธุรกิจใหม่", "color": "red"},
+5. Clip title (every clip has one, on screen for the first 4 s; the subtitles start after it): fill the answer's
+   `hook` with 1-2 lines `[{"text": "เริ่มทำธุรกิจใหม่", "color": "red"},
    {"text": "ทำสิ่งนี้ก่อน", "color": "white"}]`. Short punchy promise of the clip, ~8-16 letters per line, not a
    sentence from the talk. Colours per line: `white`, `orange` or `red`, any mix (red/white, white/orange,
    orange/white, one big red word...) - pick by the content: red for a warning or shock, orange for the promise.
    Examples of good titles: "ธุรกิจสมัยนี้ / ไม่ต้องแย่งทำเลอีกแล้ว", "ทำธุรกิจไม่เหนื่อย / ต้องรู้ 2 เรื่องนี้",
    "เงิน 5 แสนก็ไม่เอา!", "Burn out".
-6. Only when the project's preset has a `caption` (e.g. `with-caption`): write `<folder>/clipkit_caption.json`
-   as `{"<line text>": "<translation>"}` for every line, in the preset's caption `language` (default English; skip this step for `"th"`, which shows the spoken line itself) -
+6. Only when the packet has a non-null `caption_language`: fill `caption` as `{"1": "<translation>", ...}`
+   for every retained line, in that language (otherwise use null) -
    short and natural ("If I want to start my own business from scratch, let's say..."). Brand names stay.
 7. Tell the person the clip is ready to review in ClipKit (แท็บ ส่งออก > ดูตัวอย่าง).
 

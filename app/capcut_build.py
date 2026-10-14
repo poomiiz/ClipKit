@@ -96,7 +96,7 @@ def _texts(draft: dict, role: str, words: str, a: float, b: float, y: float, siz
     k = render.CAPCUT_PX * min(W, H) / 1080
     max_w = W * (min(render.safe_box(style)["w"], float(mat.get("line_max_width") or 1)) - abs(x))
     segs = [_text(draft, role, piece, pa, pb, y, round(px / k, 2), fill, stroke)
-            for piece, pa, pb, px in render.one_line(words, font, size * k, max_w, a, b)]
+            for piece, pa, pb, px in render.one_line(words, font, size * k, max_w, a, b, one=True)]
     for seg in segs:  # off the centre line and tilted (the second person's text)
         seg["clip"]["transform"]["x"] = x
         seg["clip"]["rotation"] = rot
@@ -188,7 +188,7 @@ def build(path: str) -> tuple[Path, list[str]]:
     # subtitles: the same choices as the MP4 (render._shown), each role on its own track like a hand-made project
     W, H = t["width"], t["height"]
     look = t["look"]
-    P = render.pair_look(st) if look == "pair" else None
+    P = render.pair_look(st, W, H) if look == "pair" else None
     whites, colours, captions, titles, seconds = [], [], [], [], []
     held = ""
     phrases = t["phrases"]
@@ -205,7 +205,7 @@ def build(path: str) -> tuple[Path, list[str]]:
         if white:
             whites += _texts(draft, "white", white, a, b, P["lead"][1], P["lead"][0], P["lead"][2], P["lead"][3], W, H, st)
         if colour:
-            hit = min(b - 0.05, a + 0.6) if white else a
+            hit = p["hit"] if white else a
             y, end = (render.upper_row(P, W, H), phrases[pairs[n]]["end"]) if n in pairs else (P["punch"][1], b)  # upper row waits
             colours += _texts(draft, "orange", colour, hit, end, y, P["punch"][0], rgb or P["punch"][2], P["punch"][3], W, H, st)
         second = (p.get("opts") or {}).get("second")
@@ -232,6 +232,17 @@ def build(path: str) -> tuple[Path, list[str]]:
     for h in t["hook"]:
         y = h["y"] + {"up": 0.04, "down": -0.05}.get(h["grow"], 0)  # CapCut places a text by its centre
         titles.append(_text(draft, "title", h["text"], h["start"], h["end"], y, h["size"], h["fill"], h["stroke"]))
+    for segments in (whites, colours, captions, titles, seconds):
+        visible = []
+        for segment in segments:
+            timerange = segment["target_timerange"]
+            a, b = timerange["start"] / US, (timerange["start"] + timerange["duration"]) / US
+            for start, end in render.visible_spans(a, b, t.get("motions", [])):
+                piece = copy.deepcopy(segment)
+                piece["id"] = _id()
+                piece["target_timerange"] = {"start": _us(start), "duration": _us(end - start)}
+                visible.append(piece)
+        segments[:] = visible
     _track(draft, "text", whites, 14001)
     _track(draft, "text", colours, 14002)
     _track(draft, "text", captions, 14003)
@@ -261,6 +272,21 @@ def build(path: str) -> tuple[Path, list[str]]:
         rolls.append(seg)
     _track(draft, "video", rolls, 1)
 
+    motions = []
+    for motion in t.get("motions", []):
+        info = video_edit.probe(motion["file"])
+        mat = copy.deepcopy(_T["broll"]["mat"])
+        mat.update(path=Path(motion["file"]).as_posix(), material_name=Path(motion["file"]).name,
+                   name=Path(motion["file"]).name, duration=_us(info["duration"]), width=info["width"], height=info["height"], type="video")
+        seg = _clone(draft, _T["broll"], mat, "videos")
+        seg["source_timerange"] = {"start": 0, "duration": _us(motion["duration"])}
+        seg["target_timerange"] = {"start": _us(motion["start"]), "duration": _us(motion["duration"])}
+        seg["clip"]["scale"] = {"x": 1.0, "y": 1.0}
+        seg["clip"]["transform"] = {"x": 0.0, "y": 0.0}
+        seg["volume"] = 0.0
+        motions.append(seg)
+    _track(draft, "video", motions, 2)
+
     # a click on every coloured word (one short click, ~30 % volume)
     fx = t["sfx"]
     clicks = []
@@ -289,6 +315,7 @@ def build(path: str) -> tuple[Path, list[str]]:
                 last = s["target_timerange"]["start"] + s["target_timerange"]["duration"]
         clicks = keep
     _track(draft, "audio", clicks, 0)
+    video_edit._drop_unused_materials(draft)
     capcut_edit._save(dst, draft, "capcut_build")
 
     mu = t["music"]

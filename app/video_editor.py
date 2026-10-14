@@ -891,17 +891,6 @@ def _overlays(path: str) -> list[dict[str, Any]]:
     return json.loads(f.read_text(encoding="utf-8")) if f.is_file() else []
 
 
-def _split2(text: str) -> tuple[str, str]:
-    """Two halves at the Thai word break that balances them (lead / punch, key / sub)."""
-    import render
-    from pythainlp.tokenize import word_tokenize
-    w = word_tokenize(render.unbreak(text), keep_whitespace=True)
-    if len(w) < 2:
-        return text, ""
-    i = min(range(1, len(w)), key=lambda k: abs(len("".join(w[:k])) - len("".join(w[k:]))))
-    return "".join(w[:i]).strip(), "".join(w[i:]).strip()
-
-
 @router.get("/draft/overlays")
 def draft_overlays(path: str = Query(...)) -> dict[str, Any]:
     try:
@@ -924,14 +913,26 @@ class OverlayRequest(BaseModel):
 @router.post("/draft/overlay")
 def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     import kit_settings
-    dur = round(min(6.0, max(3.0, req.end - req.start)), 2)
+    import math
+    import render
+    dur = round(req.end - req.start, 2)
     try:
+        if not math.isfinite(dur) or dur <= 0:
+            raise VideoEditError("motion ต้องมีเวลาเริ่มก่อนเวลาจบ")
         if req.params is not None:
             params, dur = motion_params(req.template, req.params, dur)
         elif req.template in QUICK_MOTION:
-            a, b = _split2(req.text)
-            params = ({"key": a, "sub": b, "duration": dur} if req.template == "hook-title"
-                      else {"pairs": [[0, dur, a, b, 0.8]]})
+            if req.template == "hook-title":
+                params = {"key": req.text, "sub": "", "style": "straight", "duration": dur}
+            else:
+                timeline = render.render_draft(req.path, "", dry=True)
+                tight = lambda text: "".join(render.unbreak(text).split())
+                phrases = [p for p in timeline["phrases"] if p["end"] > req.start and p["start"] < req.end
+                           and (tight(p["line"]) == tight(req.text) or tight(p["lead"] + p["punch"]) == tight(req.text))]
+                if not phrases:
+                    raise VideoEditError("หาประโยคและเวลาคำเน้นไม่พบ · เลือกบรรทัดจาก Timeline อีกครั้ง")
+                params = {"pairs": [[max(0, p["start"] - req.start), min(dur, p["end"] - req.start),
+                                     p["lead"], p["punch"], max(0, p["hit"] - max(req.start, p["start"]))] for p in phrases]}
         else:
             raise VideoEditError(f"{req.template} ต้องกรอกช่องของมันเอง (params)")
     except VideoEditError as exc:

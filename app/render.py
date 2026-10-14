@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import atomic
 import json
+import math
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,36 @@ import video_edit
 from video_edit import FFMPEG, VideoEditError, probe
 
 US = 1_000_000
+
+
+def visible_spans(a: float, b: float, motions: list[dict]) -> list[tuple[float, float]]:
+    """Full-frame motion owns its interval; keep text before and after it."""
+    spans = [(a, b)] if b > a else []
+    for motion in motions:
+        start, end = motion["start"], motion["start"] + motion["duration"]
+        spans = [(x, y) for lo, hi in spans for x, y in
+                 ((lo, min(hi, start)), (max(lo, end), hi)) if y > x]
+    return spans
+
+
+def check_motions(motions: list[dict], duration: float) -> None:
+    if not isinstance(motions, list):
+        raise VideoEditError("motion list must be an array")
+    for motion in motions:
+        if not isinstance(motion, dict) or any(isinstance(motion.get(k), bool) or not isinstance(motion.get(k), (int, float))
+                                             or not math.isfinite(motion[k]) for k in ("start", "duration")):
+            raise VideoEditError("motion start and duration must be finite seconds")
+    previous = 0.0
+    for motion in sorted(motions, key=lambda m: m["start"]):
+        a, b = motion["start"], motion["start"] + motion["duration"]
+        if a < 0 or b <= a or b > duration + 0.05 or a < previous - 0.001:
+            raise VideoEditError("motion is outside the timeline or overlaps another motion; adjust it before export")
+        if not isinstance(motion.get("file"), str) or not Path(motion["file"]).is_file():
+            raise VideoEditError("motion file is missing")
+        info = probe(motion["file"])
+        if motion["duration"] > info["duration"] + 0.05:
+            raise VideoEditError("motion duration exceeds its media; adjust it before export")
+        previous = b
 CAPCUT_PX = 5.2  # pixels per CapCut font-size unit per 1080 px of the canvas short side (same number the editor preview uses)
 FONTS = Path(__file__).resolve().parents[1] / "fonts"
 DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipKit so Thai always shapes
@@ -46,6 +78,20 @@ def safe_box(style: dict) -> dict:
 LOUDNESS = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"  # every export at the level the platforms play (-14 LUFS)
 # a few ms of fade on both sides of every jump cut: a cut mid-waveform clicks
 EDGE_FADE = 0.008
+
+
+def _video_encoder(preview: bool = False) -> list[str]:
+    """Explicit final H.264 encoder; FFmpeg errors are reported without switching hardware."""
+    encoder = video_edit.kitconfig._load().get("render_encoder", "libx264")
+    if encoder == "libx264":
+        options = ["-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20"]
+    elif encoder == "h264_nvenc":
+        options = ["-preset", "p1" if preview else "p4", "-rc", "vbr", "-cq", "28" if preview else "20", "-b:v", "0"]
+    elif encoder == "h264_videotoolbox":
+        options = ["-allow_sw", "0", "-b:v", "3M" if preview else "12M"]
+    else:
+        raise VideoEditError("render_encoder must be libx264, h264_nvenc or h264_videotoolbox")
+    return ["-c:v", encoder, *options, "-pix_fmt", "yuv420p"]
 
 
 def edge_fades(dur: float) -> str:
@@ -194,7 +240,7 @@ def _fit(text: str, font_file: Path, size: float, max_w: float, one: bool = Fals
     return lines, size if widest <= max_w else size * max_w / widest
 
 
-def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: float) -> list[tuple[str, float, float, float]]:
+def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: float, one: bool = False) -> list[tuple[str, float, float, float]]:
     """A subtitle that never takes two lines and never leaves the frame: text too wide for one line becomes
     pieces shown one after another over a..b (cut where the thought breaks, _best_break), each in time with its
     share of the letters. Only a single word wider than the frame is drawn smaller. [(piece, start, end, px)]"""
@@ -202,6 +248,9 @@ def one_line(text: str, font_file: Path, px: float, max_w: float, a: float, b: f
     from pythainlp.tokenize import word_tokenize
     font = ImageFont.truetype(str(font_file), 100)
     width = lambda t: font.getlength(t) * px / 100  # noqa: E731
+    if one:
+        whole = unbreak(text)
+        return [(whole, a, b, min(px, px * max_w / width(whole)) if width(whole) else px)] if whole and b > a else []
 
     def cut(words: list[str]) -> list[str]:
         whole = "".join(words).strip()
@@ -253,7 +302,7 @@ def preset_names() -> list[str]:
     return sorted(p.stem for p in PRESETS.glob("*.json"))
 
 
-def pair_look(style: dict) -> dict[str, Any]:
+def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[str, Any]:
     """The project's preset as (size, y, fill, outline colour, outline width) per role: lead (normal text),
     punch (emphasis), caption (or None)."""
     name = style.get("preset") or "default"
@@ -265,13 +314,27 @@ def pair_look(style: dict) -> dict[str, Any]:
         part = lambda r: (float(r["size"]), float(r["y"]), _rgb(r["color"]), _rgb(r["outline"]),  # noqa: E731
                           float(r["outline_width"]))
         second = p.get("second")
-        return {"lead": part(p["normal"]), "punch": part(p["emphasis"]),
+        look = {"lead": part(p["normal"]), "punch": part(p["emphasis"]),
                 "caption": part(p["caption"]) if p.get("caption") else None,
                 "caption_lang": (p.get("caption") or {}).get("language", "en"),
                 "caption_shadow": bool((p.get("caption") or {}).get("shadow")),
                 # the second person's short reactions: off the centre line and tilted, for movement on screen
                 "second": part(second) if second else None,
                 "second_at": (float(second.get("x", 0.3)), float(second.get("rotation", -6))) if second else None}
+        if W and H:
+            box = safe_box(style)
+            scale = CAPCUT_PX * min(W, H) / 1080
+            heights = [look[role][0] * scale * LINE_H for role in ("lead", "punch")]
+            gap = max(8, min(W, H) * 0.012)
+            if sum(heights) + gap > H * (box["bottom"] - box["top"]):
+                raise VideoEditError("ขนาดตัวปกติและคำเน้นใหญ่เกินพื้นที่ · ลดขนาดใน preset ก่อนส่งออก")
+            normal = H / 2 - look["lead"][1] * H / 2
+            punch = max(H / 2 - look["punch"][1] * H / 2, normal + sum(heights) / 2 + gap)
+            shift = max(0, punch + heights[1] / 2 - H * box["bottom"])
+            for role, center in (("lead", normal - shift), ("punch", punch - shift)):
+                values = look[role]
+                look[role] = (values[0], 1 - 2 * center / H, *values[2:])
+        return look
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise VideoEditError(f"preset {f.name} is broken: {exc}") from exc
 
@@ -334,7 +397,7 @@ def _hook(folder: Path) -> list[dict[str, Any]]:
     """clipkit_hook.json = [{"text": ..., "color": "white|orange|red"}] (1-2 lines, written by the agent) as
     lines to draw: text, size, y, fill, stroke, width. No file = no title; a broken file raises."""
     raw = _json(folder / "clipkit_hook.json", None)
-    if raw is None:
+    if raw is None or raw == []:
         return []
     if not isinstance(raw, list) or not 1 <= len(raw) <= 2 or any(
             not isinstance(x, dict) or not str(x.get("text", "")).strip() or x.get("color") not in HOOK_COLORS for x in raw):
@@ -483,26 +546,23 @@ def zoom_spans(segs: list) -> list[tuple[float, float]]:
     return out
 
 
-JOINERS = {"แต่", "และ", "ก็", "คือ", "เพราะ", "ซึ่ง", "แล้วก็", "หรือ", "ถ้า", "เลยทำให้", "ดังนั้น", "ส่วน"}
-
-
 def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
-          look: dict, picked: list | None = None, max_chars: int = 16, marks: list | None = None, held: dict | None = None) -> list[str]:
-    """Split a spoken line into phrases of about two seconds, each shown as lead + punch (look = pair_look()).
-    picked = the agent's [[lead, punch], ...] for this line (the words that carry the point); without it the
-    phrases break at breaths / ~16 letters / Thai joining words and the punch is the phrase's last words."""
-    from pythainlp.tokenize import word_tokenize
+          look: dict, picked: list | None = None, marks: list | None = None, held: dict | None = None) -> list[str]:
+    """Use the editor/AI's content split and the spoken word clock; keep the lead through the punch.
+    Without a chosen split, show the complete subtitle without inventing emphasis."""
     held = held if held is not None else {"white": ""}  # a "hold" white line carries over into the next subtitle line
     flat = unbreak(text)
-    at, total = _clock(spoken, t1 - t0), len(flat) or 1
+    at = _clock([[a, b, "".join(w.split())] for a, b, w in spoken] if spoken else None, t1 - t0)
+    total = len("".join(flat.split())) or 1
     phrases = []  # (lead, punch, start, punch time, last word time)
     if picked:
         tight = lambda t: "".join(t.split())  # noqa: E731  (spaces may be dropped, nothing else)
         if tight("".join(p[0] + p[1] for p in picked)) != tight(flat):
             raise VideoEditError(f"clipkit_punch.json does not match the subtitle line: {flat}")
-        # time of a position in the line, counting letters only (the agent may have dropped spaces)
-        letters = [i for i, c in enumerate(flat) if not c.isspace()]
-        when = lambda n: t0 + at(letters[min(n, len(letters) - 1)] / total)  # noqa: E731
+        if not spoken and any(p[1] for p in picked):
+            raise VideoEditError("ไม่มีเวลาระดับคำสำหรับคำเน้น · ถอดเสียงก่อน หรือเลือกซับธรรมดา")
+        # Match the chosen split to the original word clock, without changing its timing.
+        when = lambda n: t0 + at(min(n, total - 1) / total)  # noqa: E731
         n = 0
         for lead, punch, *rest in picked:
             a, hit = when(n), when(n + len(tight(lead)))
@@ -510,34 +570,10 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
             query = next((x for x in rest if isinstance(x, str)), "")
             opts = next((x for x in rest if isinstance(x, dict)), None)
             phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1), query, opts))
+        if any(first[2] >= second[2] for first, second in zip(phrases, phrases[1:])):
+            raise VideoEditError("ท่อนที่แบ่งละเอียดกว่าเวลาคำพูด · รวมท่อนให้ตรงขอบคำ หรือถอดเสียงระดับคำใหม่")
     else:
-        timed, pos = [], 0
-        for tok in word_tokenize(flat, keep_whitespace=True):
-            timed.append((tok, t0 + at(pos / total)))
-            pos += len(tok)
-        chunks, cur = [], []
-        for k, (tok, t) in enumerate(timed):
-            gap = k and tok.strip() and t - timed[k - 1][1] > 0.6
-            joiner = tok.strip() in JOINERS and sum(len(x) for x, _ in cur) >= 6  # a new thought starts here
-            if cur and (gap or joiner or sum(len(x) for x, _ in cur) >= max_chars):
-                chunks.append(cur)
-                cur = []
-            cur.append((tok, t))
-        if cur:
-            chunks.append(cur)
-        for ch in chunks:
-            words = [x for x, _ in ch]
-            real = [i for i, w in enumerate(words) if w.strip()]
-            if not real:
-                continue
-            # punch = trailing words worth ~40% of the letters (at least one word); lead = the rest
-            cut, acc, size = real[-1], 0, sum(len(w) for w in words)
-            for i in reversed(real):
-                acc += len(words[i])
-                cut = i
-                if acc >= size * 0.4:
-                    break
-            phrases.append(("".join(words[:cut]).strip(), "".join(words[cut:]).strip(), ch[0][1], ch[cut][1], ch[-1][1], "", None))
+        phrases.append((flat, "", t0, t0, t1, "", None))
     k = min(W, H) / 1080 * CAPCUT_PX
 
     def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False, x: float = 0, rot: float = 0) -> str:
@@ -546,11 +582,12 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         out = []
         room = W * (held.get("box", safe_box({}))["w"] - abs(x))  # off-centre text has less width before the edge
         shad = 5 if part is look["caption"] and look["caption_shadow"] else 2  # the reading subtitle's dark shadow
-        for piece, pa, pb, px in one_line(words, font_file, size * k, room, a, b):
+        for piece, pa, pb, px in one_line(words, font_file, size * k, room, a, b, one=True):
             if px < size * k:  # one word wider than the frame: shown smaller, listed for the editor
                 held.setdefault("shrunk", []).append({"at": round(pa, 2), "text": piece})
             safe = _safe_y(H / 2 - y * H / 2, px, H, held)
-            out.append(f"Dialogue: 0,{_ts(pa)},{_ts(pb)},S,,0,0,0,,{{\\an5\\pos({W / 2 + x * W / 2:.0f},{safe:.0f})\\frz{-rot:g}\\fn{fam}"
+            for va, vb in visible_spans(pa, pb, held.get("motions", [])):
+                out.append(f"Dialogue: 0,{_ts(va)},{_ts(vb)},S,,0,0,0,,{{\\an5\\pos({W / 2 + x * W / 2:.0f},{safe:.0f})\\frz{-rot:g}\\fn{fam}"
                        f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
                        f"\\shad{shad}{extra if pa == a else ''}}}" + piece)
         return "\n".join(out)
@@ -562,14 +599,13 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     thai = look["caption_lang"] == "th"  # the reading subtitle is the whole spoken line, going on with the voice
     for n, (lead, punch, a, hit, last, query, opts) in enumerate(phrases):
         b = ends[n]
-        # the punch lands when it is said, but never leaves the lead alone on screen for long (slow talkers)
-        hit = min(b - 0.05, max(a + 0.2, min(hit, a + 0.6)))
+        hit = max(a, min(hit, b - 0.01))
         white, colour, rgb = _shown(lead, punch, opts, held["white"])
         held["white"] = white or held["white"]
         if a < held.get("until", 0):  # the clip title owns the screen for its first seconds
             white = colour = ""
         if marks is not None:  # moments for sound effects, b-roll, and the editor's timeline
-            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts))
+            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts, round(hit if white else a, 2)))
             if colour:
                 marks.append(("pop", hit if white else a))
             if query:
@@ -704,8 +740,11 @@ def _music(style: dict[str, Any]) -> str | None:
 
 
 def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False) -> dict[str, Any]:
+    encoder = _video_encoder(preview)
     folder = Path(path)
     draft = capcut_edit._load(folder)
+    import draft_quality
+    quality = draft_quality.check(path)
     index = capcut_edit._index(draft)
     W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
     video = capcut_edit._video_track(draft)
@@ -748,6 +787,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     events, font_files, family = [], set(), None
     olist = folder / "clipkit_overlays.json"
     overlays = json.loads(olist.read_text(encoding="utf-8")) if olist.is_file() else []
+    check_motions(overlays, sum(s["target_timerange"]["duration"] for s in segs) / US)
     # subtitle look chosen in the editor: none (still), pop (bounce in), karaoke (the spoken word lights up)
     style = _json(folder / "clipkit_style.json", {})
     # colour: the editor's sliders (or the auto pick) on the footage only, never on text or b-roll
@@ -776,14 +816,11 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     hook = _hook(folder)
     held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption.json", {}),
-            "box": safe_box(style)}
+            "box": safe_box(style), "motions": overlays}
     for s in sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"]):
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
             continue
-        at = s["target_timerange"]["start"] / US
-        if any(o["start"] - 0.05 <= at < o["start"] + o["duration"] for o in overlays):
-            continue  # a motion shows this line's words already: no second copy as a subtitle
         body = json.loads(m["content"])
         st = (body.get("styles") or [{}])[0]
         fam, fdir = _font((st.get("font") or {}).get("path") or m.get("font_path"))
@@ -800,9 +837,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         t1 = t0 + s["target_timerange"]["duration"] / US
         if anim == "pair":
             spoken = said.get(body.get("text", ""))
-            estimated += spoken is None
+            estimated += not bool(spoken)
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            pair_look(style), punches.get(body.get("text", "")), marks=marks, held=held)
+                            pair_look(style, W, H), punches.get(body.get("text", "")), marks=marks, held=held)
             shown += 1
             continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
@@ -813,19 +850,18 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         y = _safe_y(y, len(lines) * size, H, held)
         if anim == "karaoke":
             spoken = said.get(body.get("text", ""))
-            estimated += spoken is None
+            estimated += not bool(spoken)
             pieces = [(t0 + a, t0 + b, w) for a, b, w in
                       _karaoke(lines, spoken, t1 - t0, _ass_color(fill), _ass_color(highlight))]
         else:
             pieces = [(t0, t1, "\\N".join(lines))]
         shown += 1
         pop = "\\fscx70\\fscy70\\t(0,120,\\fscx108\\fscy108)\\t(120,200,\\fscx100\\fscy100)" if anim == "pop" else ""
-        for a, b, words in pieces:
-            if a < held["until"]:
-                continue
-            events.append(f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
-                          f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
-                          f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}{pop}}}{words}")
+        for pa, pb, words in pieces:
+            for a, b in visible_spans(max(pa, held["until"]), pb, overlays):
+                events.append(f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
+                              f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
+                              f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}{pop}}}{words}")
     if hook:
         hfam, hfile = _font(None)
         family = family or hfam
@@ -834,7 +870,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         for n, h in enumerate(hook):
             lines, px = _fit(h["text"], hfile, h["size"] * kk, W * held["box"]["w"], True)
             an = {"up": 2, "down": 8}.get(h["grow"], 5)
-            events.append(f"Dialogue: 1,{_ts(h['start'])},{_ts(h['end'])},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
+            for ha, hb in visible_spans(h["start"], h["end"], overlays):
+                events.append(f"Dialogue: 1,{_ts(ha)},{_ts(hb)},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
                           f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"
                           f"\\bord{px * h['width'] * 0.6 + 2:.1f}\\shad2\\fad(0,150)\\fscx120\\fscy120"
                           f"\\t({n * 150},{n * 150 + 160},\\fscx100\\fscy100)}}" + lines[0])
@@ -845,7 +882,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{folder.name}{' - ตัวอย่าง' if preview else ''}.mp4"
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=out) as tmp:
         base = "[vo]"
         if style.get("zoomcut"):
             zin = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in zoom_spans(segs)) or "0"
@@ -941,8 +978,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                     "hook": hook, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
                     "progress": bool(style.get("progress")), "emoji": emoji,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
-                                 "query": m[7], "opts": m[8] if len(m) > 8 else None} for m in marks if m[0] == "phrase"],
-                    "broll": plan, "motions": overlays, "music": {"file": music_file or "", "volume": music_vol},
+                                 "query": m[7], "opts": m[8] if len(m) > 8 else None,
+                                 "hit": m[9] if len(m) > 9 else m[1]} for m in marks if m[0] == "phrase"],
+                    "broll": plan, "motions": overlays, "quality": quality, "music": {"file": music_file or "", "volume": music_vol},
                     "sfx": fx, "edited": placed is not None, "shrunk": held.get("shrunk", []), "source": src, "src_w": info["width"], "src_h": info["height"],
                     "fit": {"w": vw, "h": vh, "x": ox, "y": oy},
                     "pops": [m[1] for m in marks if m[0] == "pop"],
@@ -964,13 +1002,17 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                 graph += f";[{n}:a]adelay={ms}|{ms},volume={(0.5 if kind == 'pop' else 0.35) * fx['volume']:.3f}[s{k}]"
                 mix.append(f"[s{k}]")
         graph += f";{''.join(mix)}amix=inputs={len(mix)}:normalize=0:duration=first,{LOUDNESS}[aout]"
+        encoded = Path(tmp) / "export.mp4"
         cmd = [FFMPEG, "-y", "-ss", f"{seek:.3f}", "-i", src, *ins, "-filter_complex", graph, "-map", vout, "-map", "[aout]",
-               "-c:v", "libx264", "-preset", "ultrafast" if preview else "veryfast", "-crf", "28" if preview else "20",
-               "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(target)]
+               *encoder, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(encoded)]
+        started = time.monotonic()
         r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
-    if r.returncode != 0 or not target.is_file():
-        raise VideoEditError("export failed: " + r.stderr.strip()[-800:])
+        encode_seconds = round(time.monotonic() - started, 3)
+        if r.returncode != 0 or not encoded.is_file() or not encoded.stat().st_size:
+            raise VideoEditError(f"export failed ({encoder[1]}): " + r.stderr.strip()[-800:])
+        encoded.replace(target)
     return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
+            "encoder": encoder[1], "encode_seconds": encode_seconds,
             "broll": [it["query"] for it in plan], "broll_items": plan, "music": Path(music_file).name if music_file else None,
             "music_file": music_file or "", "music_volume": music_vol, "sfx_on": fx["on"], "sfx_volume": fx["volume"],
             "sfx": len(sfx) if fx["on"] else 0, "preview": preview,

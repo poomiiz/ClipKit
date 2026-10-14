@@ -95,7 +95,7 @@
     // punch: smear in from the left, squash back to normal
     gsap.set(pu, { xPercent: -50 });
     tl.fromTo(pu, { opacity: 0, x: -160, scaleX: 1.9, filter: "blur(10px) drop-shadow(0 6px 10px rgba(0,0,0,0))" },
-                  { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.55))", duration: SMEAR, ease: "power2.out" }, start + delay / SPEED);
+                  { opacity: 1, x: 0, scaleX: 1, filter: "blur(0px) drop-shadow(0 6px 10px rgba(0,0,0,.55))", duration: SMEAR, ease: "power2.out" }, start + delay);
     tl.set(p, { opacity: 0 }, end);
   });
 

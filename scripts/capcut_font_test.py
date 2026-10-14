@@ -47,7 +47,7 @@ class CapCutFontTests(unittest.TestCase):
         (project / "draft_content.json").write_text(json.dumps(draft), encoding="utf-8")
         return project
 
-    def run_build(self, base, *, templates=None, installed=False, default_font=None):
+    def run_build(self, base, *, templates=None, installed=False, default_font=None, timeline=None):
         project = self.make_project(base)
         resources, fonts, data = base / "resources", base / "fonts", base / "user data"
         for folder in (resources, fonts, data):
@@ -63,7 +63,7 @@ class CapCutFontTests(unittest.TestCase):
                 shutil.copyfile(build.render.DEFAULT_FONT, target)
         config = {"fonts_dir": str(fonts), "capcut_resources": str(resources),
                   "capcut_user_data": str(data)}
-        timeline = {"style": {}, "zoom": [], "width": 1080, "height": 1920, "look": "plain",
+        timeline = timeline or {"style": {}, "zoom": [], "width": 1080, "height": 1920, "look": "plain",
                     "phrases": [], "hook": [], "broll": [], "sfx": {"on": False}, "music": {}}
         with ExitStack() as stack:
             stack.enter_context(patch.object(build.host_platform, "is_macos", return_value=True))

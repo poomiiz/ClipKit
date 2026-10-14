@@ -9,7 +9,10 @@ on this machine from its own media files.
 | `stories` | `<video>.web-ai-stories.md` | `stories.md` + `../story_split.md` | `<video>.stories.json` |
 | `clip` | `<project>/clipkit_web_ai.md` | `clip.md` | `clipkit_punch.json`, `clipkit_hook.json`, `clipkit_caption.json` (only when the preset has a translated caption), motion (`clipkit_overlays.json`) |
 
-From the app: the "AI บนเว็บ" box under the paste-to-Claude command (story split, and เลือกคำเน้น). From a terminal:
+From the app: download one file from the AI box, attach it to a browser AI without an extra prompt, then paste
+the JSON answer back. A local agent is optional: it reads the same packet and saves the same answer schema.
+Manual editing uses the editor's phrases, title and motion controls without requiring an AI service.
+From a terminal:
 
     python scripts/web_ai.py export stories "<video>"
     python scripts/web_ai.py import stories "<video>" answer.json
@@ -18,8 +21,15 @@ From the app: the "AI บนเว็บ" box under the paste-to-Claude command 
     python scripts/web_ai.py import clip "<project folder>" answer.json
     python scripts/run_clip.py "<video>" --capcut            # same command again: carries on to the CapCut project
 
-The answer may be pasted bare or inside a ```json block. Every field is checked before anything is written; a bad
-answer raises with the line at fault and changes nothing (motion is rendered last, after the files are written).
+The answer may be pasted bare or inside a ```json block. Local agents save stories answers to
+`<video>.web-ai-stories.answer.json`, or clip answers to `<project>/clipkit_web_ai.answer.json`. Use the CLI import
+above or let the active app AI box import the saved answer; do not import it twice, because it may cut footage.
+The importer validates the answer before writing artifacts; motion rendering and disk failures can still occur
+after writing starts. Re-export after edits or cuts before asking for another answer.
+
+AI emits this answer schema, never a replacement `draft_content.json`. EditorKrab builds native projects locally
+using installed media and templates. A parsed JSON file is not proof that CapCut opens it; subtitle timestamp
+coverage is not proof of alignment to audible speech. Preview and listening checks remain required.
 
 ## Common fields
 

@@ -2613,7 +2613,7 @@ async function autoRun() {
       `ภาพประกอบที่ใส่: ${p.broll.length ? p.broll.join(', ') : 'ไม่มี'}`, `เพลง: ${p.music || 'ไม่มี'}`,
       `เสียงเอฟเฟกต์ ${p.sfx} จุด`, p.karaoke_estimated ? `⚠️ ${p.karaoke_estimated} บรรทัดไม่มีเวลาของคำ` : ''].filter(Boolean).join(' · ');
     document.getElementById('rvAgent').innerHTML = r.punch_picked ? '' :
-      agentBox(r.agent_command, 'อยากได้คำเน้นที่ตรงใจความ + ภาพประกอบ ส่งคำสั่งนี้ให้ Claude แล้วกด "ทำให้ครบ" อีกครั้ง');
+      webAiBox('clip', state.draft.path, 'เลือกคำเน้นและหัวคลิปด้วย AI');
     renderGuide(state.draft);
     plLoad();
   } catch (e) { busy.textContent = '❌ ' + ckErr(e); }
@@ -2789,16 +2789,27 @@ function webAiBox(step, target, note) {
     let polling = false;
     const done = async r => {
       if (step === 'stories') { el('msg').textContent = '✓ นำเข้า ' + r.stories.length + ' เรื่อง'; return; }
-      el('msg').innerHTML = '<span class="spin"></span> นำเข้า ' + r.lines + ' บรรทัดแล้ว' + (r.cut ? ' · ตัดทิ้ง ' + r.cut + ' บรรทัด' : '') + ' · กำลังสร้างโปรเจกต์ CapCut ใหม่…';
-      const p = await api('draft/prepare', {path: target});  // the "· CapCut" copy is rebuilt with the AI's emphasis + title
-      el('msg').textContent = '✅ ' + p.steps.join(' · ') + ' · เปิด CapCut แล้วหาโปรเจกต์ชื่อลงท้าย "· CapCut"' + (r.same_text ? ' · ⚠️ ' + r.same_text : '');
+      el('msg').textContent = 'นำเข้าแล้ว · กำลังอัปเดตโปรเจกต์';
+      const timeline = await api('draft/timeline?path=' + encodeURIComponent(target));
+      if (timeline.via !== 'clipkit') await api('draft/prepare', {path: target, capcut: true});
+      const refreshed = await api('drafts');
+      drafts = refreshed.drafts;
+      if (state.draft && state.draft.path === target) {
+        state.draft = drafts.find(d => d.path === target) || state.draft;
+        renderGuide(state.draft);
+        loadFilmstrip();
+      }
+      el('msg').textContent = (timeline.via === 'clipkit' ? 'นำเข้าแล้ว · ดูตัวอย่างก่อนส่งออก' : 'สร้างแล้ว · เปิดโปรเจกต์ลงท้าย · CapCut') + (r.same_text ? ' · ⚠️ ' + r.same_text : '');
     };
     const poll = async () => {  // until the box is replaced or the saved answer is in
       if (!el('dl')) return;
       try {
         const r = await api('web-ai/import', {step, target, answer: ''});
-        if (!r.waiting) { polling = false; return done(r); }
-      } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
+        if (!r.waiting) { polling = false; await done(r); return; }
+      } catch (e) {
+        el('msg').textContent = '❌ ' + ckErr(e);
+        if (!polling) return;  // the answer was imported; retrying could cut the footage twice
+      }
       setTimeout(poll, 3000);
     };
     el('dl').onclick = async () => {
