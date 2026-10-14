@@ -1,13 +1,44 @@
 """A learned preset uses the displayed size, including the editor's scale."""
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from preset_from_capcut import learn
 
 
 class PresetScale(unittest.TestCase):
+    def test_library_roundtrip_keeps_layout_without_sharing_local_font_path(self):
+        from urllib.parse import parse_qs, urlparse
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            config = p / "config.json"
+            config.write_text("{}", encoding="utf-8")
+            with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+                import style_lab
+            self.project(p, {"normal": {}, "emphasis": {}})
+            style = learn(p)
+            style["font"] = "C:/private/fonts/reference.ttf"
+            lab = p / "lab"
+            lab.mkdir()
+            (lab / "style.json").write_text(json.dumps(style), encoding="utf-8")
+            (lab / "source.json").write_text('{"source":"private-project"}', encoding="utf-8")
+            (lab / "preview.gif").touch()
+            presets = p / "presets"
+            presets.mkdir()
+            with patch.object(style_lab, "PRESETS", presets), patch.object(style_lab, "PARTS", p / "parts"), \
+                    patch.object(style_lab, "PREVIEWS", p / "previews"), patch.object(style_lab, "_render"), \
+                    patch.object(style_lab, "_repo", return_value="example/project"):
+                style_lab.save(lab, "trial", parts=["main"])
+                saved = json.loads((presets / "my-trial.json").read_text(encoding="utf-8"))
+                self.assertTrue(saved["fixed_size"])
+                self.assertEqual(saved["font"], style["font"])
+                body = parse_qs(urlparse(style_lab.share("my-trial")["url"]).query)["body"][0]
+                self.assertNotIn(style["font"], body)
+                self.assertIn('"fixed_size": true', body)
+
     def project(self, folder, scale):
         texts, segments = [], []
         for role, color, y in (("normal", [1, 1, 1], -.366), ("emphasis", [0, 0, .5], -.484759)):
