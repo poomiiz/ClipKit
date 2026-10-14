@@ -14,7 +14,7 @@
   "_card_font_note": "optional: any installed font, only used for quick preview renders; editors pick their own fonts in CapCut",
   "whisper_model": "large-v3",
   "whisper_device": "cuda",
-  "speech_language": "th",
+  "speech_language": "auto",
   "_speech_language_note": "language spoken in the clips: a Whisper code (th, en, ja, ...) or auto = detected per file; Thai-only clean-up runs only for th",
   "pixabay_key": "",
   "bot_api_url": "",

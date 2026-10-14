@@ -243,6 +243,72 @@ def stories_are_not_transcribed_twice():
         assert capcut_edit._from_transcript(str(video), 11.0, 15.0) is None, "a phrase cut by the edge was reused"
 
 
+def transcription_detects_the_source_language():
+    import video_edit
+    from unittest.mock import patch
+    with patch.object(video_edit.kitconfig, "_load", return_value={}), \
+         patch.object(video_edit, "_get_model", return_value=(object(), "test")), \
+         patch.object(video_edit, "_extract_audio"), \
+         patch.object(video_edit, "_detect_language", return_value="th") as detect, \
+         patch.object(video_edit, "_batched", return_value=[]) as recognize:
+        video_edit.transcribe("source.mp4", 0, 30)
+        assert detect.call_count == 1
+        assert recognize.call_args.args[2] == "th"
+        video_edit.transcribe("source.mp4", 0, 30, language="en")
+        assert detect.call_count == 1, "an explicit source language was detected again"
+        assert recognize.call_args.args[2] == "en"
+
+
+def uncertain_turbo_language_uses_an_installed_model():
+    import video_edit
+    import numpy as np
+    from unittest.mock import Mock, patch
+    weak, stronger = Mock(), Mock()
+    weak.detect_language.return_value = ("th", 0.43, [("th", 0.43), ("en", 0.2)])
+    stronger.detect_language.return_value = ("th", 0.9, [("th", 0.9), ("en", 0.02)])
+    previous = video_edit._model
+    with patch("faster_whisper.audio.decode_audio", return_value=np.zeros(16000)), \
+         patch("faster_whisper.utils.download_model", return_value="installed") as cached, \
+         patch("faster_whisper.WhisperModel", return_value=stronger) as load:
+        assert video_edit._detect_language(weak, Path("source.wav"), model_size="large-v3-turbo") == "th"
+        assert cached.call_args.kwargs["local_files_only"] is True
+        load.assert_called_once_with("installed", device="cpu", compute_type="int8", local_files_only=True)
+        assert video_edit._model is previous
+        stronger.detect_language.return_value = weak.detect_language.return_value
+        try:
+            video_edit._detect_language(weak, Path("source.wav"), model_size="large-v3-turbo")
+            raise AssertionError("two uncertain detectors must not assume a language")
+        except video_edit.VideoEditError as exc:
+            assert "cannot tell the spoken language" in str(exc)
+        cached.side_effect = FileNotFoundError("not installed")
+        try:
+            video_edit._detect_language(weak, Path("source.wav"), model_size="large-v3-turbo")
+            raise AssertionError("a missing second model must not assume a language")
+        except video_edit.VideoEditError as exc:
+            assert "select the spoken language" in str(exc)
+
+
+def legacy_cli_uses_the_shared_language_detector():
+    import clipkit
+    import video_edit
+    import kitconfig
+    from types import SimpleNamespace
+    from unittest.mock import Mock, patch
+    model = Mock()
+    model.transcribe.return_value = ([], SimpleNamespace(language="en"))
+    args = SimpleNamespace(model="large-v3", device="cpu", input="source.mp4", language=None)
+    with patch.dict(kitconfig.CFG, {"speech_language": "auto"}), \
+         patch("faster_whisper.WhisperModel", return_value=model), \
+         patch.object(video_edit, "_detect_language", return_value="en") as detect:
+        try:
+            clipkit.cmd_transcribe(args)
+            raise AssertionError("empty recognition should report no speech")
+        except RuntimeError as exc:
+            assert "no speech found" in str(exc), exc
+        assert detect.call_count == 1
+        assert model.transcribe.call_args.kwargs["language"] == "en"
+
+
 def run_clip_follows_speech_language():
     # run_clip passed "th" to the whole-file transcribe, so config.json "speech_language" never reached the CLI
     import run_clip

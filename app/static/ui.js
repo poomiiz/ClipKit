@@ -73,7 +73,7 @@
   document.head.insertAdjacentHTML('beforeend', '<style>html.ck-i18n-wait body{visibility:hidden}' +
     'body.dropping::after{content:"Drop video files or folders here"!important}</style>');
   const reveal = () => root.classList.remove('ck-i18n-wait');
-  const TH = /[฀-๿]/, ATTRS = ['title', 'placeholder', 'aria-label'];
+  const TH = /[฀-๿]/, ATTRS = ['title', 'placeholder', 'aria-label', 'alt'];
   const SKIP = 'script,style,textarea,[contenteditable],[translate=no]';
   fetch('/i18n/en.json').then(r => { if (!r.ok) throw new Error('i18n ' + r.status); return r.json(); }).then(dict => {
     const keys = Object.keys(dict).sort((a, b) => b.length - a.length);

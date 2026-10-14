@@ -55,8 +55,8 @@ PHRASE_PARSERS = {"ja": "load_default_japanese_parser", "zh": "load_default_simp
 
 def speech_language() -> str:
     """The language people speak in the clips: config.json "speech_language", a Whisper code ("th", "en", ...)
-    or "auto" = the recogniser decides once per file. Thai unless set."""
-    return kitconfig._load().get("speech_language") or "th"
+    or "auto" = the recogniser decides once per file. Automatic unless set."""
+    return kitconfig._load().get("speech_language") or "auto"
 
 
 def whisper_model() -> str:
@@ -359,7 +359,7 @@ def english_terms(text: str) -> str:
 def transcribe(path: str, start: float, end: float, language: str | None = None,
                model_size: str | None = None, window: float = 15.0) -> list[dict[str, Any]]:
     """Speech to timed phrases, in clip-relative seconds. language None = speech_language(); "auto" = detected
-    once from the start of the file, so every window is read as the same language.
+    once across samples of the source, so every window is read as the same language.
 
     The audio is cut into fixed 15 s windows: on a long file the recogniser sometimes returns nothing for the
     first half-minute, which silently loses subtitles, and 30 s windows lost about a quarter of the words.
@@ -374,7 +374,7 @@ def transcribe(path: str, start: float, end: float, language: str | None = None,
         _extract_audio(path, start, end, full)
         language = language or speech_language()
         if language == "auto":
-            language = _detect_language(model, full)
+            language = _detect_language(model, full, model_size=_engine.split("/")[0])
         if kitconfig._load().get("whisper_batched", True):
             phrases = _batched(model, full, language, window)
         else:
@@ -390,7 +390,8 @@ def transcribe(path: str, start: float, end: float, language: str | None = None,
     return phrases
 
 
-def _detect_language(model, wav: Path, samples: int = 5, lowest: float = 0.5) -> str:
+def _detect_language(model, wav: Path, samples: int = 5, lowest: float = 0.5,
+                     model_size: str | None = None) -> str:
     """The language spoken across the file: the recogniser's odds averaged over up to `samples` 30 s windows
     spread through it. Its own detection reads only the first 30 s and stops at 0.5: physicsworks.wav
     (English) came out Dutch at 0.52 and half its subtitles were Dutch. Below `lowest` it raises."""
@@ -405,6 +406,19 @@ def _detect_language(model, wav: Path, samples: int = 5, lowest: float = 0.5) ->
             odds[lang] = odds.get(lang, 0.0) + p / len(starts)
     lang = max(odds, key=odds.get)
     if odds[lang] < lowest:
+        if model_size == "large-v3-turbo":
+            # Turbo gave Thai 0.43 on the long-video trial; retry with an installed full model.
+            from faster_whisper import WhisperModel
+            from faster_whisper.utils import download_model
+            try:
+                cached = download_model("large-v3", local_files_only=True,
+                                        cache_dir=kitconfig._load().get("models_dir") or None)
+            except Exception as exc:
+                raise VideoEditError("turbo cannot identify the language confidently; select the spoken language "
+                                     "or install large-v3 for a second check") from exc
+            # Keep the transcription model on its chosen device; the second check needs no extra VRAM.
+            stronger = WhisperModel(cached, device="cpu", compute_type="int8", local_files_only=True)
+            return _detect_language(stronger, wav, samples, lowest, model_size="large-v3")
         raise VideoEditError(f"cannot tell the spoken language (best guess {lang}, {odds[lang]:.2f}): "
                              'set config.json "speech_language" to its code, e.g. "en"')
     return lang
