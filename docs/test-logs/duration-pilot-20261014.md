@@ -43,3 +43,18 @@ git diff --check
 All listed checks passed locally. New import fixtures use temporary configuration so clean-checkout CI does not require a user's `config.json`. Numeric and structural evidence is in [duration-pilot-20261014.json](duration-pilot-20261014.json).
 
 Human listening, uncertain names and ASR spelling remain pending. The low-resolution source artwork has baked-in large text, so this is a timing/contract pilot rather than polished visual acceptance. This pilot uses the normal/emphasis subtitle path, with zero standalone full-frame motion overlays. No native CapCut export, external provider acceptance, eight-video benchmark, installer release, Mac hardware acceptance or measured time-saving claim follows. Source media, full transcript, answers, project paths and login state stay private. The changes remain on the draft PR branch until reviewed and merged.
+
+## Review follow-up: overflow and cut timing
+
+The user's subsequent native screenshots show a long subtitle leaving the CapCut frame. Opening and playing the earlier pilot established compatibility, not a visual pass for every line. The pilot therefore remains rejected for native long-text layout. The writer now synchronizes `text_size`, `font_size` and nested style size, and resolves the material's family names from its actual font file. The previous template retained size 24 and a different font title while generated sizes were smaller. Metadata regression checks pass; this is a candidate correction until verified in native CapCut. The user stopped Computer Use with Escape before that comparison, so no further native input was issued.
+
+Silence/cut timing now has a shared regression using the real trim and dry-render paths: removing 1.5 seconds moves the keyword from 4.0 to 2.5 seconds; normal text and emphasis hold together until the replacement at 4.5 seconds. Text tracks, relative word times and later motion/B-roll placements use the resulting timeline. Unsorted/overlapping cuts are normalized; short remaining subtitles are not stretched to an invented 0.4 seconds. A cut through an already-rendered motion or B-roll interval is refused before writes with instructions to regenerate it after cutting, because merely shortening that media would retain its old internal timing. Undo restores the timing sidecars too.
+
+```powershell
+python scripts/trim_timing_test.py
+python scripts/capcut_font_test.py
+```
+
+Seven trim regressions and six font metadata regressions pass locally. Existing native extra video/audio tracks are refused before mutation; cut in EditorKrab before adding those tracks. Arbitrary native-track retiming is not supported by this patch.
+
+The first CI attempt for `554f7ca` failed because Chocolatey returned HTTP 504 while installing FFmpeg; the failed job was retried without hiding checks. Windows tests, installer and both Mac CI jobs subsequently passed. This is separate from native visual and human audio acceptance, which remain open.

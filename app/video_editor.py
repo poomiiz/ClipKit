@@ -1444,7 +1444,7 @@ class CutRange(BaseModel):
     end: float
 
 
-UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_placed.json")
+UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_placed.json", "clipkit_overlays.json")
 
 
 @router.post("/draft/cut")
@@ -1465,19 +1465,6 @@ def draft_cut(req: CutRange) -> dict[str, Any]:
     except VideoEditError as exc:
         shutil.rmtree(undo)
         raise HTTPException(400, str(exc)) from exc
-    gone = req.end - req.start
-    placed = folder / "clipkit_placed.json"
-    if placed.is_file():  # b-roll after the cut moves up with the talk; b-roll inside it goes with it
-        pl = json.loads(placed.read_text(encoding="utf-8"))
-        keep = []
-        for b in pl.get("broll", []):
-            if b["start"] >= req.end:
-                b["start"] = round(b["start"] - gone, 2)
-                keep.append(b)
-            elif b["start"] + b["dur"] <= req.start:
-                keep.append(b)
-        pl["broll"] = keep
-        atomic.write_text(placed, json.dumps(pl, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"length": r.get("result_length"), "undo": len(list((folder / "clipkit_undo").iterdir()))}
 
 
@@ -1492,6 +1479,9 @@ def draft_uncut(req: DraftPath) -> dict[str, Any]:
     for name in UNDO_FILES:
         if (steps[-1] / name).is_file():
             shutil.copy2(steps[-1] / name, Path(req.path) / name)
+    restored = (Path(req.path) / "draft_content.json").read_text(encoding="utf-8")
+    capcut_edit._seal(Path(req.path), restored)
+    capcut_edit.sync_timeline(Path(req.path), restored)
     shutil.rmtree(steps[-1])
     return {"undo": len(steps) - 1}
 

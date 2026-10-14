@@ -9,6 +9,7 @@ from __future__ import annotations
 import atomic
 import copy
 import json
+import math
 import os
 import re
 import shutil
@@ -740,10 +741,12 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     # still there on re-transcription - a hand edit of the same talk has 40.
     cursor = 0.0
     for a, b in ranges or []:
+        if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in (a, b)) or b <= a:
+            raise VideoEditError("ช่วงตัดต้องมีเวลาเริ่มก่อนเวลาจบ และเป็นวินาทีที่ถูกต้อง")
         a, b = max(0.0, a), min(total, b)
         if b - a > 0.05:
             cuts.append({"start": round(a, 3), "end": round(b, 3), "gain": round(b - a, 3)})
-    for segment in ([] if ranges else video["segments"]):
+    for segment in ([] if ranges is not None else video["segments"]):
         start = segment["source_timerange"]["start"] / US
         length = segment["source_timerange"]["duration"] / US
         for q in quiet_spans(source, start, start + length):
@@ -751,6 +754,18 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                 cuts.append({"start": round(cursor + q["start"] + WORD_PAD, 2), "end": round(cursor + q["end"] - WORD_PAD, 2),
                              "gain": round(q["length"] - 2 * WORD_PAD, 2)})
         cursor += length
+    merged = []
+    for cut in sorted(cuts, key=lambda c: c["start"]):
+        if not all(math.isfinite(cut[k]) for k in ("start", "end")):
+            raise VideoEditError("เวลาช่วงเงียบไม่ถูกต้อง · ถอดเสียงหรือตรวจช่วงตัดใหม่")
+        cut["start"], cut["end"] = max(0.0, cut["start"]), min(total, cut["end"])
+        if cut["end"] <= cut["start"]:
+            continue
+        if merged and cut["start"] <= merged[-1]["end"]:
+            merged[-1]["end"] = max(merged[-1]["end"], cut["end"])
+        else:
+            merged.append({"start": cut["start"], "end": cut["end"]})
+    cuts = [{**c, "gain": c["end"] - c["start"]} for c in merged]
     said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
     removed = round(sum(c["gain"] for c in cuts), 2)
 
@@ -758,6 +773,44 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                "removed": removed, "result_length": round(total - removed, 2)}
     if not apply or not cuts:
         return preview
+    if removed >= total:
+        raise VideoEditError("ช่วงตัดลบวิดีโอทั้งหมด · เลือกช่วงใหม่ให้เหลือเนื้อหา")
+    if any(t.get("segments") and t is not video and t.get("type") != "text" for t in draft["tracks"]):
+        raise VideoEditError("มีแทร็กเสียงหรือภาพเพิ่มเติมในโปรเจกต์ · ตัดเนื้อหาใน EditorKrab ก่อนเพิ่มแทร็กเหล่านี้ แล้วสร้างโปรเจกต์ CapCut ใหม่")
+
+    def shifted(t: float) -> float:
+        return t - sum(max(0.0, min(t, c["end"]) - c["start"]) for c in cuts)
+
+    sidecars = {}
+    for name, key, duration_key in (("clipkit_overlays.json", None, "duration"), ("clipkit_placed.json", "broll", "dur")):
+        file = folder / name
+        if not file.is_file():
+            continue
+        data = json.loads(file.read_text(encoding="utf-8"))
+        if key and not isinstance(data, dict):
+            raise VideoEditError(f"{name}: รูปแบบภาพประกอบไม่ถูกต้อง")
+        items = data.get(key, []) if key else data
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            raise VideoEditError(f"{name}: ต้องเป็นรายการ motion หรือภาพประกอบ")
+        kept = []
+        for item in items:
+            a, duration = item.get("start"), item.get(duration_key)
+            if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in (a, duration)) or a < 0 or duration <= 0:
+                raise VideoEditError(f"{name}: เวลาไม่ถูกต้อง · แก้ motion หรือภาพประกอบก่อนตัด")
+            b = a + duration
+            if any(c["start"] <= a and b <= c["end"] for c in cuts):
+                continue
+            if any(c["start"] < b and a < c["end"] for c in cuts):
+                raise VideoEditError(f"ช่วงตัดทับ {name} · ลบ motion หรือภาพประกอบช่วงนี้ก่อนตัด แล้วสร้างใหม่หลังตัดเพื่อให้ตรงเสียง")
+            item["start"] = round(shifted(a), 6)
+            item[duration_key] = round(shifted(b) - shifted(a), 6)
+            kept.append(item)
+        if key:
+            data[key] = kept
+        else:
+            data = kept
+        sidecars[file] = data
+    original_subs = read_draft(path)["subtitles"]
 
     pieces = timeline_to_source(draft)
     base = copy.deepcopy(video["segments"][0])
@@ -804,44 +857,34 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                                            if m.get("id") != ref]
     video["segments"] = segments
 
-    def shifted(t: float) -> float:
-        gone = 0.0
-        for cut in cuts:
-            if t >= cut["end"]:
-                gone += cut["end"] - cut["start"]
-            elif t > cut["start"]:
-                gone += t - cut["start"]
-        return t - gone
-
-    if text and ranges:  # a subtitle wholly inside a cut-out span is cut out with it
-        text["segments"] = [s for s in text["segments"] if not any(
-            c["start"] - 0.05 <= s["target_timerange"]["start"] / US and
-            (s["target_timerange"]["start"] + s["target_timerange"]["duration"]) / US <= c["end"] + 0.05 for c in cuts)]
-    if text:
+    for text in (t for t in draft["tracks"] if t["type"] == "text"):
+        kept = []
         for segment in text["segments"]:
             span = segment["target_timerange"]
             a = shifted(span["start"] / US)
             b = shifted((span["start"] + span["duration"]) / US)
             span["start"] = int(round(a * US))
-            span["duration"] = max(int(round((b - a) * US)), int(0.4 * US))
-        ordered = sorted(text["segments"], key=lambda s: s["target_timerange"]["start"])
+            span["duration"] = min(int(round((b - a) * US)), timeline - span["start"])
+            if span["duration"] > 0:
+                kept.append(segment)
+        ordered = sorted(kept, key=lambda s: s["target_timerange"]["start"])
         for first, second in zip(ordered, ordered[1:]):
             end = first["target_timerange"]["start"] + first["target_timerange"]["duration"]
             if end > second["target_timerange"]["start"]:
-                first["target_timerange"]["duration"] = max(
-                    second["target_timerange"]["start"] - first["target_timerange"]["start"]
-                    - int(0.03 * US), int(0.4 * US))
-        text["segments"] = ordered
+                first["target_timerange"]["duration"] = second["target_timerange"]["start"] - first["target_timerange"]["start"]
+        text["segments"] = [s for s in ordered if s["target_timerange"]["duration"] > 0]
 
     if words_file.is_file():  # word times are relative to their line, and cuts inside a line move them too
-        for sub in read_draft(path)["subtitles"]:
+        for sub in original_subs:
             if sub["text"] in said:
                 s0 = shifted(sub["start"])
-                said[sub["text"]] = [[round(shifted(sub["start"] + a) - s0, 2), round(shifted(sub["start"] + b) - s0, 2), w]
+                said[sub["text"]] = [[round(shifted(sub["start"] + a) - s0, 6), round(shifted(sub["start"] + b) - s0, 6), w]
                                      for a, b, w in said[sub["text"]]]
         atomic.write_text(words_file, json.dumps(said, ensure_ascii=False), encoding="utf-8")
     draft["duration"] = timeline
     _save(folder, draft, "trim")
+    for file, data in sidecars.items():
+        atomic.write_text(file, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     preview.update(applied=True, segments=len(segments),
                    result_length=round(timeline / US, 2))
     return preview

@@ -77,7 +77,7 @@ def _text(draft: dict, role: str, words: str, a: float, b: float, y: float, size
     if stroke and st.get("strokes"):
         st["strokes"][0]["content"]["solid"]["color"] = list(stroke)
     body.update(text=words, styles=[st])
-    mat.update(content=json.dumps(body, ensure_ascii=False), font_size=float(size), name=words[:20])
+    mat.update(content=json.dumps(body, ensure_ascii=False), font_size=float(size), text_size=float(size), name=words[:20])
     seg = _clone(draft, tpl, mat, "texts")
     seg["target_timerange"] = {"start": _us(a), "duration": max(_us(b - a), 1)}
     seg["clip"]["transform"] = {"x": 0.0, "y": y}
@@ -145,6 +145,9 @@ def build(path: str) -> tuple[Path, list[str]]:
                 obj[key] = kanit
         for mat, body in bodies:
             mat["content"] = json.dumps(body, ensure_ascii=False)
+    for mat, body in bodies:
+        family, _ = render._font(body["styles"][0]["font"]["path"])
+        mat.update(font_name=family, font_title=family)
     _T.update(probe)
     t = render.render_draft(path, "", dry=True)
     st = t["style"] or {}

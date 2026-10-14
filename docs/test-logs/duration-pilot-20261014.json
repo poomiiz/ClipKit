@@ -56,5 +56,19 @@
       1000
     ]
   },
-  "failed_trial_preserved": "First UI Auto edit failed foreign helper references; fresh project after shared fix passed structure/export/native open."
+  "failed_trial_preserved": "First UI Auto edit failed foreign helper references; fresh project after shared fix passed structure/export/native open.",
+  "review_followup": {
+    "native_long_text_visual_qc": "failed by user screenshot",
+    "native_font_correction": "size fields and family metadata synchronized; actual native visual recheck pending",
+    "computer_use": "stopped by user Escape; no further native input",
+    "trim_regression": {
+      "removed_seconds": 1.5,
+      "keyword_before_seconds": 4.0,
+      "keyword_after_seconds": 2.5,
+      "both_rows_hold_until_new_normal_seconds": 4.5
+    },
+    "existing_pilot_is_before_trim_followup": true,
+    "ci_554f7ca": "all jobs passed after retrying external FFmpeg installation HTTP 504",
+    "new_runtime_restart": "pending next normal application restart"
+  }
 }

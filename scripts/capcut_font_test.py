@@ -95,6 +95,9 @@ class CapCutFontTests(unittest.TestCase):
         for material in draft["materials"]["texts"]:
             self.assertEqual(material["font_path"], expected)
             self.assertEqual(json.loads(material["content"])["styles"][0]["font"]["path"], expected)
+            self.assertEqual(material["text_size"], material["font_size"])
+            self.assertEqual(material["font_title"], build.render._font(expected)[0])
+            self.assertEqual(material["font_name"], build.render._font(expected)[0])
 
     def test_public_templates_missing_fonts_fallback_in_every_material_and_style(self):
         with tempfile.TemporaryDirectory() as folder:
