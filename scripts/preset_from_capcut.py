@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -40,8 +41,12 @@ def learn(project: str | Path) -> dict:
             stroke = (st.get("strokes") or [{}])[0]
             if not fill or not st.get("size"):
                 continue
-            key = (round(float(st["size"])), _hex(fill), _hex(stroke.get("content", {}).get("solid", {}).get("color", [0, 0, 0])),
-                   round(float(stroke.get("width", 0.04)), 3), round(float(s["clip"]["transform"]["y"]), 2))
+            scale = s["clip"].get("scale") or {}
+            sx, sy = float(scale.get("x", 1)), float(scale.get("y", 1))
+            if not all(math.isfinite(v) and v > 0 for v in (sx, sy)) or abs(sx - sy) > 0.001:
+                raise ValueError("subtitle preset needs a positive uniform text scale")
+            key = (round(float(st["size"]) * sy, 3), _hex(fill), _hex(stroke.get("content", {}).get("solid", {}).get("color", [0, 0, 0])),
+                   round(float(stroke.get("width", 0.04)), 3), round(float(s["clip"]["transform"]["y"]), 6))
             seen[key] += 1
     if not seen:
         raise ValueError("this project has no subtitles to learn a preset from")
