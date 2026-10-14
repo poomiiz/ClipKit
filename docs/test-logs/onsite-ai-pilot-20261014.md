@@ -39,3 +39,7 @@ An independent float16/unbatched ASR comparison took 107.047 seconds, and export
 **No time-saving claim yet:** there is no measured manual-edit baseline or human-approval endpoint. The trial includes engineering/debugging, not just normal editing. Human review time and total time until approval remain open. The user has been asked to watch the actual MP4 before any batch is released.
 
 Machine-readable measurements: [onsite-ai-pilot-20261014.json](onsite-ai-pilot-20261014.json). Local exact paths are in ignored `state/onsite-ai-pilot-context.json`; customer media and names are excluded from this public evidence.
+
+## Human review: emphasis revision
+
+The viewer rejected the pilot because emphasis was too sparse. The initial choice had 7 emphasis beats across 30 subtitle phrases. Removed the half-or-fewer guidance from both browser and local-agent instructions; selection must cover meaningful ideas, examples, lists and outcomes without a count quota. Prepared 22 proposed emphasis beats privately with exact source-text coverage. These have not been applied to the open native draft or rendered; playback approval remains pending. The existing 12 subtitle timing regressions pass.

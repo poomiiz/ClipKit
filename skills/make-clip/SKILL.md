@@ -118,7 +118,9 @@ or let the active app AI box import it. Do not use both: a clip answer may cut f
    emphasis; unselected content can remain plain without claiming audio synchronization.
    Not every phrase deserves a coloured punch. Filler and connective talk ("อืมๆ", "เออจริงๆ", "แบบว่า",
    "อะไรอย่างนี้", repeated words) and phrases with no point get white only: `[text, ""]`. Colour only the
-   phrases that carry the message (a feeling, a number, a result, a key idea) - roughly half or fewer.
+   phrases that carry the message. Cover every key idea, action, example, comparison/list item and result;
+   one idea may need several spoken emphasis beats. Do not cap the proportion or count of punches, or leave
+   an important point plain to meet a quota. Review the whole clip for missed emphasis without colouring every word.
    Fit the preset's normal/emphasis roles to the chosen canvas and safe area. Choose another genuine thought
    boundary when necessary; do not make letter-timed fragments just to fit the screen.
    Display options - a 4th item `{"look": ..., "show": [white, colour]}` per phrase ("white" = the preset's

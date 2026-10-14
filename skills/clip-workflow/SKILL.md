@@ -42,6 +42,8 @@ Show the list to the person before cutting.
 - Split normal/emphasis text from real content and thought boundaries; normal text stays while the punch
   appears at its actual spoken-word start, and both end at the next phrase. Plain content needs no invented
   emphasis. Fit the preset to the selected canvas rather than chopping by character count or elapsed seconds.
+- Cover every important idea, action, example, comparison/list item and result with meaningful emphasis.
+  Review the whole clip for omissions; do not cap emphasis by a fraction of phrases or colour filler to meet a quota.
 - Every spoken stretch has a card; no gap longer than about 1 s while someone talks.
 - Keep words spoken in English in English.
 - Colours, sizes and positions come from the project's subtitle preset (`presets/<name>.json`).
