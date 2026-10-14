@@ -736,6 +736,7 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     cuts: list[dict[str, float]] = []
     total = sum(s["source_timerange"]["duration"] for s in video["segments"]) / US
     words_file = folder / "clipkit_words.json"
+    said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
     # breaths and pauses against the clip's own noise floor (a fixed silence gate finds nothing under café
     # noise), ~0.1 s left each side. Tuned on café footage: 41 cuts / 20 s out of 118 s with every word
     # still there on re-transcription - a hand edit of the same talk has 40.
@@ -754,6 +755,18 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                 cuts.append({"start": round(cursor + q["start"] + WORD_PAD, 2), "end": round(cursor + q["end"] - WORD_PAD, 2),
                              "gain": round(q["length"] - 2 * WORD_PAD, 2)})
         cursor += length
+    if ranges is None and said:
+        protected = sorted((sub["start"] + a - WORD_PAD, sub["start"] + b + WORD_PAD)
+                           for sub in read_draft(path)["subtitles"] for a, b, _ in said.get(sub["text"], []))
+        safe = []
+        for cut in cuts:
+            parts = [(cut["start"], cut["end"])]
+            for a, b in protected:
+                parts = [(lo, hi) for start, end in parts
+                         for lo, hi in ((start, min(end, a)), (max(start, b), end)) if hi > lo]
+            safe.extend({"start": round(a, 6), "end": round(b, 6), "gain": b - a}
+                        for a, b in parts if b - a >= 0.1)
+        cuts = safe
     merged = []
     for cut in sorted(cuts, key=lambda c: c["start"]):
         if not all(math.isfinite(cut[k]) for k in ("start", "end")):
@@ -766,7 +779,6 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
         else:
             merged.append({"start": cut["start"], "end": cut["end"]})
     cuts = [{**c, "gain": c["end"] - c["start"]} for c in merged]
-    said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
     removed = round(sum(c["gain"] for c in cuts), 2)
 
     preview = {"name": folder.name, "length": round(total, 2), "cuts": cuts,
@@ -935,9 +947,8 @@ def copy_grade(source_path: str, target_path: str) -> dict[str, Any]:
 
 
 def _from_transcript(source: str, start: float, end: float) -> list[dict[str, Any]] | None:
-    """The phrases of start..end from the whole-file transcript (<video>.transcript.json) when it has word times
-    and no phrase crosses either edge, so a story is not run through Whisper a second time; None = transcribe."""
-    from video_edit import transcript_file
+    """Reuse the source transcript at complete-word edges, including edges inside an ASR row; None = transcribe."""
+    from video_edit import slice_transcript, transcript_file
 
     start, end = round(start, 6), round(end, 6)
 
@@ -950,7 +961,9 @@ def _from_transcript(source: str, start: float, end: float) -> list[dict[str, An
         return None
     if not phrases or any("words" not in p for p in phrases):
         return None
-    if any(p["start"] < edge < p["end"] for p in phrases for edge in (start, end)):
+    try:
+        phrases = slice_transcript(phrases, start, end)
+    except VideoEditError:
         return None
     import spelling
     known = spelling.load()  # fixes learned since the transcript was made

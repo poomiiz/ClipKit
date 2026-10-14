@@ -30,6 +30,23 @@ def font_paths(templates):
 
 
 class CapCutFontTests(unittest.TestCase):
+    def test_fitted_native_text_leaves_room_for_outline_and_rounding(self):
+        from PIL import ImageFont
+        templates = json.loads(build.TEMPLATES.read_text(encoding="utf-8"))
+        build._T.update(templates)
+        mat = build._T["white"]["mat"]
+        body = json.loads(mat["content"])
+        body["styles"][0]["font"]["path"] = str(build.render.DEFAULT_FONT)
+        mat["content"] = json.dumps(body)
+        draft = {"materials": {"texts": []}}
+        segments = build._texts(draft, "white", "หรือการตอบเอกสารต่างๆ", 0, 2, -.3, 22.7,
+                                [1, 1, 1], [0, 0, 0], 1080, 1920, {})
+        self.assertEqual(len(segments), 1)
+        written = draft["materials"]["texts"][0]
+        px = written["font_size"] * build.render.CAPCUT_PX
+        font = ImageFont.truetype(str(build.render.DEFAULT_FONT), round(px))
+        self.assertLess(font.getlength("หรือการตอบเอกสารต่างๆ"), 1080 * build.render.SAFE_W)
+
     def setUp(self):
         self.original_templates = copy.deepcopy(build._T)
         build._T.clear()

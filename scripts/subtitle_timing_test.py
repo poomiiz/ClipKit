@@ -58,6 +58,13 @@ class SubtitleTimingTests(unittest.TestCase):
         self.assertAlmostEqual(phrase[9], 6.8, places=2)
         self.assertIn(("pop", 6.8), marks)
 
+    def test_spelling_change_before_keyword_does_not_move_its_onset(self):
+        marks = []
+        render._pair("AI keyword", [[0, 1, "artificial intelligence "], [1.8, 2.2, "keyword"]],
+                     5, 7.2, 1080, 1920, "Kanit", render.DEFAULT_FONT, render.pair_look({}),
+                     picked=[["AI", "keyword"]], marks=marks)
+        self.assertIn(("pop", 6.8), marks)
+
     def test_normal_text_remains_during_keyword_and_ends_with_it(self):
         events = render._pair("normal keyword", [[0, 1.8, "normal "], [1.8, 2.5, "keyword"]],
                               0, 2.5, 1080, 1920, "Kanit", render.DEFAULT_FONT, render.pair_look({}),

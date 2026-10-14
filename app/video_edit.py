@@ -11,6 +11,7 @@ import atomic
 import copy
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -1096,6 +1097,54 @@ def agent_command(kind: str, target: str) -> str:
             "spelling": f'ClipKit: ตรวจคำผิด "{target}"'}[kind]
 
 
+def slice_transcript(phrases: list[dict[str, Any]], start: float, end: float) -> list[dict[str, Any]]:
+    """Keep complete spoken words at semantic edges inside an ASR transport row."""
+    out = []
+    for phrase in phrases:
+        if phrase["end"] <= start or phrase["start"] >= end:
+            continue
+        crossing = [edge for edge in (start, end) if phrase["start"] < edge < phrase["end"]]
+        if not crossing:
+            out.append(copy.deepcopy(phrase))
+            continue
+        words = phrase.get("words", [])
+        if not words:
+            raise VideoEditError("ขอบเขตเรื่องอยู่กลางบรรทัดที่ไม่มีเวลารายคำ · ถอดเสียงรายคำก่อนเลือกช่วงนี้")
+        language = "th" if re.search(r"[ก-๛]", phrase["text"]) else speech_language()
+        starts = [n for n, whole in enumerate(_word_starts(words, language)) if whole] + [len(words)]
+        if any(words[a][0] + 1e-6 < edge < words[b - 1][1] - 1e-6
+               for a, b in zip(starts, starts[1:]) for edge in crossing):
+            raise VideoEditError("ขอบเขตเรื่องตัดกลางคำ · เลือกจุดเริ่มหรือจบของคำเต็ม")
+        kept = [w for w in words if w[0] >= start - 1e-6 and w[1] <= end + 1e-6]
+        if kept:
+            out.append({**copy.deepcopy(phrase), "start": max(phrase["start"], kept[0][0]),
+                        "end": min(phrase["end"], kept[-1][1]),
+                        "text": "".join(w[2] for w in kept).strip(), "words": copy.deepcopy(kept)})
+    return out
+
+
+def validate_stories(items: Any, phrases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One trust boundary for browser answers and persisted local/manual selections."""
+    if not isinstance(items, list) or not items or not phrases:
+        raise VideoEditError("stories ต้องเป็นรายการเรื่องอย่างน้อย 1 เรื่อง และมีบทถอดเสียง")
+    out = []
+    for n, item in enumerate(items, 1):
+        if not isinstance(item, dict) or not isinstance(item.get("title"), str) or not item["title"].strip():
+            raise VideoEditError(f"เรื่องที่ {n}: ต้องมี title")
+        a, b = item.get("start"), item.get("end")
+        if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in (a, b)):
+            raise VideoEditError(f"เรื่องที่ {n}: เวลาต้องเป็นตัวเลขวินาทีที่ถูกต้อง")
+        if not 0 <= a < b <= max(p["end"] for p in phrases) + 1e-6:
+            raise VideoEditError(f"เรื่องที่ {n}: เวลาเริ่ม–จบต้องอยู่ภายในฟุตและเรียงจากน้อยไปมาก")
+        if out and a < out[-1]["end"]:
+            raise VideoEditError(f"เรื่องที่ {n}: ช่วงซ้ำ ทับกัน หรือไม่ได้เรียงตามเวลา")
+        if not slice_transcript(phrases, a, b):
+            raise VideoEditError(f"เรื่องที่ {n}: ไม่มีเสียงพูดในช่วงนั้น")
+        out.append({"title": item["title"].strip(), "summary": str(item.get("summary", "")).strip(),
+                    "start": float(a), "end": float(b)})
+    return out
+
+
 def stories_from_agent(video: str, phrases: list[dict[str, Any]], *, split_long: bool = True) -> list[dict[str, Any]] | None:
     """Stories the agent wrote to <video>.stories.json as [{title, summary, start, end}] (seconds).
     None while the file is not there yet; a broken file raises."""
@@ -1103,22 +1152,20 @@ def stories_from_agent(video: str, phrases: list[dict[str, Any]], *, split_long:
     if not path.is_file():
         return None
     try:
-        raw = json.loads(path.read_text(encoding="utf-8-sig"))
-        items = [(float(i["start"]), float(i["end"]), str(i.get("title", "")).strip(),
-                  str(i.get("summary", "")).strip()) for i in raw]
+        items = validate_stories(json.loads(path.read_text(encoding="utf-8-sig")), phrases)
     except (ValueError, KeyError, TypeError) as exc:
         raise VideoEditError(f"{path.name} is not a story list: {exc}") from exc
     out = []
-    for start, end, title, summary in items:
-        idx = [n for n, p in enumerate(phrases) if p["start"] >= start - 0.5 and p["end"] <= end + 0.5]
-        if not idx:
-            raise VideoEditError(f"story '{title}' ({start}-{end} s) has no speech in the transcript")
+    for item in items:
+        start, end, title, summary = (item[k] for k in ("start", "end", "title", "summary"))
+        part = slice_transcript(phrases, start, end)
         if split_long:
-            out.extend(_split_long(idx[0], idx[-1], phrases, title, summary))
+            parts = _split_long(0, len(part) - 1, part, title, summary)
+            parts[0]["start"], parts[-1]["end"] = start, end
+            out.extend(parts)
         else:
-            out.append({"title": title, "summary": summary, "start": phrases[idx[0]]["start"],
-                        "end": phrases[idx[-1]]["end"], "lines": idx[-1] - idx[0] + 1,
-                        "speech": round(sum(p["end"] - p["start"] for p in phrases[idx[0]:idx[-1] + 1]), 1)})
+            out.append({"title": title, "summary": summary, "start": start, "end": end, "lines": len(part),
+                        "speech": round(sum(p["end"] - p["start"] for p in part), 1)})
     return out
 
 

@@ -71,6 +71,19 @@ class TrimTiming(unittest.TestCase):
         self.assertEqual(result["cuts"], [{"start": 1, "end": 4, "gain": 3}])
         self.assertEqual(result["result_length"], 5)
 
+    def test_automatic_silence_cut_cannot_remove_a_timed_word(self):
+        quiet = [{"start": 3.9, "end": 4.6, "length": .7}]
+        with patch.object(edit, "quiet_spans", return_value=quiet):
+            self.assertEqual(edit.trim_pauses(str(self.folder), apply=False)["cuts"], [])
+
+    def test_automatic_cut_keeps_only_silence_outside_word_padding(self):
+        quiet = [{"start": 3.5, "end": 4.7, "length": 1.2}]
+        with patch.object(edit, "quiet_spans", return_value=quiet):
+            result = edit.trim_pauses(str(self.folder), apply=False)
+        self.assertEqual(len(result["cuts"]), 1)
+        self.assertAlmostEqual(result["cuts"][0]["start"], 3.6)
+        self.assertAlmostEqual(result["cuts"][0]["end"], 3.9)
+
     def test_short_subtitle_does_not_gain_time_or_overlap(self):
         self.draft["tracks"][1]["segments"][0]["target_timerange"] = {"start": 0, "duration": 200_000}
         self.write("draft_content.json", self.draft)

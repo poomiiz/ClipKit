@@ -273,8 +273,8 @@ def _json(path: Path, empty: Any) -> Any:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else empty
 
 
-def _clock(spoken: list | None, length: float):
-    """Seconds into the line at a fraction of its text: from the heard words' times, else evenly by letters."""
+def _clock(spoken: list | None, length: float, text: str | None = None):
+    """Look up recorded word times; align corrected spelling before lookup instead of stretching the clock."""
     if not spoken:
         return lambda f: f * length
     marks, n, acc = [], sum(len(w) for _, _, w in spoken) or 1, 0
@@ -282,7 +282,21 @@ def _clock(spoken: list | None, length: float):
         marks.append((acc / n, a))
         acc += len(w)
     marks.append((1.0, spoken[-1][1]))
-    return lambda f: next((t for p, t in reversed(marks) if p <= f), 0.0)
+    clock = lambda f: next((t for p, t in reversed(marks) if p <= f), 0.0)
+    heard = "".join(w for _, _, w in spoken)
+    wanted = "".join(text.split()) if text is not None else heard
+    if wanted == heard:
+        return clock
+    import difflib
+    edits = difflib.SequenceMatcher(a=heard, b=wanted, autojunk=False).get_opcodes()
+
+    def corrected(f):
+        position = round(f * len(wanted))
+        for op, a, b, c, d in edits:
+            if c <= position < d:
+                return clock((a + position - c if op == "equal" else a) / n)
+        return clock(1.0)
+    return corrected
 
 
 # the sentence-pair look: each spoken phrase becomes a normal line plus a bigger emphasis line, optionally with a
@@ -557,7 +571,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
     Without a chosen split, show the complete subtitle without inventing emphasis."""
     held = held if held is not None else {"white": ""}  # a "hold" white line carries over into the next subtitle line
     flat = unbreak(text)
-    at = _clock([[a, b, "".join(w.split())] for a, b, w in spoken] if spoken else None, t1 - t0)
+    at = _clock([[a, b, "".join(w.split())] for a, b, w in spoken] if spoken else None, t1 - t0, flat)
     total = len("".join(flat.split())) or 1
     phrases = []  # (lead, punch, start, punch time, last word time)
     if picked:

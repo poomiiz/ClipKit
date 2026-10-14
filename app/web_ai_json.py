@@ -187,19 +187,7 @@ def _num(x: Any, where: str) -> float:
 def import_stories(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
     _head(ans, "stories", "video", Path(video).name)
     phrases = json.loads(video_edit.transcript_file(video).read_text(encoding="utf-8"))
-    items = ans.get("stories")
-    if not isinstance(items, list) or not items:
-        raise VideoEditError("stories ต้องเป็นรายการเรื่องอย่างน้อย 1 เรื่อง")
-    out = []
-    for n, it in enumerate(items, 1):
-        if not isinstance(it, dict) or not isinstance(it.get("title"), str) or not it["title"].strip():
-            raise VideoEditError(f"เรื่องที่ {n}: ต้องมี title")
-        a, b = _num(it.get("start"), f"เรื่องที่ {n} start"), _num(it.get("end"), f"เรื่องที่ {n} end")
-        if not 0 <= a < b:
-            raise VideoEditError(f"เรื่องที่ {n} '{it['title']}': start ต้องน้อยกว่า end ({a}-{b})")
-        if not any(p["start"] >= a - 0.5 and p["end"] <= b + 0.5 for p in phrases):
-            raise VideoEditError(f"เรื่องที่ {n} '{it['title']}' ({a}-{b} วิ) ไม่มีเสียงพูดในช่วงนั้น")
-        out.append({"title": it["title"].strip(), "summary": str(it.get("summary", "")).strip(), "start": a, "end": b})
+    out = video_edit.validate_stories(ans.get("stories"), phrases)
     atomic.write_text(video_edit.stories_file(video), json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
 

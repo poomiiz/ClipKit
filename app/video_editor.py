@@ -1495,7 +1495,9 @@ def auto_cover(path: str) -> str:
     start, end = meta.get("start") or 0, meta.get("end")
     f = video_edit.find_focus(raw, start, end, frames=8)
     title = re.sub(r"^.* - \d+ ", "", Path(path).name).strip() or Path(path).name
-    l1, l2 = _split2(title) if len(title) > 14 else (title, "")
+    import render
+    lines, _ = render._fit(title, render.DEFAULT_FONT, 100, 1080 * render.SAFE_W)
+    l1, l2 = lines[0], " ".join(lines[1:])
     r = kit_settings.make_cover(kit_settings.CoverRequest(source=raw, at=f.get("best_at", start + 1), l1=l1, l2=l2))
     sf = Path(path) / "clipkit_style.json"
     style = json.loads(sf.read_text(encoding="utf-8")) if sf.is_file() else {}

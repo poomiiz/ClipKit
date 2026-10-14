@@ -533,15 +533,16 @@ def web_ai_answers_are_checked():
         assert "ความต้องการของผู้ตัดต่อ" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
         for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},
-                    {**head, "stories": [{"title": "a", "start": 3, "end": 5}]}):  # wrong video / no speech
+                    {**head, "stories": [{"title": "a", "start": 3, "end": 5}]},
+                    {**head, "stories": [{"title": "a", "start": 9, "end": 15}]}):  # wrong video / no speech / past transcript
             try:
                 web_ai.import_answer("stories", str(video), json.dumps(bad))
                 raise AssertionError(f"accepted {bad}")
             except VideoEditError:
                 pass
         assert not (Path(t) / "ep.mov.stories.json").exists()
-        ans = "here:\n```json\n" + json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 15}]}) + "\n```"
-        assert web_ai.import_answer("stories", str(video), ans)["stories"][0]["end"] == 15
+        ans = "here:\n```json\n" + json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 14}]}) + "\n```"
+        assert web_ai.import_answer("stories", str(video), ans)["stories"][0]["end"] == 14
         # an AI on this machine saves its answer next to the file instead: imported once, then gone
         assert web_ai.import_answer("stories", str(video), "") == {"waiting": True}
         saved = web_ai.answer_file("stories", str(video))

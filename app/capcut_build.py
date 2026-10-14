@@ -94,8 +94,8 @@ def _texts(draft: dict, role: str, words: str, a: float, b: float, y: float, siz
     mat = _T[role]["mat"]
     _, font = render._font((json.loads(mat["content"])["styles"][0].get("font") or {}).get("path"))
     k = render.CAPCUT_PX * min(W, H) / 1080
-    max_w = W * (min(render.safe_box(style)["w"], float(mat.get("line_max_width") or 1)) - abs(x))
-    segs = [_text(draft, role, piece, pa, pb, y, round(px / k, 2), fill, stroke)
+    max_w = W * (min(render.safe_box(style)["w"], float(mat.get("line_max_width") or 1)) - abs(x)) - 24
+    segs = [_text(draft, role, piece, pa, pb, y, int(px / k * 100) / 100, fill, stroke)
             for piece, pa, pb, px in render.one_line(words, font, size * k, max_w, a, b, one=True)]
     for seg in segs:  # off the centre line and tilted (the second person's text)
         seg["clip"]["transform"]["x"] = x
