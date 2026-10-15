@@ -20,7 +20,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .mid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,380px);gap:10px;padding:10px;min-height:0}
 .player{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;background:#000;border-radius:10px;position:relative}
 .player hyperframes-player{border-radius:10px;overflow:hidden}
-.player .empty{color:var(--mut);text-align:center;padding:30px}
+.player .empty{position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--mut);text-align:center;padding:30px}
 .side{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;min-height:0}
 .side h3{margin:0 0 8px;font-size:14px;font-weight:600}.side h4{margin:16px 0 6px;font-size:11.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
 .hint{color:var(--mut);font-size:12.5px}
@@ -109,7 +109,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
     <span class="busy" id="busy"></span>
   </div>
   <div class="mid">
-    <div class="player" id="player"><div class="empty" id="empty">กำลังเตรียมตัวเล่น…</div>
+    <div class="player" id="player"><div class="empty" id="empty" role="status" aria-live="polite">กำลังเตรียมตัวเล่น…</div>
       <hyperframes-player id="v" controls style="display:none;width:100%;height:100%"></hyperframes-player>
       <div class="subject-box" id="subjectBox" hidden>พื้นที่ที่ระบุ</div><div class="ov" id="ov" hidden><div class="safe" id="osafe"></div><div class="col" id="ocol"></div><div class="otxt" id="otxt"></div></div></div>
     <div class="side" id="side"></div>
@@ -152,14 +152,21 @@ async function load(accept = () => true) {
   return true;
 }
 let building = null, again = false;
+const PLAYER_LOADING = $('empty').textContent;
 async function live() {
   if (building) { again = true; return building; }
   const v = $('v'), at = v.currentTime || 0;
   building = api('draft/hf-build', {path: PATH}).then(r => {
-    v.setAttribute('src', r.url + '?t=' + Date.now());
-    v.style.display = 'block'; $('empty').style.display = 'none';
-    v.addEventListener('ready', () => { try { v.seek(at); } catch {} }, {once: true});
-  }).catch(e => { $('empty').style.display = ''; $('empty').textContent = '❌ ' + ckErr(e); })
+    const src = r.url + '?t=' + Date.now(), empty = $('empty');
+    v.style.visibility = 'hidden'; $('player').setAttribute('aria-busy', 'true');
+    empty.textContent = PLAYER_LOADING; empty.style.display = '';
+    v.addEventListener('ready', () => { if (v.getAttribute('src') === src) { try { v.seek(at); } catch {} } }, {once: true});
+    v.addEventListener('painted', () => requestAnimationFrame(() => {
+      if (v.getAttribute('src') !== src || !v.painted) return;
+      v.style.visibility = 'visible'; empty.style.display = 'none'; $('player').setAttribute('aria-busy', 'false');
+    }), {once: true});
+    v.setAttribute('src', src); v.style.display = 'block';
+  }).catch(e => { $('player').setAttribute('aria-busy', 'false'); $('empty').style.display = ''; $('empty').textContent = '❌ ' + ckErr(e); })
     .finally(() => { building = null; if (again) { again = false; return live(); } });
   return building;
 }
