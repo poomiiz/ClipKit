@@ -3,8 +3,8 @@ window.CKAIPlan = (() => {
   function render(box, plan) {
     box.setAttribute('aria-busy','false');
     box.classList.add('ai-plan'); box.replaceChildren();
-    const action = {preserve:'คง motion ที่เหลือ',clear:'ล้าง motion เดิม',replace:'แทนที่ motion',regenerate:'สร้าง motion ใหม่'}[plan.motion_action];
-    box.append(node('strong', plan.motion_plan.some(item=>item.subject_review_pending) ? 'รอตรวจภาพ' : 'พร้อมตรวจ'), node('p', `ซับ ${plan.lines} · ตัด ${plan.cut} · ${action} (${plan.motion_before || 0} → ${plan.motion_after ?? (plan.motion_action === 'preserve' ? plan.motion_before || 0 : plan.motion)})`));
+    const action = {preserve:'คง motion ที่เหลือ',clear:'ล้าง motion เดิม',replace:'แทนที่ motion',regenerate:'สร้าง motion ใหม่',add:'เพิ่ม motion'}[plan.motion_action];
+    box.append(node('strong', plan.motion_plan.some(item=>item.subject_review_pending) ? 'รอตรวจภาพ' : 'พร้อมตรวจ'), node('p', `${plan.motion_only ? '' : `ซับ ${plan.lines} · ตัด ${plan.cut} · `}${action} (${plan.motion_before || 0} → ${plan.motion_after ?? (plan.motion_action === 'preserve' ? plan.motion_before || 0 : plan.motion)})`));
     function rows(title, items, describe) {
       const details = node('details'), summary = node('summary', `${title} (${items.length})`);
       details.append(summary); box.append(details);
@@ -31,7 +31,7 @@ window.CKAIPlan = (() => {
         + (item.subject_review_pending ? '\nยังไม่ได้ระบุเขตตัวแบบ · ต้องดูภาพจริง' : '');
     });
     else box.append(node('p', plan.motion_action === 'preserve' ? 'ไม่ได้สร้าง motion เพิ่ม' : 'ไม่มี motion ในแผน'));
-    rows('ข้อความตามเวลา', plan.subtitle_events, item => `${item.role} · ${item.text}`);
+    if (!plan.motion_only) rows('ข้อความตามเวลา', plan.subtitle_events, item => `${item.role} · ${item.text}`);
     if (plan.hook.length) {
       const details = node('details'); details.append(node('summary','หัวคลิป'),node('p',plan.hook.map(item=>item.text).join(' / '))); box.append(details);
     }
@@ -53,5 +53,35 @@ window.CKAIPlan = (() => {
       render(box, plan); checked = answer; button.textContent = 'ใช้แผนนี้'; return false;
     }};
   }
-  return {render, review};
+  function motion(button, box, request, preview, apply, errorText) {
+    let checked = '', revision = '';
+    button.onclick = async () => {
+      let applied = false;
+      button.disabled = true;
+      try {
+        const value = request(), key = JSON.stringify(value);
+        if (checked === key && revision) {
+          button.textContent = 'กำลังสร้าง…';
+          await apply({...value, review_revision: revision});
+          applied = true; button.textContent = 'ใส่แล้ว';
+          return;
+        }
+        checked = ''; revision = ''; button.textContent = 'กำลังตรวจ…';
+        box.setAttribute('aria-busy','true');
+        const placeholder = node('div'); placeholder.className='ai-plan-skeleton'; box.replaceChildren(placeholder);
+        const plan = await preview(value);
+        if (!button.isConnected || JSON.stringify(request()) !== key) return;
+        render(box, {motion_only:true,hook:[],motion_before:plan.motion_before || 0,
+          motion_after:(plan.motion_before || 0) + (value.placement_id ? 0 : 1),
+          motion_action:value.placement_id ? 'replace' : 'add',motion_plan:[plan]});
+        checked = key; revision = plan.review_revision; button.textContent = 'ใช้ motion';
+      } catch (error) {
+        checked = ''; revision = ''; box.replaceChildren(node('p', errorText(error))); button.textContent = 'ตรวจ motion';
+      } finally {
+        box.setAttribute('aria-busy','false'); button.disabled = applied;
+        if (!checked) button.textContent = 'ตรวจ motion';
+      }
+    };
+  }
+  return {render, review, motion};
 })();

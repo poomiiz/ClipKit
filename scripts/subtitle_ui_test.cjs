@@ -12,7 +12,8 @@ function phrase() {
   const nodes = {}, calls = [];
   const item = {start: 0, end: 2, lead: 'normal', punch: 'keyword', line: 'normal keyword', cue_id: 'second'};
   const context = vm.createContext({
-    T: {phrases: [item], caption_en: {}, subtitle_events: [{cue_id: 'second', end: 3}]}, PATH: 'synthetic',
+    T: {phrases: [item], caption_en: {}, motion_cues: [{cue_id:'second',start:0,end:3,text:'normal keyword'}]}, PATH: 'synthetic',
+    CKAIPlan: {motion(button,box,request,preview) { button.onclick=()=>preview(request()); }},
     $: id => nodes[id] ||= {value: ''}, back: () => '', mm: String, esc: String,
     api: async (path, body) => calls.push([path, JSON.parse(JSON.stringify(body))]),
     reload: async () => {}, say() {}, ckErr: e => e.message,
@@ -39,9 +40,10 @@ function phrase() {
 
   ({nodes, calls} = phrase());
   await nodes.pm.onclick();
-  assert.equal(calls[0][0], 'draft/overlay');
+  assert.equal(calls[0][0], 'draft/overlay-preview');
   assert.equal(calls[0][1].end, 3, 'motion must include canonical caption/hold end');
   assert.equal(calls[0][1].text, 'normal keyword');
+  nodes.pl.value='unsaved';assert.throws(nodes.pm.onclick,/บันทึกข้อความก่อน/);
 
   const created = [], submitted = [];
   function node(tag) {

@@ -28,6 +28,21 @@ async function main() {
   assert.match(box.children[1].textContent,/สร้าง motion ใหม่.*1 → 1/);
   ui.render(box,{...plan,motion_action:'preserve',motion_after:0,motion_plan:[]});
   assert.match(box.children[1].textContent,/1 → 0/,'zero retained motions must not fall back to previous count');
+  const manualButton=node('button'),manualBox=node();let previews=0,applied=0,request={cue_id:'0',end:4};
+  ui.motion(manualButton,manualBox,()=>request,async()=>{previews++;return {...plan.motion_plan[0],review_revision:'revision'}},async value=>{applied++;assert.equal(value.review_revision,'revision')},String);
+  await manualButton.onclick();assert.equal(previews,1);assert.equal(applied,0);assert.equal(manualButton.textContent,'ใช้ motion');
+  request={...request,end:5};await manualButton.onclick();assert.equal(previews,2);assert.equal(applied,0);
+  await manualButton.onclick();assert.equal(applied,1);
+  assert.equal(manualButton.disabled,true);assert.equal(manualButton.textContent,'ใส่แล้ว');
+  const source=fs.readFileSync('app/static/editor.html','utf8');
+  const callback=source.match(/request => api\('draft\/overlay-preview', request\), (async request => \{[\s\S]*?)\}, ckErr\);/)[1]+'}';
+  let finishApply,draws=0,builds=0;const pendingApply=new Promise(done=>finishApply=done),fields={value:'original'},timeline={motions:[]};
+  const appliedUi=vm.runInNewContext('('+callback+')',{api:()=>pendingApply,T:timeline,drawTL:()=>draws++,live:()=>builds++,say:()=>{}});
+  const applying=appliedUi({});fields.value='typed during render';finishApply({overlays:[{placement_id:'new'}]});await applying;
+  assert.equal(fields.value,'typed during render');assert.equal(draws,1);assert.equal(builds,1);assert.equal(timeline.motions.length,1);
+  assert.doesNotMatch(callback,/reload|side\(/,'motion completion must not rebuild the active form');
+  const failed=node('button');ui.motion(failed,manualBox,()=>{throw Error('save first')},()=>{},()=>{},String);
+  await failed.onclick();assert.equal(failed.disabled,false);assert.match(manualBox.children[0].textContent,/save first/);
   console.log('PASS AI plan: first-click preview, explicit confirmation, input invalidation, stale response, detached input and literal markup');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

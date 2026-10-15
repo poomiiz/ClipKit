@@ -30,6 +30,7 @@ class MotionApiTests(unittest.TestCase):
         self.timeline = {"style": {}, "width": 1080, "height": 1920, "duration": 8, "look": "pair",
                          "phrases": [], "hook": [], "motions": []}
         self.enterContext(patch.object(render,"render_draft",side_effect=lambda *args,**kwargs:self.timeline))
+        self.enterContext(patch.object(video_editor,"_overlay_revision",return_value="a" * 64))
         self.make = self.enterContext(patch.object(kit_settings, "make_motion", side_effect=self.render))
 
     def render(self, body):

@@ -481,7 +481,8 @@ function sidePhrase(s, p) {
       <option value="red">ขาว + แดง (จุดแรงสุด)</option><option value="hold">ขาวค้างจากท่อนก่อน + สี (ลิสต์)</option><option value="skip">ไม่ขึ้นซับ</option></select></div>
     <div class="row media"><label for="pq">หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
     <div class="row"><label for="pc">ซับแปล (ทั้งประโยค)</label><input id="pc" style="flex:1" placeholder="ตัวเล็กด้านล่าง ถ้าพรีเซ็ตมีซับแปล"></div>
-    <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นข้อความใหญ่กลางจอ</button></div>
+    <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">ตรวจ motion</button></div>
+    <div id="phraseMotionPlan" class="ai-plan" role="status" aria-live="polite"></div>
     <div class="row"><button id="pcut" style="color:#fca5a5">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
     <div class="hint">แก้คำได้เลย (แก้ในซับด้วย) · ย้ายคำระหว่างตัวขาวกับคำเน้นได้ · ใส่คำค้นแล้วบันทึก ระบบหาภาพประกอบให้ตอน "ทำให้ครบ" หรือกดหาเองในแถบภาพประกอบ</div>`;
   $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || ''; $('po').value = (p.opts || {}).look || 'pair'; $('pc').value = (T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '';
@@ -504,13 +505,16 @@ function sidePhrase(s, p) {
     try { const r = await api('draft/cut', {path: PATH, start: sub.start, end: sub.end}); SEL = null; await reload(); live(); say('ตัดแล้ว · คลิปยาว ' + mm(r.length)); }
     catch (e) { say('❌ ' + ckErr(e)); }
   };
-  $('pm').onclick = async () => {
-    say('<span class="spin"></span> กำลังทำข้อความใหญ่… (ราว 30 วิ)');
-    const roles = (T.subtitle_events || []).filter(e => e.cue_id === p.cue_id);
-    const start = Math.min(...line.map(x => x.start)), end = Math.max(...line.map(x => x.end), ...roles.map(e => e.end));
-    try { await api('draft/overlay', {path: PATH, template: 'sentence-pair', start, end, cue_id: p.cue_id, text: p.line}); await reload(); say('ใส่แล้ว'); }
-    catch (e) { say('❌ ' + ckErr(e)); }
-  };
+  CKAIPlan.motion($('pm'), $('phraseMotionPlan'), () => {
+    if ($('pl').value !== p.lead || $('pp').value !== p.punch || $('po').value !== ((p.opts || {}).look || 'pair') ||
+        $('pc').value !== ((T.caption_en || {})[p.cue_id ? 'cue:' + p.cue_id : p.line] || '')) throw Error('บันทึกข้อความก่อนตรวจ motion');
+    const cue = (T.motion_cues || []).find(item => item.cue_id === p.cue_id);
+    if (!cue) throw Error('ไม่พบช่วงข้อความ · โหลด Timeline ใหม่');
+    return {path: PATH, template: 'sentence-pair', start: cue.start, end: cue.end, cue_id: cue.cue_id, text: cue.text};
+  }, request => api('draft/overlay-preview', request), async request => {
+    const result = await api('draft/overlay', request);
+    T.motions = result.overlays; drawTL(); live(); say('ใส่แล้ว');
+  }, ckErr);
 }
 function sideBroll(s, b, i) {
   const attr = text => esc(text).replace(/"/g, '&quot;');

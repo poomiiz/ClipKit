@@ -27,6 +27,7 @@ class MotionCutTests(unittest.TestCase):
         self.folder=self.f.folder;self.path=str(self.folder);self.calls=[]
         config=self.folder.parent/'config.json';config.write_text('{"render_encoder":"libx264"}')
         self.enterContext(patch.object(render.video_edit.kitconfig,'_CANDIDATES',[config]))
+        self.enterContext(patch.object(kit_settings,'CONFIG',config))
         self.enterContext(patch.object(host_platform,'capcut_running',return_value=False))
         metadata={'duration':8,'width':1920,'height':1080,'fps':30}
         self.enterContext(patch.object(render,'probe',return_value=metadata))
@@ -180,6 +181,60 @@ class MotionCutTests(unittest.TestCase):
         self.assertEqual(result['motion_plan'][0]['duration'],4)
         self.assertEqual(result['motion_after'],1)
         self.assertEqual(before,{p.relative_to(self.folder).as_posix():p.read_bytes() for p in self.folder.rglob('*') if p.is_file()})
+
+    def manual_request(self):
+        return video_editor.OverlayRequest(path=self.path,template='sentence-pair',start=2,end=6,text='normal keyword',cue_id='0')
+
+    def test_manual_review_is_read_only_and_apply_uses_recoverable_transaction(self):
+        request=self.manual_request();before=self.files()
+        plan=video_editor.draft_overlay_preview(request)
+        self.assertEqual(self.files(),before);self.assertFalse(identity.state_dir('clip',self.path).exists())
+        self.make.assert_not_called()
+        request.review_revision=plan['review_revision']
+        result=video_editor.draft_overlay_add(request)
+        self.assertEqual(len(result['overlays']),1)
+        self.assertEqual(len(list(identity.state_dir('clip',self.path).glob('receipts/*.json'))),1)
+        self.assertEqual(len(list(identity.state_dir('clip',self.path).glob('transactions/*/assets/*.mov'))),1)
+
+    def test_manual_cue_span_keeps_underlying_hold_after_motion_hides_subtitles(self):
+        before=video_editor.draft_timeline(self.path)['motion_cues']
+        self.install()
+        after=video_editor.draft_timeline(self.path)['motion_cues']
+        self.assertEqual(after,before)
+        cue=next(item for item in after if item['cue_id']=='0')
+        self.assertEqual((cue['start'],cue['end']),(2,6))
+
+    def test_manual_review_rejects_changed_request_or_metadata_before_render(self):
+        request=self.manual_request();plan=video_editor.draft_overlay_preview(request)
+        request.review_revision=plan['review_revision'];request.reason='changed reason'
+        with self.assertRaises(video_editor.HTTPException):video_editor.draft_overlay_add(request)
+        self.make.assert_not_called()
+        request=self.manual_request();request.review_revision=plan['review_revision']
+        self.f.write('clipkit_caption.json',{'cue:0':'changed'})
+        with self.assertRaises(video_editor.HTTPException):video_editor.draft_overlay_add(request)
+        self.make.assert_not_called()
+
+    def test_manual_render_external_edit_is_retained_and_assets_discarded(self):
+        request=self.manual_request();request.review_revision=video_editor.draft_overlay_preview(request)['review_revision']
+        def changed(body):
+            result=self.encode(body);self.f.write('clipkit_caption.json',{'cue:0':'external'});return result
+        with patch.object(kit_settings,'make_motion',side_effect=changed),self.assertRaises(video_editor.HTTPException):
+            video_editor.draft_overlay_add(request)
+        self.assertEqual(self.f.read('clipkit_caption.json'),{'cue:0':'external'})
+        self.assertFalse((self.folder/'clipkit_overlays.json').exists())
+        self.assertEqual(list(identity.state_dir('clip',self.path).glob('transactions/*/assets/*.mov')),[])
+
+    def test_manual_receipt_failure_rolls_back_published_overlay_and_keeps_original_media(self):
+        old=self.install('hook-title',0,1);before=self.files();original=Path(old['file']).read_bytes()
+        request=self.manual_request();request.review_revision=video_editor.draft_overlay_preview(request)['review_revision']
+        write=transaction._write
+        def fail_receipt(file,data):
+            if file.parent.name=='receipts':raise OSError('receipt unavailable')
+            return write(file,data)
+        with patch.object(transaction,'_write',side_effect=fail_receipt),self.assertRaisesRegex(OSError,'receipt unavailable'):
+            video_editor.draft_overlay_add(request)
+        self.assertEqual(self.files(),before);self.assertEqual(Path(old['file']).read_bytes(),original)
+        self.assertEqual(list(identity.state_dir('clip',self.path).glob('transactions/*/assets/*.mov')),[])
 
 
 if __name__=='__main__':unittest.main()

@@ -1072,6 +1072,7 @@ class OverlayRequest(BaseModel):
     ownership: dict[str, Any] | None = None
     anchor: dict[str, Any] | None = None
     reason: str = Field(default="ผู้ใช้เลือก motion จากเนื้อหา", min_length=1, max_length=500)
+    review_revision: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
 def prepare_overlay(req: OverlayRequest, *, previous=None) -> dict[str, Any]:
@@ -1174,6 +1175,7 @@ def overlay_plan(req: OverlayRequest, plan: dict) -> dict[str, Any]:
     """Review content, clocks and geometry without exposing local input paths."""
     prepared = plan["prepared"]
     return {"template": req.template, "text": req.text, "start": req.start, "duration": prepared["duration"],
+            "motion_before": len(plan["items"]) + (1 if req.placement_id else 0),
             "anchor": plan["anchor"], "reason": req.reason, "ownership": plan["ownership"],
             "canvas": prepared["canvas"], "bounds": prepared["bounds"],
             "params": {key: value for key, value in prepared["source_params"].items()
@@ -1187,9 +1189,19 @@ def overlay_plan(req: OverlayRequest, plan: dict) -> dict[str, Any]:
 def draft_overlay_preview(req: OverlayRequest) -> dict[str, Any]:
     try:
         with project_lock.writer(req.path, recover=False):
-            return overlay_plan(req, prepare_overlay(req))
+            revision = _overlay_revision(req)
+            result = overlay_plan(req, prepare_overlay(req))
+            if _overlay_revision(req) != revision:
+                raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างตรวจ motion · ตรวจใหม่")
+            return {**result, "review_revision": revision}
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+def _overlay_revision(req: OverlayRequest) -> str:
+    import web_ai_identity as identity
+    snapshot, _ = identity._snapshot("clip", req.path, None, {})
+    return identity._hash({"snapshot": snapshot, "request": req.model_dump(exclude={"review_revision"})})
 
 
 def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
@@ -1214,6 +1226,28 @@ def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
 @router.post("/draft/overlay")
 @project_lock.edit
 def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
+    if req.review_revision is not None:
+        import kit_settings
+        import web_ai_identity as identity
+        import web_ai_transaction as transaction
+        try:
+            if _overlay_revision(req) != req.review_revision:
+                raise VideoEditError("โปรเจกต์หรือคำสั่ง motion เปลี่ยน · ตรวจแผนใหม่")
+            answer = {"clipkit_web_ai": 2, **identity.issue("clip", req.path), "step": "clip",
+                      "manual": "motion", "request": req.model_dump(exclude={"review_revision"})}
+            if _overlay_revision(req) != req.review_revision:
+                raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียม motion · ตรวจแผนใหม่")
+            def prepare(work, assets):
+                staged = req.model_copy(update={"path": str(work)})
+                plan = prepare_overlay(staged)
+                with kit_settings.motion_destination(assets):
+                    items = plan["items"] + [render_overlay(staged, plan)]
+                items.sort(key=lambda item: item["start"])
+                atomic.write_text(work / OVERLAYS, json.dumps(items, ensure_ascii=False, indent=1))
+                return {"overlays": items}
+            return transaction.apply("clip", req.path, answer, prepare)
+        except VideoEditError as exc:
+            raise HTTPException(409, str(exc)) from exc
     plan = prepare_overlay(req)
     items = plan["items"] + [render_overlay(req, plan)]
     atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
@@ -1609,6 +1643,14 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
     t["via"] = json.loads(meta.read_text(encoding="utf-8")).get("via", "capcut") if meta.is_file() else "capcut"
     t["agent_command"] = video_edit.agent_command("punch", path)
     t["punch_picked"] = (Path(path) / "clipkit_punch.json").is_file()
+    base = {key: value for key, value in t.items() if key != "subtitle_events"}
+    base["motions"] = []
+    events = render.pair_events_from_timeline(base) if t["look"] == "pair" else []
+    t["motion_cues"] = [{"cue_id": sub["id"], "text": sub["text"],
+                         "start": min(p["start"] for p in t["phrases"] if p.get("cue_id") == sub["id"]),
+                         "end": max(event["end"] for event in events if event.get("cue_id") == sub["id"])}
+                        for sub in t["subs"] if any(p.get("cue_id") == sub["id"] for p in t["phrases"])
+                        and any(event.get("cue_id") == sub["id"] for event in events)]
     return t
 
 
