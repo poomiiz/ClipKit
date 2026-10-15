@@ -132,7 +132,9 @@ class OccurrenceTests(unittest.TestCase):
         self.f.write("clipkit_style.json", {"anim": "pair", "preset": "with-caption", "music": "", "sfx": False})
         self.f.write("clipkit_caption.json", {"cue:0": "first caption", "cue:1": "second caption"})
         metadata = {"width": 1920, "height": 1080, "duration": 8, "fps": 30}
-        with patch.object(render, "probe", return_value=metadata), patch.object(draft_quality, "probe", return_value=metadata):
+        with patch.object(render, "probe", return_value=metadata), \
+                patch.object(draft_quality, "probe", return_value=metadata), \
+                patch.object(render.video_edit.kitconfig, "_load", return_value={}):
             timeline = render.render_draft(self.path, "", dry=True)
         with patch.object(render, "render_draft", return_value=timeline), \
                 patch.object(hf_build, "_proxy", return_value="fixture.mp4"):
