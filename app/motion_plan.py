@@ -1,8 +1,281 @@
-"""Shared ownership rules for rendered motion and existing subtitle events."""
+"""Motion ownership and measured layouts shared by rendering and project preflight."""
+import hashlib
+import json
+import math
+from pathlib import Path
+
 from video_edit import VideoEditError
 
 
 ROLES = {"normal", "emphasis", "caption", "second", "title"}
+
+
+def _hash(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+
+
+def template_layout(template, params, *, width=1080, height=1920, placement=None):
+    """Measure existing template poses with an exact font; never relocate around a conflict."""
+    from PIL import ImageFont
+    import host_platform
+    import insert_plan
+    import kit_settings
+    import render
+    import video_editor
+
+    if any(type(value) is not int or not 1 <= value <= 8192 for value in (width, height)):
+        raise VideoEditError("motion canvas must contain integer width/height from 1 to 8192")
+    if template not in {"hook-title", "stat-number"}:
+        raise VideoEditError("this template needs its own verified layout")
+    if not isinstance(params, dict):
+        raise VideoEditError("motion params must be an object")
+    spec = kit_settings.motion_templates().get(template)
+    default_length = next((f.get("default") for f in (spec or {}).get("fields", [])
+                           if f["key"] == (spec or {}).get("length", "duration")), None)
+    source, duration = video_editor.motion_params(template, params, default_length)
+    font_name = source.get("font")
+    if font_name:
+        font = Path(font_name)
+        if not font.is_file():
+            font = host_platform.find_font(font_name, kit_settings._read_config())
+        if font is None or not font.is_file():
+            raise VideoEditError("motion font is unavailable; choose an installed font file")
+    else:
+        font = render.DEFAULT_FONT
+    family, font = render._font(str(font))
+    from fontTools.ttLib import TTFont
+    import unicodedata
+    with TTFont(str(font), lazy=True) as face:
+        cmap = face.getBestCmap()
+        for key in ("key", "sub") if template == "hook-title" else ("number", "unit", "label"):
+            source[key] = render.unbreak(source.get(key, ""))
+            if any(not char.isspace() and unicodedata.category(char) != "Cf" and ord(char) not in cmap
+                   for char in source[key]):
+                raise VideoEditError("motion font lacks a requested character; choose a font that contains the text")
+        digit_names = {cmap[ord(c)] for c in "0123456789" if ord(c) in cmap}
+        if template == "stat-number":
+            if len(digit_names) != 10:
+                raise VideoEditError("motion font lacks numeric glyphs")
+            if "GSUB" in face:
+                table = face["GSUB"].table
+                indices = {i for record in table.FeatureList.FeatureRecord if record.FeatureTag == "tnum"
+                           for i in record.Feature.LookupListIndex}
+                for i in indices:
+                    for sub in table.LookupList.Lookup[i].SubTable:
+                        sub = getattr(sub, "ExtSubTable", sub)
+                        # shortcut: numeric single substitutions; extend before accepting other tnum lookup types.
+                        if not hasattr(sub, "mapping") or any(not isinstance(v, str) for v in sub.mapping.values()):
+                            raise VideoEditError("motion font has unsupported numeric substitutions; choose a verified font")
+                        digit_names |= {sub.mapping[name] for name in list(digit_names) if name in sub.mapping}
+            digit_advance = max(face["hmtx"].metrics[name][0] for name in digit_names) / face["head"].unitsPerEm
+    measured = ImageFont.truetype(str(font), 100)
+    # LINE_H fixes CSS line cells; the font cell additionally reserves tall Thai ink.
+    cell = max(render.LINE_H, render.font_cell_metrics(font)["font_cell_scale"])
+    def text_width(text, size, **kwargs):
+        return measured.getlength(text, **kwargs) / 100 * size
+    def fit(text, size, room):
+        return min(size, size * room / max(text_width(text, size) * 1.02, 1))
+    sizes, rectangles = {}, []
+    if template == "hook-title":
+        key, sub = source.get("key", ""), source.get("sub", "")
+        if not key.strip() and not sub.strip():
+            raise VideoEditError("hook-title needs actual title text")
+        tilt = source.get("style") == "tilt"
+        angle = math.radians(4.3 if tilt else 0)
+        for role, text, size, top in (("key", key, 250 if tilt else 150, 1150 if tilt else 1265),
+                                      ("sub", sub, 122 if tilt else 86, 1405 if tilt else 1150)):
+            sizes[role] = size = fit(text, size, 940)
+            if not text:
+                continue
+            w, h = text_width(text, size) * 1.02 + (11 if role == "sub" else 0), size * cell
+            peak = 1.08 if tilt and role == "key" else 1.9 if role == "key" else 1
+            bw = w * peak * math.cos(angle) + h * math.sin(angle)
+            bh = h * math.cos(angle) + w * peak * math.sin(angle)
+            # Three blur radii plus stroke/offset cover neon and smear entrance poses.
+            pad = 140 if role == "key" else 32
+            shift = -160 if role == "key" and not tilt else 0
+            cy = top + size * render.LINE_H / 2
+            rectangles.append([540 - bw / 2 + shift - pad, cy - bh / 2 - pad,
+                               540 + bw / 2 + pad, cy + bh / 2 + pad])
+    else:
+        from decimal import Decimal
+        number = source["number"].replace(",", "")
+        if any(char not in "0123456789." for char in number):
+            raise VideoEditError("stat-number requires ASCII digits for its numeric animation")
+        amount = Decimal(number)
+        if not amount.is_finite() or amount > 2 ** 53 - 1:
+            raise VideoEditError("stat-number exceeds the exact numeric animation range")
+        decimals = len(number.partition(".")[2])
+        if decimals > 20:
+            raise VideoEditError("stat-number supports at most 20 decimal places")
+        final = format(amount, f",.{decimals}f")
+        unit, label = source.get("unit", ""), source.get("label", "")
+        numeric_width = sum(digit_advance * 260 if char.isdigit() else text_width(char, 260) for char in final)
+        wide = numeric_width + 14 + text_width(unit, 130)
+        k = min(1, 800 / max(wide * 1.02, 1))
+        sizes.update(number=260 * k, unit=130 * k, label=fit(label, 74, 800))
+        card_height = 48 + sizes["number"] * max(1.05, cell) + 14 + 26 + 30 + sizes["label"] * max(1.25, cell) + 56
+        rectangles = [[90 - 245, 1080 - card_height * .05 - 240,
+                       990 + 245, 1080 + card_height * 1.05 + 320]]
+    rect = [min(r[0] for r in rectangles), min(r[1] for r in rectangles),
+            max(r[2] for r in rectangles), max(r[3] for r in rectangles)]
+    if placement is None:
+        placement = {"x": .11, "y": .15 if template == "hook-title" else .2,
+                     "w": .78, "h": .3 if template == "hook-title" else .4}
+    if (not isinstance(placement, dict) or set(placement) != {"x", "y", "w", "h"}
+            or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+                   for v in placement.values())
+            or min(placement["x"], placement["y"]) < 0 or min(placement["w"], placement["h"]) <= 0
+            or placement["x"] + placement["w"] > 1 or placement["y"] + placement["h"] > 1):
+        raise VideoEditError("motion placement needs finite normalized x/y/w/h inside the canvas")
+    x, y, w, h = (placement[key] * dimension for key, dimension in
+                  (("x", width), ("y", height), ("w", width), ("h", height)))
+    scale = min(w / (rect[2] - rect[0]), h / (rect[3] - rect[1]), min(width, height) / 1080)
+    visible = [sizes[k] for k in sizes if (source.get(k) if k != "number" else True)]
+    if any(size * scale < min(width, height) * .018 for size in visible):
+        raise VideoEditError("motion text is too small in this placement; shorten text or choose a larger area")
+    left, top = x + w / 2 - (rect[0] + rect[2]) * scale / 2, y + h / 2 - (rect[1] + rect[3]) * scale / 2
+    bounds = [rect[0] * scale + left, rect[1] * scale + top, rect[2] * scale + left, rect[3] * scale + top]
+    layout = {"width": width, "height": height, "left": left, "top": top, "scale": scale,
+              "source_bounds": rect, "bounds": bounds, "font_sizes": sizes, "font_face": "ClipKitMotion"}
+    if template == "stat-number":
+        layout["number_text"] = final
+    inputs = {"template": str(kit_settings.KIT / "motion" / template / "index.html"),
+              "font": str(font.resolve()), "runtime": str(Path(__file__).with_name("motion_runtime.js"))}
+    hashes = {key: insert_plan.file_digest(value) for key, value in inputs.items()}
+    result = {"template": template, "source_params": source, "duration": duration,
+              "canvas": {"width": width, "height": height}, "placement": dict(placement),
+              "layout": layout, "bounds": bounds, "inputs": inputs, "hashes": hashes, "font_family": family}
+    result["layout_sha256"] = _hash(result)
+    return result
+
+
+def prepare_template(template, params, *, width=None, height=None, placement=None):
+    import insert_plan
+    import kit_settings
+    if template != "sentence-pair":
+        return template_layout(template, params, width=1080 if width is None else width,
+                               height=1920 if height is None else height, placement=placement)
+    if placement is not None:
+        raise VideoEditError("sentence-pair positions come from the selected subtitle preset")
+    source = kit_settings.sentence_pair_params(params)
+    W, H = int(source["width"]), int(source["height"])
+    if width is not None and width != W or height is not None and height != H:
+        raise VideoEditError("sentence-pair canvas differs from its measured subtitle events")
+    events = source["subtitle_events"]
+    bounds = [min(e["bbox"][0] for e in events), min(e["bbox"][1] for e in events),
+              max(e["bbox"][2] for e in events), max(e["bbox"][3] for e in events)]
+    inputs = {"template": str(kit_settings.KIT / "motion" / template / "index.html")}
+    for n, file in enumerate(dict.fromkeys(e["font_file"] for e in events)):
+        inputs[f"font:{n}"] = str(Path(file).resolve())
+    hashes = {key: insert_plan.file_digest(value) for key, value in inputs.items()}
+    plan = {"template": template, "source_params": source, "duration": max(e["end"] for e in events),
+            "canvas": {"width": W, "height": H}, "placement": None, "layout": None, "bounds": bounds,
+            "inputs": inputs, "hashes": hashes}
+    plan["layout_sha256"] = _hash(plan)
+    return plan
+
+
+def verify_inputs(plan):
+    import insert_plan
+    if any(insert_plan.file_digest(path) != plan["hashes"][key] for key, path in plan["inputs"].items()):
+        raise VideoEditError("motion template or font changed during rendering; prepare the layout again")
+
+
+def verify_media(file, plan):
+    """Check the actual video clock/canvas and decode its alpha plane before publishing."""
+    from fractions import Fraction
+    import subprocess
+    import video_edit
+    import insert_plan
+    result = subprocess.run([video_edit.FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_streams",
+                             "-of", "json", str(file)], capture_output=True, text=True, encoding="utf-8",
+                            errors="replace", creationflags=video_edit.NO_WINDOW, timeout=60)
+    try:
+        if result.returncode:
+            raise ValueError("ffprobe failed")
+        stream = json.loads(result.stdout)["streams"][0]
+        W, H = int(stream["width"]), int(stream["height"])
+        fps = float(Fraction(stream["r_frame_rate"]))
+        duration = insert_plan._probe(file)["duration"]
+        if (not math.isfinite(fps) or fps <= 0 or duration is None or
+                (W, H) != (plan["canvas"]["width"], plan["canvas"]["height"]) or
+                abs(duration - plan["duration"]) > 1 / fps + 1e-6 or
+                any(value.get("rotation", 0) for value in stream.get("side_data_list", []))):
+            raise ValueError("motion canvas, duration or rotation differs from the prepared layout")
+    except (KeyError, ValueError, TypeError, IndexError, ZeroDivisionError) as exc:
+        raise VideoEditError("rendered motion does not match its measured canvas and duration") from exc
+    decoded = subprocess.run([video_edit.FFMPEG, "-v", "error", "-xerror", "-i", str(file), "-map", "0:v:0",
+                              "-vf", "alphaextract", "-f", "null", "-"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", creationflags=video_edit.NO_WINDOW, timeout=1200)
+    if decoded.returncode:
+        raise VideoEditError("rendered motion failed full alpha-channel decode")
+    return {"duration": duration, "fps": fps, "width": W, "height": H,
+            "sha256": insert_plan.file_digest(file), "alpha_decode": True}
+
+
+def check_placement(motion, events, *, width, height, duration, safe_box, subject_zones=(), others=()):
+    """Read-only spatial/time gate before allocating a renderer; no position repair or hiding."""
+    def finite(value):
+        return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+    def rectangle(value):
+        return (isinstance(value, list) and len(value) == 4 and all(finite(v) for v in value)
+                and value[0] < value[2] and value[1] < value[3])
+    def intersects(first, second):
+        return all(max(first[n], second[n]) < min(first[n+2], second[n+2]) - .05 for n in (0,1))
+    start, length, bounds = motion.get("start"), motion.get("duration"), motion.get("bounds")
+    if not finite(start) or not finite(length) or not 0 <= start < start + length <= duration + 1e-6 or not rectangle(bounds):
+        raise VideoEditError("motion interval or measured bounds are invalid")
+    end = start + length
+    if (bounds[0] < width * (1 - safe_box["w"]) / 2 - .05 or bounds[2] > width * (1 + safe_box["w"]) / 2 + .05
+            or bounds[1] < height * safe_box["top"] - .05 or bounds[3] > height * safe_box["bottom"] + .05):
+        raise VideoEditError(f"motion {start:g}s exceeds the selected safe area; choose another placement")
+    policy = ownership(motion)
+    if policy["mode"] == "legacy_full_card":
+        raise VideoEditError("new motion needs an explicit ownership policy")
+    targets = {(target["cue_id"], role) for target in policy["targets"] for role in target["roles"]}
+    if targets - {(event.get("cue_id"), event["role"]) for event in events if event["start"] < end and start < event["end"]}:
+        raise VideoEditError("motion ownership refers to an unavailable cue or role")
+    reproduced = motion.get("params", {}).get("subtitle_events", [])
+    footprints = [(start, end, bounds)]
+    if reproduced:
+        if any(not rectangle(part.get("bbox")) or not finite(part.get("start")) or not finite(part.get("end"))
+               or not 0 <= part["start"] < part["end"] <= length + 1e-6 for part in reproduced):
+            raise VideoEditError("motion replacement events have invalid measured bounds or times")
+        footprints = [(start+part["start"], start+part["end"], part["bbox"]) for part in reproduced]
+    for event in events:
+        if not (event["start"] < end and start < event["end"]):
+            continue
+        owned = hides(motion, role=event["role"], cue_id=event.get("cue_id"))
+        if owned:
+            needs_copy = policy["mode"] == "replace" or event["role"] == "caption" and policy["caption_policy"] == "replace"
+            if needs_copy:
+                if event["start"] < start - 1e-6 or event["end"] > end + 1e-6:
+                    raise VideoEditError("motion cuts an owned held subtitle; select its full interval")
+                if not any(part.get("role") == event["role"] and part.get("cue_id") == event.get("cue_id")
+                           and part.get("text") == event["text"] and abs(part["start"] + start - event["start"]) <= 1e-6
+                           and abs(part["end"] + start - event["end"]) <= 1e-6 for part in reproduced):
+                    raise VideoEditError("motion does not reproduce the cue/role it claims to replace")
+        elif any(a < event["end"] and event["start"] < b and intersects(rect, event["bbox"])
+                 for a,b,rect in footprints):
+            raise VideoEditError(f"motion {start:g}s overlaps cue {event.get('cue_id')} {event['role']}; choose another placement")
+    for other in others:
+        if other["start"] < end and start < other["start"] + other["duration"]:
+            if not rectangle(other.get("bounds")) or intersects(bounds, other["bounds"]):
+                raise VideoEditError(f"motion {start:g}s overlaps another motion; choose another interval or placement")
+    if not isinstance(subject_zones, (list, tuple)):
+        raise VideoEditError("subject zones must be an array")
+    for zone in subject_zones:
+        keys = ("start", "end", "x", "y", "w", "h")
+        if (not isinstance(zone, dict) or set(zone) != set(keys) or any(not finite(zone[k]) for k in keys)
+                or not 0 <= zone["start"] < zone["end"] <= duration + 1e-6
+                or min(zone["x"], zone["y"]) < 0 or min(zone["w"], zone["h"]) <= 0
+                or zone["x"] + zone["w"] > 1 or zone["y"] + zone["h"] > 1):
+            raise VideoEditError("subject zones need valid timed normalized x/y/w/h rectangles")
+        rect = [zone["x"] * width, zone["y"] * height,
+                (zone["x"] + zone["w"]) * width, (zone["y"] + zone["h"]) * height]
+        if any(a < zone["end"] and zone["start"] < b and intersects(footprint, rect) for a,b,footprint in footprints):
+            raise VideoEditError(f"motion {start:g}s overlaps the confirmed subject zone; choose another placement")
 
 
 def ownership(motion: dict) -> dict:
@@ -37,7 +310,10 @@ def ownership(motion: dict) -> dict:
         raise VideoEditError("replacement must name its roles and declare caption replacement explicitly")
     if mode == "full_card" and targets:
         raise VideoEditError("full_card owns its interval; use replace for individual cue roles")
-    return {"mode": mode, "targets": [{"cue_id": t["cue_id"], "roles": list(t["roles"])} for t in targets],
+    grouped = {}
+    for target in targets:
+        grouped.setdefault(target["cue_id"], set()).update(target["roles"])
+    return {"mode": mode, "targets": [{"cue_id": cue, "roles": sorted(roles)} for cue, roles in sorted(grouped.items())],
             "caption_policy": policy}
 
 

@@ -18,6 +18,7 @@ with tempfile.TemporaryDirectory() as import_folder:
         import render
 import hf_build
 import kitconfig
+import motion_plan
 from capcut_font_test import CapCutFontTests
 
 
@@ -37,12 +38,13 @@ class MotionHandoffTests(unittest.TestCase):
                 look.update(fixed_size=True, font=str(render.DEFAULT_FONT))
                 phrase = {"start": 0, "end": 2, "hit": 1, "lead": "normal", "punch": "key",
                           "line": "normal key", "cue_id": "cue", "opts": {}, "k": 0}
-                timeline = {"style": {}, "width": W, "height": H, "phrases": [phrase], "hook": [], "motions": []}
+                timeline = {"style": {}, "width": W, "height": H,"look":"pair","duration":2, "phrases": [phrase], "hook": [], "motions": []}
                 req = video_editor.OverlayRequest(path=folder, template="sentence-pair", start=0, end=2,
                     text="normal key", cue_id="cue", params={"pairs": [[0, 2, "normal", "key", 1]]})
                 with patch.object(render, "render_draft", return_value=timeline), \
                         patch.object(render, "pair_look", return_value=look), \
-                        patch.object(kit_settings, "make_motion", return_value={"file": "fixture.mov"}) as make:
+                        patch.object(kit_settings, "make_motion", side_effect=lambda body:{"file":"fixture.mov", "recipe":
+                            motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height)}) as make:
                     video_editor.draft_overlay_add(req)
                     params = make.call_args.args[0].params
                     expected = render.pair_events_from_timeline(timeline)

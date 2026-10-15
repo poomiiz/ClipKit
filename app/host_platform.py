@@ -22,7 +22,7 @@ def hyperframes_command(command: list[str], project: Path, env: dict[str, str]) 
     """Keep Mac preview/render cleanup inside the process tree EditorKrab owns."""
     if not is_macos():
         return command
-    if command[2:3] != ["hyperframes@0.8.101"] or command[3] not in {"preview", "render"}:
+    if command[2:3] != ["hyperframes@0.8.101"] or command[3] not in {"preview", "render", "check"}:
         raise RuntimeError("Mac launcher needs review for this HyperFrames version/command")
     node = shutil.which("node", path=env.get("PATH"))
     if not node:

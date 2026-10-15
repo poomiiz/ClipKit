@@ -19,6 +19,9 @@ import host_platform
 import kit_settings
 import project_lock
 import hf_build
+import motion_plan
+import render
+import draft_quality
 import video_editor
 import web_ai_identity as identity
 import web_ai_json as web
@@ -76,9 +79,11 @@ class TransactionTests(unittest.TestCase):
             assets.mkdir(parents=True)
             asset = assets / "first.mov"
             asset.write_bytes(b"synthetic motion")
-            return {"file": str(asset)}
+            return {"file": str(asset),"recipe":motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height)}
 
         with patch.object(kit_settings, "make_motion", side_effect=motion), \
+                patch.object(render,"probe",return_value={"duration":8,"width":1920,"height":1080,"fps":30}), \
+                patch.object(draft_quality,"probe",return_value={"duration":8,"width":1920,"height":1080,"fps":30}), \
                 self.assertRaisesRegex(RuntimeError, "second render"):
             web.import_clip(self.path, self.answer)
         self.assertEqual(self.files(), before)

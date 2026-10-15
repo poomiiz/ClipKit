@@ -732,7 +732,7 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
     return out
 
 
-def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = None) -> None:
+def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = None) -> list[dict]:
     """Read-only guard for a measured plan, including public motion requests before allocating a render."""
     from PIL import ImageFont
     box = box or safe_box({})
@@ -762,6 +762,7 @@ def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = 
                             for axis in (0, 1))):
                 raise VideoEditError(f"cue {first['cue_id']} · {first['role']}/{second['role']}: ข้อความทับกัน · ปรับตำแหน่งใน preset")
         active.append(first)
+    return measured
 
 
 def _resolved_pair_cues(rows: list[dict], words: dict, picks: dict, *, duration: float | None = None) -> list[dict]:
@@ -1216,7 +1217,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             music_file, fx = None, {"on": False, "volume": 0}
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
-            return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
+            return {"duration": length, "width": W, "height": H, "look": anim, "style": style,
                     "hook": hook, "subtitle_events": subtitle_events, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
                     "progress": bool(style.get("progress")), "emoji": emoji,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],

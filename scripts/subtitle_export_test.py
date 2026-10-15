@@ -206,11 +206,14 @@ class SubtitleExportTests(unittest.TestCase):
                     work=Path(kwargs["cwd"])
                     captured["html"]=(work/"index.html").read_text(encoding="utf-8")
                     captured["font"]=(work/"subtitle-font-0.ttf").read_bytes()
+                    if "check" in command:
+                        return SimpleNamespace(returncode=0,stdout=json.dumps({"ok":True}),stderr="")
                     Path(command[-1]).write_bytes(b"synthetic fixture only")
                     return SimpleNamespace(returncode=0,stdout="",stderr="")
                 with patch.object(kit_settings,"_read_config",return_value={"output_dir":folder}), \
                      patch("shutil.which",return_value="npx"), \
                      patch.object(kit_settings.host_platform,"hyperframes_command",side_effect=lambda command,*args:command), \
+                     patch("motion_plan.verify_media",return_value={"sha256":"synthetic fixture only"}), \
                      patch.object(render_process,"run",side_effect=fake_render):
                     kit_settings.make_motion(kit_settings.MotionRequest(template="sentence-pair",name="synthetic",
                         params={"width":width,"height":height,"subtitle_events":events}))

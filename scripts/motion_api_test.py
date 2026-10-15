@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory() as folder:
 import kit_settings
 import kitconfig
 import render
+import motion_plan
 
 
 class MotionApiTests(unittest.TestCase):
@@ -26,7 +27,14 @@ class MotionApiTests(unittest.TestCase):
         config.write_text("{}", encoding="utf-8")
         self.enterContext(patch.object(kitconfig, "_CANDIDATES", [config]))
         self.file = Path(self.path) / video_editor.OVERLAYS
-        self.make = self.enterContext(patch.object(kit_settings, "make_motion", return_value={"file": "fixture.mov"}))
+        self.timeline = {"style": {}, "width": 1080, "height": 1920, "duration": 8, "look": "pair",
+                         "phrases": [], "hook": [], "motions": []}
+        self.enterContext(patch.object(render,"render_draft",side_effect=lambda *args,**kwargs:self.timeline))
+        self.make = self.enterContext(patch.object(kit_settings, "make_motion", side_effect=self.render))
+
+    def render(self, body):
+        plan=motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height,placement=body.placement)
+        return {"file":"fixture.mov","recipe":plan}
 
     def req(self, **values):
         return video_editor.OverlayRequest(path=self.path, template="hook-title", start=1.123456,
@@ -80,10 +88,11 @@ class MotionApiTests(unittest.TestCase):
     def test_sentence_pair_owns_only_its_cue_including_caption_it_reproduces(self):
         phrase = {"start": 1, "end": 3, "hit": 2, "lead": "normal", "punch": "key",
                   "line": "normal key", "cue_id": "chosen", "opts": {}, "k": 0}
-        timeline = {"style": {}, "width": 1080, "height": 1920, "phrases": [phrase], "hook": [], "motions": []}
+        timeline = {"style": {}, "width": 1080, "height": 1920, "duration": 3,"look":"pair", "phrases": [phrase], "hook": [], "motions": []}
         base = render.pair_events_from_timeline(timeline)
         # A neighboring held role can intersect this interval without belonging to this cue.
-        neighbor = dict(base[0], cue_id="neighbor", role="caption", start=0, end=3)
+        neighbor = render.check_pair_events([dict(base[0], cue_id="neighbor", role="caption", text="n",
+            center_x_px=200,center_y_px=300,size_px=20,outline_px=2,effect="none",start=0,end=3)],1080,1920)[0]
         caption = dict(base[0], role="caption", center_y_px=300, size_px=20, outline_px=2, effect="none")
         with patch.object(render, "render_draft", return_value=timeline), \
                 patch.object(render, "pair_events_from_timeline", return_value=base + [caption, neighbor]):
@@ -104,6 +113,64 @@ class MotionApiTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "renderer failure"):
             video_editor.draft_overlay_add(self.req(placement_id="old"))
         self.assertEqual(self.file.read_bytes(), original)
+
+    def test_generic_renderer_receives_the_project_canvas_and_stores_its_recipe(self):
+        self.timeline.update(width=1920,height=1080)
+        row=video_editor.draft_overlay_add(self.req())["overlays"][0]
+        body=self.make.call_args.args[0]
+        self.assertEqual((body.width,body.height),(1920,1080))
+        self.assertEqual(row["canvas"],{"width":1920,"height":1080})
+        self.assertEqual(row["ownership"],{"mode":"decorate","targets":[],"caption_policy":"preserve"})
+        self.assertTrue(row["subject_review_pending"])
+
+    def test_collision_with_preserved_caption_rejects_before_renderer(self):
+        phrase={"start":0,"end":8,"hit":0,"lead":"caption","punch":"","line":"caption","cue_id":"keep","opts":{},"k":0}
+        scene={**self.timeline,"phrases":[phrase]}
+        event=render.pair_events_from_timeline(scene)[0]
+        event=render.check_pair_events([dict(event,role="caption",center_y_px=600,size_px=20,outline_px=2,effect="none")],1080,1920)[0]
+        with patch.object(render,"pair_events_from_timeline",return_value=[event]),self.assertRaises(video_editor.HTTPException):
+            video_editor.draft_overlay_add(self.req())
+        self.make.assert_not_called()
+        self.assertFalse(self.file.exists())
+
+    def test_confirmed_subject_zone_rejects_before_renderer(self):
+        self.timeline["style"]={"motion_subject_zones":[{"start":0,"end":8,"x":.11,"y":.15,"w":.78,"h":.3}]}
+        with self.assertRaises(video_editor.HTTPException) as error:
+            video_editor.draft_overlay_add(self.req())
+        self.assertIn("subject",str(error.exception.detail))
+        self.make.assert_not_called()
+
+    def test_word_anchor_rejects_a_guessed_start_before_renderer(self):
+        points=[{"cue_id":"a","phrase":0,"punch":"key","start":1.5,"hit":1.5,"words":[{"word":3,"start":1.5}]}]
+        with patch("insert_plan.opportunities",return_value=points),self.assertRaises(video_editor.HTTPException) as error:
+            video_editor.draft_overlay_add(self.req(anchor={"kind":"word","cue_id":"a","word":3}))
+        self.assertIn("anchor",str(error.exception.detail))
+        self.make.assert_not_called()
+
+    def test_changed_layout_result_cannot_publish_over_existing_metadata(self):
+        before=[{"placement_id":"other","start":4,"duration":.5,"file":"other.mov"}]
+        self.file.write_text(json.dumps(before),encoding="utf-8")
+        original=self.file.read_bytes()
+        def changed(body):
+            out=self.render(body);out["recipe"]["layout_sha256"]="changed";return out
+        self.make.side_effect=changed
+        with self.assertRaises(video_editor.HTTPException) as error:
+            video_editor.draft_overlay_add(self.req())
+        self.assertEqual(error.exception.status_code,409)
+        self.assertEqual(self.file.read_bytes(),original)
+
+    def test_emphasis_only_motion_starts_at_its_word_while_normal_stays(self):
+        phrase={"start":0,"end":3,"hit":1,"lead":"normal","punch":"key","line":"normal key",
+                "cue_id":"chosen","opts":{},"k":0}
+        self.timeline.update(duration=3,phrases=[phrase])
+        policy={"mode":"replace","targets":[{"cue_id":"chosen","roles":["emphasis"]}],"caption_policy":"preserve"}
+        req=video_editor.OverlayRequest(path=self.path,template="sentence-pair",start=1,end=3,
+                                        text="normal key",cue_id="chosen",ownership=policy)
+        row=video_editor.draft_overlay_add(req)["overlays"][0]
+        self.assertEqual([e["role"] for e in row["params"]["subtitle_events"]],["emphasis"])
+        self.assertEqual(row["params"]["subtitle_events"][0]["start"],0)
+        self.assertEqual(render.visible_spans(0,3,[row],role="normal",cue_id="chosen"),[(0,3)])
+        self.assertEqual(render.visible_spans(1,3,[row],role="emphasis",cue_id="chosen"),[])
 
 
 if __name__ == "__main__":

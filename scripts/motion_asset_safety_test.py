@@ -1,5 +1,7 @@
 """Motion revisions get distinct files, and AI transactions own their rendered assets."""
 import os
+import hashlib
+import json
 import subprocess
 import sys
 import tempfile
@@ -15,6 +17,7 @@ with tempfile.TemporaryDirectory() as import_folder:
         import kit_settings
         import video_editor
 import render_process
+import motion_plan
 
 
 class MotionAssetSafety(unittest.TestCase):
@@ -34,12 +37,22 @@ class MotionAssetSafety(unittest.TestCase):
         spec = {"length": "duration", "fields": [{"key": "duration", "type": "number", "default": 2},
                                                  {"key": "revision", "type": "number", "default": 1}]}
         self.enterContext(patch.object(kit_settings, "motion_templates", return_value={"first": spec, "second": spec}))
+        def prepare(template, params, **kwargs):
+            page = self.root / "motion" / template / "index.html"
+            return {"source_params": {**params, "subtitle_events": []}, "duration": params["duration"],
+                    "canvas": {"width": 1080, "height": 1920}, "layout": None, "placement": None, "bounds": [0,0,1,1],
+                    "inputs": {"template": str(page)}, "hashes": {"template": hashlib.sha256(page.read_bytes()).hexdigest()},
+                    "layout_sha256": "synthetic-asset-fixture"}
+        self.enterContext(patch.object(motion_plan, "prepare_template", side_effect=prepare))
+        self.enterContext(patch.object(motion_plan, "verify_media", return_value={"sha256": "synthetic-media-fixture"}))
         self.enterContext(patch("shutil.which", return_value="npx"))
         self.enterContext(patch.object(kit_settings.host_platform, "hyperframes_command", side_effect=lambda cmd, cwd, env: cmd))
         self.launch = self.enterContext(patch.object(render_process, "run", side_effect=self.render))
         self.calls = []
 
     def render(self, command, **kwargs):
+        if "check" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"ok": True}), "")
         target = Path(command[command.index("-o") + 1])
         work = Path(kwargs["cwd"])
         self.calls.append((target, work))
@@ -63,7 +76,7 @@ class MotionAssetSafety(unittest.TestCase):
         self.assertIn(b'"revision": 1', files[0].read_bytes())
         self.assertIn(b'"revision": 2', files[3].read_bytes())
         for call in self.launch.call_args_list:
-            self.assertEqual(call.kwargs["timeout"], 900)
+            self.assertEqual(call.kwargs["timeout"], 300 if "check" in call.args[0] else 900)
             self.assertEqual(call.kwargs["env"]["HYPERFRAMES_SKIP_SKILLS"], "1")
         self.assertTrue(all(not work.exists() for _, work in self.calls))
 
@@ -83,6 +96,8 @@ class MotionAssetSafety(unittest.TestCase):
         legacy.write_bytes(b"existing legacy motion")
 
         def fail(command, **kwargs):
+            if "check" in command:
+                return self.render(command, **kwargs)
             self.render(command, **kwargs)
             return subprocess.CompletedProcess(command, 1, "", "fixture render failed")
 
@@ -100,6 +115,8 @@ class MotionAssetSafety(unittest.TestCase):
         private = self.root / "transaction" / "assets"
 
         def timeout(command, **kwargs):
+            if "check" in command:
+                return self.render(command, **kwargs)
             self.render(command, **kwargs)
             raise subprocess.TimeoutExpired(command, 900)
 

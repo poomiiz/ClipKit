@@ -293,6 +293,8 @@ class PlatformTests(unittest.TestCase):
                     ["npx", "--yes", "hyperframes@0.8.101", "preview", "--port", "3002", "--no-open"], root, env)
                 render = host.hyperframes_command(
                     ["npx", "--yes", "hyperframes@0.8.101", "render", "--format", "mp4"], root, env)
+                check = host.hyperframes_command(
+                    ["npx", "--yes", "hyperframes@0.8.101", "check", "--json"], root, env)
                 install.assert_not_called()
             self.assertEqual(original.read_bytes(), source.replace(b'function killOrphanedProcesses() {',
                              b'function killOrphanedProcesses() {\n  return 0;'))
@@ -300,6 +302,7 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(env["PWD"], str(root.resolve()))
             self.assertEqual(command, ["node", str(cli), "preview", "--port", "3002", "--no-open", "--foreground"])
             self.assertEqual(render, ["node", str(cli), "render", "--format", "mp4"])
+            self.assertEqual(check, ["node", str(cli), "check", "--json"])
 
     def test_mac_preview_changed_module_fails_before_writing_or_launching(self):
         with tempfile.TemporaryDirectory() as folder:

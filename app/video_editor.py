@@ -1068,6 +1068,10 @@ class OverlayRequest(BaseModel):
     params: dict[str, Any] | None = None   # the template's fields; None = made from text (QUICK_MOTION only)
     cue_id: str | None = None
     placement_id: str | None = None
+    placement: dict[str, Any] | None = None
+    ownership: dict[str, Any] | None = None
+    anchor: dict[str, Any] | None = None
+    reason: str = Field(default="ผู้ใช้เลือก motion จากเนื้อหา", min_length=1, max_length=500)
 
 
 @router.post("/draft/overlay")
@@ -1076,13 +1080,24 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     import kit_settings
     import math
     import render
+    import motion_plan
     dur = req.end - req.start
     ownership = None
     try:
         if not math.isfinite(dur) or dur <= 0:
             raise VideoEditError("motion ต้องมีเวลาเริ่มก่อนเวลาจบ")
+        timeline = render.render_draft(req.path, "", dry=True)
+        base = {k: v for k, v in timeline.items() if k != "subtitle_events"}
+        base["motions"] = []
+        if timeline["look"] != "pair" and timeline["phrases"]:
+            raise VideoEditError("เลือกพรีเซ็ตซับแบบวัดตำแหน่งก่อนวาง motion ร่วมกับข้อความ")
+        underlying = render.pair_events_from_timeline(base)
+        anchor = req.anchor or {"kind": "timeline", "start": req.start}
+        import insert_plan
+        resolved, _ = insert_plan.resolve_anchor(req.path, anchor)
+        if abs(resolved - req.start) > 1e-6:
+            raise VideoEditError("เวลา motion ไม่ตรง anchor ล่าสุด · เลือกจุดคำพูดใหม่")
         if req.template == "sentence-pair":
-            timeline = render.render_draft(req.path, "", dry=True)
             tight = lambda text: "".join(render.unbreak(text).split())
             phrases = [p for p in timeline["phrases"] if p["end"] > req.start and p["start"] < req.end
                        and (req.cue_id is None or p.get("cue_id") == req.cue_id)
@@ -1092,18 +1107,19 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
             cues = {p.get("cue_id") for p in phrases}
             if len(cues) != 1 or not next(iter(cues)):
                 raise VideoEditError("motion ต้องอ้าง cue เดียวที่ชัดเจน · เลือกบรรทัดจาก Timeline อีกครั้ง")
-            if any(p["start"] < req.start - .001 or p["end"] > req.end + .001 for p in phrases):
-                raise VideoEditError("motion ตัดกลางท่อนซับ · เลือกช่วงเต็มตาม Timeline")
             if req.params:
                 expected = [[p["start"] - req.start, p["end"] - req.start, p["lead"], p["punch"],
                              p["hit"] - p["start"]] for p in phrases]
                 if set(req.params) != {"pairs"} or req.params["pairs"] != expected:
                     raise VideoEditError("sentence-pair ใช้ข้อความและเวลาจริงจาก Timeline · เอา params ที่กำหนดเองออก")
             # Replacing an existing overlay needs the underlying roles before that overlay hides them.
-            base = {k: v for k, v in timeline.items() if k != "subtitle_events"}
-            base["motions"] = []
-            events = [e for e in render.pair_events_from_timeline(base)
+            events = [e for e in underlying
                       if e.get("cue_id") in cues and e["end"] > req.start and e["start"] < req.end]
+            if req.ownership is not None:
+                ownership = motion_plan.ownership({"ownership": req.ownership})
+                if ownership["mode"] != "replace" or any(target["cue_id"] not in cues for target in ownership["targets"]):
+                    raise VideoEditError("sentence-pair ต้องแทนบทบาทของ cue ที่เลือกเท่านั้น")
+                events = [e for e in events if motion_plan.hides({"ownership": ownership}, role=e["role"], cue_id=e.get("cue_id"))]
             if any(e["start"] < req.start - .001 or e["end"] > req.end + .001 for e in events):
                 raise VideoEditError("motion ตัดช่วงข้อความค้างหรือ caption · ขยายช่วงให้ครบก่อนสร้าง")
             events = [{**e, "start": max(0, e["start"] - req.start), "end": e["end"] - req.start,
@@ -1111,17 +1127,30 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
             params = kit_settings.sentence_pair_params({"subtitle_events": events,
                 "width": timeline["width"], "height": timeline["height"]})
             dur = max(event["end"] for event in params["subtitle_events"])
-            import motion_plan
             roles = sorted({e["role"] for e in events})
-            ownership = motion_plan.ownership({"ownership": {"mode": "replace",
+            derived = motion_plan.ownership({"ownership": {"mode": "replace",
                 "targets": [{"cue_id": next(iter(cues)), "roles": roles}],
                 "caption_policy": "replace" if "caption" in roles else "preserve"}})
+            if ownership is not None and ownership != derived:
+                raise VideoEditError("motion ต้องแทนบทบาทที่มีอยู่จริงใน cue")
+            ownership = derived
         elif req.params is not None:
             params, dur = motion_params(req.template, req.params, dur)
         elif req.template == "hook-title":
             params = {"key": req.text, "sub": "", "style": "straight", "duration": dur}
         else:
             raise VideoEditError(f"{req.template} ต้องกรอกช่องของมันเอง (params)")
+        if ownership is None:
+            ownership = motion_plan.ownership({"ownership": req.ownership or
+                {"mode": "decorate", "targets": [], "caption_policy": "preserve"}})
+        prepared = motion_plan.prepare_template(req.template, params, width=timeline["width"],
+                                                height=timeline["height"], placement=req.placement)
+        dur = prepared["duration"]
+        candidate = {"start": req.start, "duration": dur, "bounds": prepared["bounds"],
+                     "ownership": ownership, "params": prepared["source_params"]}
+        motion_plan.check_placement(candidate, underlying, width=timeline["width"], height=timeline["height"],
+                                    duration=timeline["duration"], safe_box=render.safe_box(timeline["style"]),
+                                    subject_zones=timeline["style"].get("motion_subject_zones", []))
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     previous = _overlays(req.path)
@@ -1136,11 +1165,17 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
         if a < req.start + dur and req.start < a + length:
             raise HTTPException(409, "motion ทับช่วงเดิม · เลือกรายการเดิมเพื่อแก้หรือลบก่อน")
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
-    mov = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params))["file"]
-    item = {"file": mov, "start": req.start, "duration": dur, "template": req.template, "text": req.text,
-            "placement_id": req.placement_id or __import__("uuid").uuid4().hex, "params": params}
-    if ownership is not None:
-        item.update(ownership=ownership, cue_id=next(iter(cues)))
+    rendered = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params,
+        width=timeline["width"], height=timeline["height"], placement=req.placement))
+    if rendered["recipe"]["layout_sha256"] != prepared["layout_sha256"]:
+        raise HTTPException(409, "motion เปลี่ยนหลังตรวจตำแหน่ง · ตรวจแผนใหม่ก่อนใช้")
+    item = {"file": rendered["file"], "start": req.start, "duration": dur, "template": req.template, "text": req.text,
+            "placement_id": req.placement_id or __import__("uuid").uuid4().hex, "params": prepared["source_params"],
+            "ownership": ownership, "anchor": anchor, "reason": req.reason, "recipe": rendered["recipe"],
+            "canvas": prepared["canvas"], "bounds": prepared["bounds"],
+            "subject_review_pending": not bool(timeline["style"].get("motion_subject_zones"))}
+    if req.template == "sentence-pair":
+        item["cue_id"] = next(iter(cues))
     items.append(item)
     atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
                                                       indent=1), encoding="utf-8")

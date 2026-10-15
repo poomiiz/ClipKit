@@ -119,26 +119,33 @@
     outer.appendChild(text); root.appendChild(outer);
     return {event,text};
   });
-  document.fonts.ready.then(() => {
+  for (const {event,text} of nodes) {
+    tl.set(text,{xPercent:-50,yPercent:-50,rotation:event.rotation},0);
+    if (event.effect === "pop") tl.fromTo(text,{scale:1.3},{scale:1,duration:Math.min(.14,event.end-event.start),ease:"none"},event.start);
+    else if (event.effect === "fade") tl.fromTo(text,{opacity:0},{opacity:1,duration:Math.min(.08,event.end-event.start),ease:"none"},event.start);
+  }
+  window.__timelines = window.__timelines || {};
+  window.__timelines.main = tl;
+  const families = [...new Set(EVENTS.map(event => ARGS.font || event.font_family || 'Kanit'))];
+  window.__clipkitMotionReady = Promise.all(families.map(family => document.fonts.load(`700 20px ${JSON.stringify(family)}`))).then(() => document.fonts.ready).then(() => {
     for (const {event,text} of nodes) {
       const peak = event.effect === "pop" ? 1.3 : 1, angle = Math.abs(event.rotation)*Math.PI/180;
       const padding = 2*(event.outline_px+event.shadow), room = W*.78 - Math.abs(event.center_x_px-W/2)*2-padding;
-      const measure = () => ({w:(text.offsetWidth*Math.cos(angle)+text.offsetHeight*Math.sin(angle))*peak+padding,
-                             h:(text.offsetHeight*Math.cos(angle)+text.offsetWidth*Math.sin(angle))*peak+padding});
+      const measure = () => {
+        const style = getComputedStyle(text), width = parseFloat(style.width), height = parseFloat(style.height);
+        return {w:(width*Math.cos(angle)+height*Math.sin(angle))*peak+padding,
+                h:(height*Math.cos(angle)+width*Math.sin(angle))*peak+padding};
+      };
       let box = measure();
       if (!ARGS.subtitle_events && !event.fixed_size && box.w > room) {
         text.style.fontSize = event.size_px*room/box.w+"px"; box = measure();
       }
-      if (box.w > W*.78 || event.center_x_px-box.w/2 < W*.11 || event.center_x_px+box.w/2 > W*.89
-          || event.center_y_px-box.h/2 < H*.11 || event.center_y_px+box.h/2 > H*.77)
+      if (box.w > W*.78+.05 || event.center_x_px-box.w/2 < W*.11-.05 || event.center_x_px+box.w/2 > W*.89+.05
+          || event.center_y_px-box.h/2 < H*.11-.05 || event.center_y_px+box.h/2 > H*.77+.05)
         throw new Error(`cue ${event.cue_id} / ${event.role}: fixed text or animation exceeds safe area; shorten show or adjust preset`);
-      tl.set(text,{xPercent:-50,yPercent:-50,rotation:event.rotation},0);
-      if (event.effect === "pop") tl.fromTo(text,{scale:1.3},{scale:1,duration:Math.min(.14,event.end-event.start),ease:"none"},event.start);
-      else if (event.effect === "fade") tl.fromTo(text,{opacity:0},{opacity:1,duration:Math.min(.08,event.end-event.start),ease:"none"},event.start);
     }
-    window.__timelines = window.__timelines || {};
-    window.__timelines.main = tl;
   });
+  window.__clipkitMotionReady.catch(error => { setTimeout(() => { throw error; }, 0); });
 </script>
 </body>
 </html>

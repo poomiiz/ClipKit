@@ -25,7 +25,8 @@ SIDECARS = ("draft_content.json", "clipkit.json", "clipkit_words.json", "clipkit
             "clipkit_insert_assets.json")
 DEPENDENCIES = ("web_ai_identity.py", "web_ai_json.py", "web_ai_transaction.py", "video_edit.py",
                 "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py",
-                "story_selection.py", "subtitle_plan.py", "spelling.py", "insert_plan.py", "insert_geometry.py", "motion_plan.py")
+                "story_selection.py", "subtitle_plan.py", "spelling.py", "insert_plan.py", "insert_geometry.py", "motion_plan.py",
+                "motion_runtime.js")
 
 
 def _hash(value: Any) -> str:

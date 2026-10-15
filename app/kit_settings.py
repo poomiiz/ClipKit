@@ -401,6 +401,9 @@ class MotionRequest(BaseModel):
     template: str
     name: str              # output file name (no extension)
     params: dict[str, Any]
+    width: int | None = Field(default=None, ge=1, le=8192, strict=True)
+    height: int | None = Field(default=None, ge=1, le=8192, strict=True)
+    placement: dict[str, Any] | None = None
 
 
 _motion_destination = ContextVar("motion_destination", default=None)
@@ -471,33 +474,68 @@ def sentence_pair_params(params: dict[str, Any]) -> dict[str, Any]:
                 raise VideoEditError("sentence-pair: ไม่พบฟอนต์ที่ใช้วัดข้อความ")
             if render._font(str(font))[0] != event["font_family"]:
                 raise VideoEditError("sentence-pair: ชื่อฟอนต์ไม่ตรงกับไฟล์ที่ใช้วัด")
-        render.check_pair_events(events, int(W), int(H))
+        events = render.check_pair_events(events, int(W), int(H))
         out.update(width=W, height=H, subtitle_events=events)
         return out
     except (VideoEditError, KeyError, TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
+def _motion_project(plan: dict, work: Path) -> Path:
+    """Build only inside the caller's owned staging folder using the measured font bytes."""
+    import re
+    import shutil
+    shutil.copytree(Path(plan["inputs"]["template"]).parent, work, dirs_exist_ok=True)
+    page = (work / "index.html").read_text(encoding="utf-8")
+    params = dict(plan["source_params"])
+    if plan["layout"] is not None:
+        params["layout"] = plan["layout"]
+    kit = json.dumps(params, ensure_ascii=False).replace("</", "<\\/")
+    script = f"<script>window.KIT = {kit};</script>"
+    if plan["layout"] is not None:
+        script += "<script>" + Path(plan["inputs"]["runtime"]).read_text(encoding="utf-8").replace("</", "<\\/") + "</script>"
+    page, count = re.subn(r"<head>", lambda _: "<head>\n" + script, page, count=1)
+    if count != 1:
+        raise HTTPException(400, "motion template has no <head>")
+    length = f'{plan["duration"]:.9f}'.rstrip("0").rstrip(".")
+    page, count = re.subn(r'data-duration="[\d.]+"', f'data-duration="{length}"', page)
+    if not count:
+        raise HTTPException(400, "motion template has no duration")
+    W, H = plan["canvas"]["width"], plan["canvas"]["height"]
+    page = re.sub(r'<meta name="viewport"[^>]*>', f'<meta name="viewport" content="width={W}, height={H}">', page)
+    page = re.sub(r'data-width="[\d.]+"', f'data-width="{W}"', page)
+    page = re.sub(r'data-height="[\d.]+"', f'data-height="{H}"', page)
+    fonts = (list(dict.fromkeys((e["font_family"], e["font_file"]) for e in params["subtitle_events"]))
+             if plan["layout"] is None else [(plan["layout"]["font_face"], plan["inputs"]["font"])])
+    rules = [f'html,body{{width:{W}px;height:{H}px;font-synthesis:none}}']
+    for index, (family, source) in enumerate(fonts):
+        font = Path(source)
+        filename = f'{"subtitle" if plan["layout"] is None else "motion"}-font-{index}{font.suffix}'
+        shutil.copyfile(font, work / filename)
+        rules.append(f'@font-face{{font-family:{json.dumps(family)};src:url("{filename}");font-weight:700;font-style:normal}}')
+    page = page.replace("</head>", "<style>" + "".join(rules).replace("</", "<\\/") + "</style></head>", 1)
+    atomic.write_text(work / "index.html", page, encoding="utf-8")
+    return work / "index.html"
+
+
 @router.post("/motion")
 def make_motion(body: MotionRequest) -> dict[str, Any]:
-    """Render a motion template with the user's words to a transparent MOV in <output_dir>/motion."""
+    """Validate, check and decode a new exact-canvas motion revision before publishing it."""
     import re
     import shutil
     import tempfile
-    specs = motion_templates()
-    if body.template not in specs:
+    import motion_plan
+    import render_process
+    from video_edit import VideoEditError
+    if body.template not in motion_templates():
         raise HTTPException(400, f"unknown motion template: {body.template}")
-    if body.template == "sentence-pair":
-        params = sentence_pair_params(body.params)
-    else:
-        from video_editor import motion_params
-        from video_edit import VideoEditError
-        try:
-            default_length = next((f.get("default") for f in specs[body.template].get("fields", [])
-                                   if f["key"] == specs[body.template].get("length", "duration")), None)
-            params, _ = motion_params(body.template, body.params, default_length)
-        except VideoEditError as exc:
-            raise HTTPException(400, str(exc)) from exc
+    try:
+        plan = motion_plan.prepare_template(body.template, body.params, width=body.width,
+                                            height=body.height, placement=body.placement)
+        if not .5 <= plan["duration"] <= 120:
+            raise VideoEditError("motion duration must be0.5-120seconds")
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
     npx = shutil.which("npx")
     if not npx:
         raise HTTPException(400, "Node.js (npx) is not installed - run setup")
@@ -507,57 +545,42 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     if private is None and not out_dir.parent.is_dir():
         raise HTTPException(400, "set the workspace folder in Settings first")
     out_dir.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="clipkit_motion_"))
-    shutil.copytree(KIT / "motion" / body.template, work, dirs_exist_ok=True)
-    page = (work / "index.html").read_text(encoding="utf-8")
-    kit = json.dumps(params, ensure_ascii=False).replace("</", "<\\/")
-    page, n = re.subn(r"<head>", lambda _: f"<head>\n<script>window.KIT = {kit};</script>", page, count=1)
-    if not n:
-        raise HTTPException(500, "template has no <head>")
-    # the renderer reads the clip length from the HTML attributes, not from the script
-    try:
-        p = params
-        how = specs[body.template].get("length", "duration")
-        length = (max(float(event["end"]) for event in p["subtitle_events"]) if p.get("subtitle_events")
-                  else max(float(x[1]) for x in p["pairs"]) if how == "pairs" else float(p[how]))
-    except (KeyError, TypeError, ValueError, IndexError) as exc:
-        raise HTTPException(400, f"missing or bad length in params: {exc}")
-    if not 0.5 <= length <= 120:
-        raise HTTPException(400, f"length must be 0.5-120 s, got {length}")
-    page, n = re.subn(r'data-duration="[\d.]+"', f'data-duration="{length:g}"', page)
-    if not n:
-        raise HTTPException(500, "template has no data-duration")
-    if body.template == "sentence-pair":
-        page = re.sub(r'<meta name="viewport"[^>]*>', f'<meta name="viewport" content="width={params["width"]:g}, height={params["height"]:g}">', page)
-        page = re.sub(r'data-width="[\d.]+"', f'data-width="{params["width"]:g}"', page)
-        page = re.sub(r'data-height="[\d.]+"', f'data-height="{params["height"]:g}"', page)
-        rules = []
-        for index, (family, source) in enumerate(dict.fromkeys(
-                (event["font_family"], event["font_file"]) for event in params["subtitle_events"])):
-            font = Path(source)
-            filename = f"subtitle-font-{index}{font.suffix}"
-            shutil.copyfile(font, work / filename)
-            rules.append(f'@font-face{{font-family:{json.dumps(family)};src:url("{filename}")}}')
-        page = page.replace("</head>", "<style>" + "".join(rules).replace("</", "<\\/") + "</style></head>", 1)
-    atomic.write_text((work / "index.html"), page, encoding="utf-8")
     name = re.sub(r'[\\/:*?"<>|]+', "", body.name).strip()[:40] or body.template
     target = out_dir / f"{name}-{__import__('uuid').uuid4().hex}.mov"
-    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1"}
-    command = host_platform.hyperframes_command(
-        [npx, "--yes", f"hyperframes@{HF_VERSION}", "render", "--format", "mov", "--quiet", "--workers", "4", "-o", str(target)], work, env)
-    import render_process
+    work = Path(tempfile.mkdtemp(prefix="clipkit_motion_"))
     try:
-        r = render_process.run(command, cwd=str(work), capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", env=env, timeout=900)
+        _motion_project(plan, work)
+        env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_TELEMETRY": "1"}
+        length = plan["duration"]
+        times = sorted({0, min(.04, length / 10), length * .15, length * .35, length * .65, max(0, length - 1 / 30)})
+        command = host_platform.hyperframes_command([npx, "--yes", f"hyperframes@{HF_VERSION}", "check", "--json",
+                    "--at", ",".join(f"{t:.6f}" for t in times), "--at-transitions"], work, env)
+        checked = render_process.run(command, cwd=str(work), capture_output=True, text=True,
+                                     encoding="utf-8", errors="replace", env=env, timeout=300)
+        try:
+            proof = json.loads(checked.stdout)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(500, "motion check returned no valid report: " + (checked.stderr or checked.stdout)[-600:]) from exc
+        if checked.returncode or not isinstance(proof, dict) or proof.get("ok") is not True:
+            raise HTTPException(400, "motion check failed before encoding: " + (checked.stdout or checked.stderr)[-800:])
+        motion_plan.verify_inputs(plan)
+        command = host_platform.hyperframes_command([npx, "--yes", f"hyperframes@{HF_VERSION}", "render",
+                    "--format", "mov", "--quiet", "--workers", "4", "-o", str(target)], work, env)
+        rendered = render_process.run(command, cwd=str(work), capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace", env=env, timeout=900)
+        if rendered.returncode or not target.is_file():
+            raise HTTPException(500, "motion render failed: " + (rendered.stderr or rendered.stdout)[-600:])
+        media = motion_plan.verify_media(target, plan)
+        motion_plan.verify_inputs(plan)
+        recipe = {"version": 1, "template": body.template, "params": plan["source_params"], "inputs": plan["inputs"],
+                  "hashes": plan["hashes"], "layout_sha256": plan["layout_sha256"], "canvas": plan["canvas"],
+                  "placement": plan["placement"], "bounds": plan["bounds"], "duration": plan["duration"], "media": media}
+        return {"file": str(target), "recipe": recipe, "check": proof}
     except BaseException:
         target.unlink(missing_ok=True)
         raise
     finally:
-        shutil.rmtree(work, ignore_errors=True)
-    if r.returncode != 0 or not target.is_file():
-        target.unlink(missing_ok=True)
-        raise HTTPException(500, "motion render failed: " + (r.stderr or r.stdout).strip()[-500:])
-    return {"file": str(target)}
+        shutil.rmtree(work)
 
 
 class FramesRequest(BaseModel):
