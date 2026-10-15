@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory() as import_folder:
     config.write_text("{}", encoding="utf-8")
     with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
         import kit_settings
+        import video_editor
 import render_process
 
 
@@ -30,7 +31,9 @@ class MotionAssetSafety(unittest.TestCase):
                 f'<html><head></head><body data-duration="1">{name}</body></html>', encoding="utf-8")
         self.enterContext(patch.object(kit_settings, "KIT", self.root))
         self.enterContext(patch.object(kit_settings, "_read_config", return_value={"output_dir": str(self.shared)}))
-        self.enterContext(patch.object(kit_settings, "motion_templates", return_value={"first": {}, "second": {}}))
+        spec = {"length": "duration", "fields": [{"key": "duration", "type": "number", "default": 2},
+                                                 {"key": "revision", "type": "number", "default": 1}]}
+        self.enterContext(patch.object(kit_settings, "motion_templates", return_value={"first": spec, "second": spec}))
         self.enterContext(patch("shutil.which", return_value="npx"))
         self.enterContext(patch.object(kit_settings.host_platform, "hyperframes_command", side_effect=lambda cmd, cwd, env: cmd))
         self.launch = self.enterContext(patch.object(render_process, "run", side_effect=self.render))
@@ -91,6 +94,7 @@ class MotionAssetSafety(unittest.TestCase):
         self.assertEqual(legacy.read_bytes(), b"existing legacy motion")
         self.assertNotEqual(self.calls[-1][0], old)
         self.assertFalse(self.calls[-1][1].exists())
+        self.assertFalse(self.calls[-1][0].exists())
 
     def test_renderer_exception_resets_private_destination_and_cleans_work(self):
         private = self.root / "transaction" / "assets"
@@ -105,6 +109,7 @@ class MotionAssetSafety(unittest.TestCase):
                 kit_settings.make_motion(self.request())
         self.assertEqual(self.calls[-1][0].parent, private)
         self.assertFalse(self.calls[-1][1].exists())
+        self.assertFalse(self.calls[-1][0].exists())
         self.assertEqual(list(self.shared.iterdir()), [])
         self.assertIsNone(kit_settings._motion_destination.get())
         self.launch.side_effect = self.render

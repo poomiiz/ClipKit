@@ -223,11 +223,12 @@ def _build(path: str) -> Path:
                        f'style="{rectangle}"></video>')
 
     def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False,
-             x: float = 0, rot: float = 0, shadow: bool = False, fixed: bool = False) -> str:
+             x: float = 0, rot: float = 0, shadow: bool = False, fixed: bool = False,
+             role: str = "normal", cue_id: str | None = None) -> str:
         # same as the ffmpeg export: one line only, a long subtitle goes on as the next piece (render.one_line)
         first = ""
         for piece, pa, pb, px in render.one_line(words, subtitle_font, size * k, W * (box["w"] - abs(x)), a, b, one=True, fixed=fixed):
-            for pa, pb in render.visible_spans(pa, pb, t.get("motions", [])):
+            for pa, pb in render.visible_spans(pa, pb, t.get("motions", []), role=role, cue_id=cue_id):
                 i = nid("t")
                 first = first or i
                 # a lead grows upward and a punch downward, so the pair never covers each other
@@ -256,14 +257,14 @@ def _build(path: str) -> Path:
         for p in t["phrases"]:
             if t["hook"] and p["start"] < render.HOOK_DUR:
                 continue
-            i = text(p["lead"], 16, -0.6, [1, 1, 1], [0, 0, 0], 0.08, p["start"], p["end"])
+            i = text(p["lead"], 16, -0.6, [1, 1, 1], [0, 0, 0], 0.08, p["start"], p["end"], cue_id=p.get("cue_id"))
             if i and look == "pop":
                   anim.append(f'tl.fromTo("#{i}",{{scale:0.7}},{{scale:1,duration:0.2,ease:"back.out(2)"}},{p["start"]:.3f});')
     # clip title: each line punches in, the second a beat after the first
     first = ""
     for j, h in enumerate(t["hook"]):  # j: n is the id counter
         i = text(h["text"], h["size"], h["y"], h["fill"], h["stroke"], h["width"], h["start"], h["end"],
-                 h["grow"], tops.get(first, 0) + 8, one=True)
+                 h["grow"], tops.get(first, 0) + 8, one=True, role="title")
         first = first or i
         if i:
             anim.append(f'tl.fromTo("#{i}",{{scale:1.2}},{{scale:1,duration:0.16}},{j * 0.15:.2f});')

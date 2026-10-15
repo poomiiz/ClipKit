@@ -260,6 +260,38 @@ def opportunities(path):
              "words": options[p["cue_id"]]} for p in phrases]
 
 
+def resolve_anchor(path, anchor, *, points=None):
+    """Resolve existing cue/whole-word indices once for inserts and motion; never estimate clocks."""
+    if not isinstance(anchor, dict):
+        raise VideoEditError("ต้องระบุ anchor ของคำพูดหรือเวลาที่เลือกเอง")
+    kind = anchor.get("kind")
+    allowed = ({"kind", "start"} if kind == "timeline" else
+               {"kind", "cue_id", "word"} if kind == "word" else {"kind", "cue_id", "phrase"})
+    if set(anchor) - allowed:
+        raise VideoEditError("anchor มีช่องที่ไม่รองรับ")
+    selected = None
+    if kind == "timeline":
+        start = anchor.get("start")
+    else:
+        points = opportunities(path) if points is None else points
+        matches = [point for point in points if point["cue_id"] == anchor.get("cue_id")]
+        if kind in ("phrase", "keyword"):
+            selected = next((point for point in matches if point["phrase"] == anchor.get("phrase")), None)
+            if type(anchor.get("phrase")) is not int or selected is None or kind == "keyword" and not selected["punch"]:
+                raise VideoEditError("ไม่พบ phrase/keyword ที่อ้างอิง · โหลดซับล่าสุดแล้วเลือกใหม่")
+            start = selected["hit" if kind == "keyword" else "start"]
+        elif kind == "word":
+            word = next((word for point in matches for word in point["words"] if word["word"] == anchor.get("word")), None)
+            if type(anchor.get("word")) is not int or word is None:
+                raise VideoEditError("anchor ต้องตรงต้นคำเต็มจาก words · ห้ามประมาณเวลาระหว่างคำ")
+            start = word["start"]
+        else:
+            raise VideoEditError("ชนิด anchor ไม่ถูกต้อง")
+    if not _finite(start) or start < 0:
+        raise VideoEditError("เวลา anchor ต้องเป็นค่าจริงตั้งแต่ศูนย์")
+    return start, selected
+
+
 def normalize(path, items, *, assets=None, allow_legacy=False):
     """Resolve validated anchors and one measured geometry for every output; never alter files."""
     from insert_geometry import geometry, consumption
@@ -285,31 +317,9 @@ def normalize(path, items, *, assets=None, allow_legacy=False):
         anchor = item.get("anchor")
         if anchor is None and legacy:
             anchor = {"kind": "timeline", "start": item.get("start")}
-        if not isinstance(anchor, dict):
-            raise VideoEditError("ภาพแทรกต้องระบุ anchor ของคำพูดหรือเวลาที่เลือกเอง")
-        kind = anchor.get("kind")
-        allowed = ({"kind", "start"} if kind == "timeline" else
-                   {"kind", "cue_id", "word"} if kind == "word" else {"kind", "cue_id", "phrase"})
-        if set(anchor) - allowed:
-            raise VideoEditError("anchor มีช่องที่ไม่รองรับ")
-        selected = None
-        if kind == "timeline":
-            start = anchor.get("start")
-        else:
+        if isinstance(anchor, dict) and anchor.get("kind") != "timeline":
             points = opportunities(path) if points is None else points
-            matches = [point for point in points if point["cue_id"] == anchor.get("cue_id")]
-            if kind in ("phrase", "keyword"):
-                selected = next((point for point in matches if point["phrase"] == anchor.get("phrase")), None)
-                if type(anchor.get("phrase")) is not int or selected is None or kind == "keyword" and not selected["punch"]:
-                    raise VideoEditError("ไม่พบ phrase/keyword ที่อ้างอิง · โหลดซับล่าสุดแล้วเลือกใหม่")
-                start = selected["hit" if kind == "keyword" else "start"]
-            elif kind == "word":
-                word = next((word for point in matches for word in point["words"] if word["word"] == anchor.get("word")), None)
-                if type(anchor.get("word")) is not int or word is None:
-                    raise VideoEditError("anchor ต้องตรงต้นคำเต็มจาก words · ห้ามประมาณเวลาระหว่างคำ")
-                start = word["start"]
-            else:
-                raise VideoEditError("ชนิด anchor ไม่ถูกต้อง")
+        start, selected = resolve_anchor(path, anchor, points=points)
         if (not _finite(start) or start < 0 or not _finite(item.get("dur")) or item["dur"] <= 0
                 or start + item["dur"] > duration + 1e-6):
             raise VideoEditError("ภาพแทรกต้องอยู่ในความยาวคลิปจริง")

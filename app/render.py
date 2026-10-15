@@ -10,6 +10,7 @@ import atomic
 import json
 import cue_data
 import subtitle_plan
+import motion_plan
 import math
 import re
 import subprocess
@@ -26,10 +27,13 @@ from video_edit import FFMPEG, VideoEditError, probe
 US = 1_000_000
 
 
-def visible_spans(a: float, b: float, motions: list[dict]) -> list[tuple[float, float]]:
-    """Full-frame motion owns its interval; keep text before and after it."""
+def visible_spans(a: float, b: float, motions: list[dict], *, role: str | None = None,
+                  cue_id: str | None = None) -> list[tuple[float, float]]:
+    """Subtract only the motion's declared cue/role; old MOVs retain their legacy policy."""
     spans = [(a, b)] if b > a else []
     for motion in motions:
+        if not motion_plan.hides(motion, role=role, cue_id=cue_id):
+            continue
         start, end = motion["start"], motion["start"] + motion["duration"]
         spans = [(x, y) for lo, hi in spans for x, y in
                  ((lo, min(hi, start)), (max(lo, end), hi)) if y > x]
@@ -43,6 +47,7 @@ def check_motions(motions: list[dict], duration: float) -> None:
         if not isinstance(motion, dict) or any(isinstance(motion.get(k), bool) or not isinstance(motion.get(k), (int, float))
                                              or not math.isfinite(motion[k]) for k in ("start", "duration")):
             raise VideoEditError("motion start and duration must be finite seconds")
+        motion_plan.ownership(motion)
     previous = 0.0
     for motion in sorted(motions, key=lambda m: m["start"]):
         a, b = motion["start"], motion["start"] + motion["duration"]
@@ -690,7 +695,7 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
                  "effect": effect, "peak_scale": peak, "bbox": [cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2]}
         event.update(metrics)
         show_start = max(a, context.get("until", 0)) if role != "caption" else a
-        for va, vb in visible_spans(show_start, b, context.get("motions", [])):
+        for va, vb in visible_spans(show_start, b, context.get("motions", []), role=role, cue_id=cue_id):
             out.append(dict(event, start=va, end=vb, effect=effect if va == a else "none", effect_start=a))
 
     for n, phrase in enumerate(phrases):
@@ -1012,6 +1017,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     olist = folder / "clipkit_overlays.json"
     overlays = json.loads(olist.read_text(encoding="utf-8")) if olist.is_file() else []
     check_motions(overlays, sum(s["target_timerange"]["duration"] for s in segs) / US)
+    overlays = [dict(motion, review_required=True, legacy_full_card=True) if "ownership" not in motion else motion
+                for motion in overlays]
     # subtitle look chosen in the editor: none (still), pop (bounce in), karaoke (the spoken word lights up)
     style = _json(folder / "clipkit_style.json", {})
     # colour: the editor's sliders (or the auto pick) on the footage only, never on text or b-roll
@@ -1101,7 +1108,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         shown += 1
         pop = "\\fscx70\\fscy70\\t(0,120,\\fscx108\\fscy108)\\t(120,200,\\fscx100\\fscy100)" if anim == "pop" else ""
         for pa, pb, words in pieces:
-            for a, b in visible_spans(max(pa, held["until"]), pb, overlays):
+            for a, b in visible_spans(max(pa, held["until"]), pb, overlays, role="normal", cue_id=s["id"]):
                 events.append(f"Dialogue: 0,{_ts(a)},{_ts(b)},S,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f})\\fn{fam}"
                               f"\\fs{size:.0f}\\frz{-s['clip'].get('rotation', 0):.1f}\\1c{_ass_color(fill)}"
                               f"\\3c{_ass_color(ocol)}\\bord{outline:.1f}{pop}}}{words}")
@@ -1113,7 +1120,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         for n, h in enumerate(hook):
             lines, px = _fit(h["text"], hfile, h["size"] * kk, W * held["box"]["w"], True)
             an = {"up": 2, "down": 8}.get(h["grow"], 5)
-            for ha, hb in visible_spans(h["start"], h["end"], overlays):
+            for ha, hb in visible_spans(h["start"], h["end"], overlays, role="title"):
                 events.append(f"Dialogue: 1,{_ts(ha)},{_ts(hb)},S,,0,0,0,,{{\\an{an}\\pos({W / 2:.0f},{H / 2 - h['y'] * H / 2 + {2: -4, 8: 4}.get(an, 0):.0f})"
                           f"\\fn{hfam}\\fs{px:.0f}\\1c{_ass_color(h['fill'])}\\3c{_ass_color(h['stroke'])}"
                           f"\\bord{px * h['width'] * 0.6 + 2:.1f}\\shad2\\fad(0,150)\\fscx120\\fscy120"

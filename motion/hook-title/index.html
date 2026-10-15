@@ -42,7 +42,7 @@
 <script>
   // values come from ?key=... in the preview URL, or window.KIT injected by the ClipKit app before render
   const ARGS = { ...Object.fromEntries(new URLSearchParams(location.search)), ...(window.KIT || {}) };
-  const HOOK = { key: ARGS.key || "Burn out", sub: ARGS.sub ?? "เพราะพลาดเรื่องนี้", duration: parseFloat(ARGS.duration) || 5.5 };
+  const HOOK = { key: ARGS.key ?? "Burn out", sub: ARGS.sub ?? "เพราะพลาดเรื่องนี้", duration: parseFloat(ARGS.duration) || 5.5 };
   const STYLE = (ARGS.style || "tilt");
   if (!(STYLE in { tilt: 1, straight: 1 })) throw new Error("unknown style: " + STYLE);
   // SPEED 2 = every entrance twice as fast as the original CapCut edit (the original felt slow); ?speed= overrides
@@ -65,15 +65,16 @@
   if (bg) { const im = document.getElementById("bg"); im.src = bg; im.style.display = "block"; }
 
   const seg = (s) => [...new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s)].map(x => x.segment);
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
   const h = document.createElement("div");
   h.className = "hook clip"; h.dataset.start = 0; h.dataset.duration = HOOK.duration; h.dataset.trackIndex = 1;
   // ?font= / KIT.font: any font installed on this machine, the style font stays as fallback
   h.style.fontFamily = ARGS.font ? `"${ARGS.font}", ${S.font}` : S.font;
   h.innerHTML = `
     <div class="line key" style="top:${S.key.top}px;font-size:${S.key.size}px;color:${S.key.color}">
-      <span class="solid">${HOOK.key}</span><span class="glow">${HOOK.key}</span></div>
+      <span class="solid">${esc(HOOK.key)}</span><span class="glow">${esc(HOOK.key)}</span></div>
     <div class="line sub" style="top:${S.sub.top}px;font-size:${S.sub.size}px">
-      ${seg(HOOK.sub).map(c => `<span class="ch">${c}</span>`).join("")}<span class="cur"></span></div>`;
+      ${seg(HOOK.sub).map(c => `<span class="ch">${esc(c)}</span>`).join("")}<span class="cur"></span></div>`;
   root.appendChild(h);
 
   const key = h.querySelector(".key"), solid = key.querySelector(".solid"), glow = key.querySelector(".glow");

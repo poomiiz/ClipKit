@@ -277,21 +277,13 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     else:
         for phrase in t["phrases"]:
             if not t["hook"] or phrase["start"] >= render.HOOK_DUR:
-                whites.append(_text(draft, "white", phrase["lead"], phrase["start"], phrase["end"], -.6, 16))
+                for a, b in render.visible_spans(phrase["start"], phrase["end"], t.get("motions", []),
+                                                 role="normal", cue_id=phrase.get("cue_id")):
+                    whites.append(_text(draft, "white", phrase["lead"], a, b, -.6, 16))
     for h in t["hook"]:
         y = h["y"] + {"up": 0.04, "down": -0.05}.get(h["grow"], 0)  # CapCut places a text by its centre
-        titles.append(_text(draft, "title", h["text"], h["start"], h["end"], y, h["size"], h["fill"], h["stroke"]))
-    for segments in (whites, colours, captions, titles, seconds):
-        visible = []
-        for segment in segments:
-            timerange = segment["target_timerange"]
-            a, b = timerange["start"] / US, (timerange["start"] + timerange["duration"]) / US
-            for start, end in render.visible_spans(a, b, t.get("motions", [])):
-                piece = copy.deepcopy(segment)
-                piece["id"] = _id()
-                piece["target_timerange"] = {"start": _us(start), "duration": _us(end - start)}
-                visible.append(piece)
-        segments[:] = visible
+        for a, b in render.visible_spans(h["start"], h["end"], t.get("motions", []), role="title"):
+            titles.append(_text(draft, "title", h["text"], a, b, y, h["size"], h["fill"], h["stroke"]))
     _track(draft, "text", whites, 14001)
     _track(draft, "text", colours, 14002)
     _track(draft, "text", captions, 14003)

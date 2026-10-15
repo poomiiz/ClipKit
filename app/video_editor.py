@@ -1002,6 +1002,7 @@ def motion_params(template: str, params: dict[str, Any], line_len: float) -> tup
     """params checked against the template's clipkit-motion fields, defaults filled in, a missing "duration" set to
     line_len (as long as the line, like the one-click buttons); returns them and the length in seconds. Raises on an unknown template, an unknown key, a bad value or a missing length."""
     import kit_settings
+    import math
     spec = kit_settings.motion_templates().get(template)
     if spec is None:
         raise VideoEditError(f"unknown motion template: {template}")
@@ -1017,10 +1018,12 @@ def motion_params(template: str, params: dict[str, Any], line_len: float) -> tup
            if f["type"] not in ("pairs", "font") and f.get("default") is not None}
     for k, v in params.items():
         f = fields[k]
-        if f["type"] == "number" and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
+        if f["type"] == "number" and (isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0):
             raise VideoEditError(f"{template}.{k} ต้องเป็นตัวเลขมากกว่า 0 (ได้ {v!r})")
         if f["type"] in ("text", "font") and not isinstance(v, str):
             raise VideoEditError(f"{template}.{k} ต้องเป็นข้อความ (ได้ {v!r})")
+        if f["type"] in ("text", "font") and len(v) > f.get("max_length", 500):
+            raise VideoEditError(f"{template}.{k} ข้อความยาวเกินขอบเขตของ template")
         if f.get("pattern") and not re.fullmatch(f["pattern"], v):
             raise VideoEditError(f"{template}.{k} รูปแบบไม่ถูก (ได้ {v!r})")
         if f["type"] == "select" and v not in [o[0] for o in f["options"]]:
@@ -1036,7 +1039,9 @@ def motion_params(template: str, params: dict[str, Any], line_len: float) -> tup
         length = max(float(x[1]) for x in out["pairs"]) if how == "pairs" else float(out[how])
     except (KeyError, TypeError, ValueError) as exc:
         raise VideoEditError(f"{template}: ไม่มีความยาว ({how})") from exc
-    return out, round(length, 2)
+    if not math.isfinite(length) or not 0 < length <= 120:
+        raise VideoEditError(f"{template}: ความยาวต้องอยู่ในช่วงมากกว่า 0 ถึง 120 วินาที")
+    return out, length
 
 
 def _overlays(path: str) -> list[dict[str, Any]]:
@@ -1062,6 +1067,7 @@ class OverlayRequest(BaseModel):
     text: str
     params: dict[str, Any] | None = None   # the template's fields; None = made from text (QUICK_MOTION only)
     cue_id: str | None = None
+    placement_id: str | None = None
 
 
 @router.post("/draft/overlay")
@@ -1070,7 +1076,8 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     import kit_settings
     import math
     import render
-    dur = round(req.end - req.start, 2)
+    dur = req.end - req.start
+    ownership = None
     try:
         if not math.isfinite(dur) or dur <= 0:
             raise VideoEditError("motion ต้องมีเวลาเริ่มก่อนเวลาจบ")
@@ -1082,6 +1089,9 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
                        and (tight(p["line"]) == tight(req.text) or tight(p["lead"] + p["punch"]) == tight(req.text))]
             if not phrases:
                 raise VideoEditError("หาประโยคและเวลาคำเน้นไม่พบ · เลือกบรรทัดจาก Timeline อีกครั้ง")
+            cues = {p.get("cue_id") for p in phrases}
+            if len(cues) != 1 or not next(iter(cues)):
+                raise VideoEditError("motion ต้องอ้าง cue เดียวที่ชัดเจน · เลือกบรรทัดจาก Timeline อีกครั้ง")
             if any(p["start"] < req.start - .001 or p["end"] > req.end + .001 for p in phrases):
                 raise VideoEditError("motion ตัดกลางท่อนซับ · เลือกช่วงเต็มตาม Timeline")
             if req.params:
@@ -1092,13 +1102,20 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
             # Replacing an existing overlay needs the underlying roles before that overlay hides them.
             base = {k: v for k, v in timeline.items() if k != "subtitle_events"}
             base["motions"] = []
-            events = [e for e in render.pair_events_from_timeline(base) if e["end"] > req.start and e["start"] < req.end]
+            events = [e for e in render.pair_events_from_timeline(base)
+                      if e.get("cue_id") in cues and e["end"] > req.start and e["start"] < req.end]
             if any(e["start"] < req.start - .001 or e["end"] > req.end + .001 for e in events):
                 raise VideoEditError("motion ตัดช่วงข้อความค้างหรือ caption · ขยายช่วงให้ครบก่อนสร้าง")
             events = [{**e, "start": max(0, e["start"] - req.start), "end": e["end"] - req.start,
                        "effect_start": e.get("effect_start", e["start"]) - req.start} for e in events]
             params = kit_settings.sentence_pair_params({"subtitle_events": events,
                 "width": timeline["width"], "height": timeline["height"]})
+            dur = max(event["end"] for event in params["subtitle_events"])
+            import motion_plan
+            roles = sorted({e["role"] for e in events})
+            ownership = motion_plan.ownership({"ownership": {"mode": "replace",
+                "targets": [{"cue_id": next(iter(cues)), "roles": roles}],
+                "caption_policy": "replace" if "caption" in roles else "preserve"}})
         elif req.params is not None:
             params, dur = motion_params(req.template, req.params, dur)
         elif req.template == "hook-title":
@@ -1107,10 +1124,24 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
             raise VideoEditError(f"{req.template} ต้องกรอกช่องของมันเอง (params)")
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
+    previous = _overlays(req.path)
+    if req.placement_id is not None and sum(o.get("placement_id") == req.placement_id for o in previous) != 1:
+        raise HTTPException(409, "ไม่พบ motion ที่จะแก้ · โหลด Timeline ใหม่")
+    items = [o for o in previous if req.placement_id is None or o.get("placement_id") != req.placement_id]
+    for item in items:
+        a, length = item.get("start"), item.get("duration")
+        if (any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (a, length))
+                or a < 0 or length <= 0):
+            raise HTTPException(400, "เวลา motion เดิมไม่ถูกต้อง · ตรวจรายการก่อนเพิ่ม")
+        if a < req.start + dur and req.start < a + length:
+            raise HTTPException(409, "motion ทับช่วงเดิม · เลือกรายการเดิมเพื่อแก้หรือลบก่อน")
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
     mov = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params))["file"]
-    items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]  # one motion per moment
-    items.append({"file": mov, "start": req.start, "duration": dur, "template": req.template, "text": req.text})
+    item = {"file": mov, "start": req.start, "duration": dur, "template": req.template, "text": req.text,
+            "placement_id": req.placement_id or __import__("uuid").uuid4().hex, "params": params}
+    if ownership is not None:
+        item.update(ownership=ownership, cue_id=next(iter(cues)))
+    items.append(item)
     atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
                                                       indent=1), encoding="utf-8")
     return {"overlays": _overlays(req.path)}
@@ -1118,13 +1149,19 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
 
 class OverlayDelete(BaseModel):
     path: str
-    start: float
+    start: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    placement_id: str | None = None
 
 
 @router.post("/draft/overlay-remove")
 @project_lock.edit
 def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
-    items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]
+    previous = _overlays(req.path)
+    selected = [o for o in previous if (o.get("placement_id") == req.placement_id if req.placement_id is not None
+                                       else req.start is not None and abs(o["start"] - req.start) <= 1e-6)]
+    if len(selected) != 1:
+        raise HTTPException(409, "ไม่พบ motion เดียวที่ตรงกัน · โหลด Timeline ใหม่")
+    items = [o for o in previous if o is not selected[0]]
     atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"overlays": items}
 

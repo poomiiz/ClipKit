@@ -342,6 +342,8 @@ def motion_templates() -> dict[str, dict[str, Any]]:
             spec = json.loads(m.group(1))
         except json.JSONDecodeError as exc:
             raise HTTPException(500, f"motion/{page.parent.name}: bad clipkit-motion JSON: {exc}")
+        if spec.get("status", "ready") != "ready":
+            continue
         out[page.parent.name] = spec
     return out
 
@@ -485,7 +487,17 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     specs = motion_templates()
     if body.template not in specs:
         raise HTTPException(400, f"unknown motion template: {body.template}")
-    params = sentence_pair_params(body.params) if body.template == "sentence-pair" else body.params
+    if body.template == "sentence-pair":
+        params = sentence_pair_params(body.params)
+    else:
+        from video_editor import motion_params
+        from video_edit import VideoEditError
+        try:
+            default_length = next((f.get("default") for f in specs[body.template].get("fields", [])
+                                   if f["key"] == specs[body.template].get("length", "duration")), None)
+            params, _ = motion_params(body.template, body.params, default_length)
+        except VideoEditError as exc:
+            raise HTTPException(400, str(exc)) from exc
     npx = shutil.which("npx")
     if not npx:
         raise HTTPException(400, "Node.js (npx) is not installed - run setup")
@@ -537,9 +549,13 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     try:
         r = render_process.run(command, cwd=str(work), capture_output=True, text=True,
                                encoding="utf-8", errors="replace", env=env, timeout=900)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if r.returncode != 0 or not target.is_file():
+        target.unlink(missing_ok=True)
         raise HTTPException(500, "motion render failed: " + (r.stderr or r.stdout).strip()[-500:])
     return {"file": str(target)}
 

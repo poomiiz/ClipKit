@@ -62,9 +62,8 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(self.files(), after)
 
     def test_second_motion_failure_leaves_all_original_metadata_and_legacy_data(self):
-        self.answer["cut"] = [1]
-        self.answer["lines"][0] = {"n": 1, "cue_id": "0"}
-        self.answer["motion"] = [{"n": 2, "template": "hook-title"}, {"n": 2, "template": "hook-title"}]
+        # Two valid, disjoint placements reach the second renderer; a duplicate now conflicts before it.
+        self.answer["motion"] = [{"n": 1, "template": "hook-title"}, {"n": 2, "template": "hook-title"}]
         before = self.files()
         calls = []
 
@@ -327,7 +326,17 @@ web.import_clip(sys.argv[2],json.loads(Path(sys.argv[3]).read_text(encoding='utf
                                  str(answer_file)], env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 73, result.stderr)
         self.assertNotEqual(before, self.files())
-        imported = subprocess.run([sys.executable, "-X", "utf8", str(root / "scripts/web_ai.py"), "import",
+        resume = """
+import runpy,sys
+sys.path.insert(0,sys.argv[1])
+import host_platform
+host_platform.capcut_running=lambda:False
+sys.argv=sys.argv[2:]
+runpy.run_path(sys.argv[0],run_name='__main__')
+"""
+        # Only the generated-project child gets this process guard; never depend on the user's app being closed.
+        imported = subprocess.run([sys.executable, "-X", "utf8", "-c", resume, str(root / "app"),
+                                   str(root / "scripts/web_ai.py"), "import",
                                    "clip", self.path, str(answer_file)], env=env, capture_output=True,
                                   text=True, timeout=20)
         self.assertEqual(imported.returncode, 0, imported.stderr)
