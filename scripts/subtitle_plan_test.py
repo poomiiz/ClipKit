@@ -163,13 +163,15 @@ class ChannelPreflight(unittest.TestCase):
             if color_stack:
                 for line in answer["lines"][:2]:
                     line["items"][0].append({"look": "color"})
-            with patch.object(api, "draft_overlay_add", return_value={}) as overlay:
+            with patch.object(api, "prepare_overlay", return_value={"candidate":{"start":0,"duration":1}}), \
+                    patch.object(api, "render_overlay", return_value={"start":0}) as overlay:
                 self.f.import_answer(answer)
             request = overlay.call_args.args[0]
             self.assertEqual((request.cue_id, request.start, request.end), ("s1", 0, expected_end))
         answer = self.unmerged()
         answer["motion"] = [{"n": 3, "template": "sentence-pair"}]
-        with patch.object(api, "draft_overlay_add", return_value={}) as overlay:
+        with patch.object(api, "prepare_overlay", return_value={"candidate":{"start":0,"duration":1}}), \
+                patch.object(api, "render_overlay", return_value={"start":0}) as overlay:
             self.f.import_answer(answer)
         self.assertEqual(overlay.call_args.args[0].end, 4)
 
@@ -256,6 +258,7 @@ class ChannelPreflight(unittest.TestCase):
             packet = web.export_clip(self.path).read_text(encoding="utf-8")
         data = json.loads(packet.rsplit("```json\n", 1)[1].split("\n```", 1)[0])
         self.assertEqual(data["subtitle_layout"]["canvas"], {"width": 1920, "height": 1080})
+        self.assertEqual(data["lines"][0]["words"][0]["word"],1)
         self.assertNotIn(str(self.f.folder), json.dumps(data["subtitle_layout"]))
 
     def test_manual_subtitle_ranges_and_existing_picks_validate_before_save(self):

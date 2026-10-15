@@ -178,8 +178,8 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
     atomic.write_text((Path(path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "max_minutes": max_minutes, "caption_language": _caption_lang(path),
             "lines": [{"n": n, "cue_id": s["id"], "start": s["start"], "end": s["end"], "text": s["text"],
-                       "words": [{"start": round(s["start"] + a, 3), "end": round(s["start"] + b, 3), "text": w}
-                                 for a, b, w in word_times.get(cue_data.key(s["id"]), [])]} for n, s in enumerate(subs, 1)],
+                       "words": [{"word": index, "start": s["start"] + a, "end": s["start"] + b, "text": w}
+                                 for index, (a, b, w) in enumerate(word_times.get(cue_data.key(s["id"]), []), 1)]} for n, s in enumerate(subs, 1)],
             "motion_templates": _motion_menu()}
     style = render._json(Path(path) / "clipkit_style.json", {})
     draft = capcut_edit._load(Path(path))
@@ -367,19 +367,32 @@ def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None) -> dict
                                             for n in range(1, len(subs) + 1) if n not in cut and n not in continuation):
             raise VideoEditError(f'preset นี้มีซับแปล ({lang}): caption ต้องเป็น {{"1": "...", ...}} ครบทุกบรรทัด')
         caption = {cue_data.key(s["id"]): cap[str(s["n"])].strip() for s in merged if s["n"] not in cut}
-    motion = [] if ans.get("motion") is None else ans["motion"]
+    motion = ans.get("motion", [])
     import video_editor
     quick = video_editor.QUICK_MOTION
     if not isinstance(motion, list) or any(not isinstance(m, dict) or type(m.get("n")) is not int or m.get("n") not in range(1, len(subs) + 1)
                                            or m["n"] in cut or m["n"] in continuation for m in motion):
         raise VideoEditError('motion ต้องเป็น [{"n": เลขบรรทัด, "template": "...", "params": {...}}]')
     for m in motion:  # checked before anything is written; params only for templates not made from the line
+        if set(m) - {"n", "template", "params", "anchor", "placement", "ownership", "reason"}:
+            raise VideoEditError("motion มีช่องที่ไม่รองรับ")
+        if not isinstance(m.get("template"), str):
+            raise VideoEditError("motion template ต้องเป็นชื่อเทมเพลต")
+        if any(m.get(key) is not None and not isinstance(m[key], dict) for key in ("placement", "ownership")):
+            raise VideoEditError("motion placement และ ownership ต้องเป็น object")
+        if "anchor" in m and not isinstance(m["anchor"], dict):
+            raise VideoEditError("motion anchor ต้องเป็น object")
+        if "reason" in m and (not isinstance(m["reason"], str) or not m["reason"].strip() or len(m["reason"]) > 500):
+            raise VideoEditError("motion reason ต้องมีข้อความไม่เกิน 500 ตัวอักษร")
         if m.get("params") is not None:
             video_editor.motion_params(m.get("template"), m["params"], 3.0)
         elif m.get("template") not in quick:
             raise VideoEditError(f'motion บรรทัด {m["n"]}: "{m.get("template")}" ต้องมี params (ช่องตาม motion_templates)')
 
     folder = Path(path)
+    if "motion" in ans:
+        # The transaction owns this staging folder; explicit lists replace, omission preserves.
+        atomic.write_text(folder / video_editor.OVERLAYS, "[]", encoding="utf-8")
     if groups:
         if cut:
             ends = [max(s["end"], nxt["start"]) for s, nxt in zip(subs, subs[1:])] + [subs[-1]["end"]]
@@ -403,14 +416,30 @@ def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None) -> dict
         kept = {s["id"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
         subs = [kept.get(s["id"], s) for s in subs]
     subtitle_events = validate_subtitles(path)
-    if motion:  # renders each motion here, the same as the editor's Motion button
+    if motion:
+        import insert_plan
+        plans, candidates = [], []
         for m in motion:
             s = current[m["n"]] if groups else subs[m["n"] - 1]
+            anchor = m.get("anchor", {"kind": "timeline", "start": s["start"]})
+            if anchor.get("kind") != "timeline" and anchor.get("cue_id") != s["id"]:
+                raise VideoEditError("motion anchor ต้องอ้าง cue ของบรรทัดที่เลือก")
+            start, _ = insert_plan.resolve_anchor(path, anchor)
             end = s["end"]
             if m["template"] == "sentence-pair":
                 end = max([end] + [event["end"] for event in subtitle_events if event.get("cue_id") == s["id"]])
-            video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"], params=m.get("params"),
-                                                                       start=s["start"], end=end, text=s["text"], cue_id=s["id"]))
+            request = video_editor.OverlayRequest(path=path, template=m["template"], params=m.get("params"),
+                start=start, end=end, text=s["text"], cue_id=s["id"], anchor=anchor,
+                **{key: m[key] for key in ("placement", "ownership", "reason") if key in m})
+            plan = video_editor.prepare_overlay(request, previous=candidates)
+            plans.append((request, plan))
+            candidates.append(plan["candidate"])
+        # Every requested item must pass before the first renderer allocates an asset.
+        rendered = [video_editor.render_overlay(request, plan) for request, plan in plans]
+        atomic.write_text(folder / video_editor.OVERLAYS,
+                          json.dumps(sorted(rendered, key=lambda item: item["start"]), ensure_ascii=False,
+                                     indent=1, allow_nan=False), encoding="utf-8")
+    if "motion" in ans:
         written.append(video_editor.OVERLAYS)
     out = {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
     return out

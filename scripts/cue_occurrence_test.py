@@ -85,7 +85,8 @@ class OccurrenceTests(unittest.TestCase):
                   "cut": [1], "lines": [{"n": 1, "cue_id": "0"},
                                          {"n": 2, "cue_id": "1", "items": [["normal", "keyword"]]}],
                   "motion": [{"n": 2, "template": "hook-title"}]}
-        with patch.object(video_editor, "draft_overlay_add", return_value={}) as overlay:
+        with patch.object(video_editor, "prepare_overlay", return_value={"candidate":{"start":0,"duration":1}}), \
+                patch.object(video_editor, "render_overlay", return_value={"start":0}) as overlay:
             web_ai_json.import_clip(self.path, answer)
         request = overlay.call_args.args[0]
         self.assertEqual((request.cue_id, request.start, request.end), ("1", 2, 4))

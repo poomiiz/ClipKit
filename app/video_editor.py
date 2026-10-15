@@ -1074,9 +1074,8 @@ class OverlayRequest(BaseModel):
     reason: str = Field(default="ผู้ใช้เลือก motion จากเนื้อหา", min_length=1, max_length=500)
 
 
-@router.post("/draft/overlay")
-@project_lock.edit
-def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
+def prepare_overlay(req: OverlayRequest, *, previous=None) -> dict[str, Any]:
+    """Read-only layout preflight shared by single edits and whole AI plans."""
     import kit_settings
     import math
     import render
@@ -1146,6 +1145,8 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
         prepared = motion_plan.prepare_template(req.template, params, width=timeline["width"],
                                                 height=timeline["height"], placement=req.placement)
         dur = prepared["duration"]
+        if not .5 <= dur <= 120:
+            raise VideoEditError("motion ต้องยาว 0.5–120 วินาที")
         candidate = {"start": req.start, "duration": dur, "bounds": prepared["bounds"],
                      "ownership": ownership, "params": prepared["source_params"]}
         motion_plan.check_placement(candidate, underlying, width=timeline["width"], height=timeline["height"],
@@ -1153,7 +1154,7 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
                                     subject_zones=timeline["style"].get("motion_subject_zones", []))
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
-    previous = _overlays(req.path)
+    previous = _overlays(req.path) if previous is None else previous
     if req.placement_id is not None and sum(o.get("placement_id") == req.placement_id for o in previous) != 1:
         raise HTTPException(409, "ไม่พบ motion ที่จะแก้ · โหลด Timeline ใหม่")
     items = [o for o in previous if req.placement_id is None or o.get("placement_id") != req.placement_id]
@@ -1164,19 +1165,35 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
             raise HTTPException(400, "เวลา motion เดิมไม่ถูกต้อง · ตรวจรายการก่อนเพิ่ม")
         if a < req.start + dur and req.start < a + length:
             raise HTTPException(409, "motion ทับช่วงเดิม · เลือกรายการเดิมเพื่อแก้หรือลบก่อน")
+    return {"params": params, "prepared": prepared, "ownership": ownership, "anchor": anchor,
+            "timeline": timeline, "items": items, "candidate": candidate,
+            "cue_id": next(iter(cues)) if req.template == "sentence-pair" else None}
+
+
+def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
+    """Materialize one preflighted recipe without publishing project metadata."""
+    import kit_settings
+    prepared, timeline = plan["prepared"], plan["timeline"]
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
-    rendered = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=params,
+    rendered = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=plan["params"],
         width=timeline["width"], height=timeline["height"], placement=req.placement))
     if rendered["recipe"]["layout_sha256"] != prepared["layout_sha256"]:
         raise HTTPException(409, "motion เปลี่ยนหลังตรวจตำแหน่ง · ตรวจแผนใหม่ก่อนใช้")
-    item = {"file": rendered["file"], "start": req.start, "duration": dur, "template": req.template, "text": req.text,
+    item = {"file": rendered["file"], "start": req.start, "duration": prepared["duration"], "template": req.template, "text": req.text,
             "placement_id": req.placement_id or __import__("uuid").uuid4().hex, "params": prepared["source_params"],
-            "ownership": ownership, "anchor": anchor, "reason": req.reason, "recipe": rendered["recipe"],
+            "ownership": plan["ownership"], "anchor": plan["anchor"], "reason": req.reason, "recipe": rendered["recipe"],
             "canvas": prepared["canvas"], "bounds": prepared["bounds"],
             "subject_review_pending": not bool(timeline["style"].get("motion_subject_zones"))}
     if req.template == "sentence-pair":
-        item["cue_id"] = next(iter(cues))
-    items.append(item)
+        item["cue_id"] = plan["cue_id"]
+    return item
+
+
+@router.post("/draft/overlay")
+@project_lock.edit
+def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
+    plan = prepare_overlay(req)
+    items = plan["items"] + [render_overlay(req, plan)]
     atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
                                                       indent=1), encoding="utf-8")
     return {"overlays": _overlays(req.path)}

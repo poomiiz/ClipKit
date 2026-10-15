@@ -40,6 +40,9 @@ class TransactionTests(unittest.TestCase):
         self.folder = self.f.folder
         self.path = str(self.folder)
         self.addCleanup(patch.stopall)
+        config=self.folder.parent/"config.json"
+        config.write_text('{"render_encoder":"libx264"}',encoding="utf-8")
+        patch.object(render.video_edit.kitconfig,"_CANDIDATES",[config]).start()
         patch.object(host_platform, "capcut_running", return_value=False).start()
         self.answer = {"clipkit_web_ai": 2, "step": "clip", "project": self.folder.name,
                        "hook": [], "lines": [{"n": 1, "cue_id": "0", "items": [["normal", "keyword"]]},
@@ -88,6 +91,77 @@ class TransactionTests(unittest.TestCase):
             web.import_clip(self.path, self.answer)
         self.assertEqual(self.files(), before)
         self.assertIsNone(transaction.receipt("clip", self.path, self.answer))
+
+    def test_invalid_second_motion_never_starts_first_renderer(self):
+        for change in ({"placement":{"x":1.5,"y":.1,"w":.3,"h":.3}},
+                       {"params":{"key":"literal","duration":.2}}, {"n":1}):
+            answer = copy.deepcopy(self.answer)
+            answer["motion"] = [{"n":1,"template":"hook-title"},
+                                {"n":2,"template":"hook-title",**change}]
+            before = self.files()
+            with self.subTest(change=change), patch.object(kit_settings,"make_motion") as make, \
+                    patch.object(render,"probe",return_value={"duration":8,"width":1920,"height":1080,"fps":30}), \
+                    patch.object(draft_quality,"probe",return_value={"duration":8,"width":1920,"height":1080,"fps":30}), \
+                    self.assertRaises((web.VideoEditError,video_editor.HTTPException)):
+                web.import_clip(self.path,answer)
+            make.assert_not_called()
+            self.assertEqual(self.files(),before)
+
+    def test_motion_omission_preserves_existing_list(self):
+        asset=self.folder/"retained-original.mov";asset.write_bytes(b"retained original")
+        old=[{"start":2,"duration":1,"file":str(asset)}]
+        (self.folder/video_editor.OVERLAYS).write_text(json.dumps(old),encoding="utf-8")
+        self.answer.update(identity.issue("clip",self.path))
+        with patch.object(kit_settings,"make_motion") as make:
+            web.import_clip(self.path,self.answer)
+        make.assert_not_called()
+        self.assertEqual(json.loads((self.folder/video_editor.OVERLAYS).read_text()),old)
+
+    def test_invalid_motion_shapes_reject_without_rendering_or_writing(self):
+        for value in (None, {}, [{"n":1,"template":"hook-title","anchor":"guessed"}],
+                      [{"n":1,"template":"hook-title","reason":" "}],
+                      [{"n":1,"template":[]}], [{"n":1,"template":"hook-title","placement":"automatic"}],
+                      [{"n":1,"template":"hook-title","unknown":True}]):
+            answer=copy.deepcopy(self.answer);answer["motion"]=value
+            before=self.files()
+            with self.subTest(value=value), patch.object(kit_settings,"make_motion") as make, self.assertRaises(web.VideoEditError):
+                web.import_clip(self.path,answer)
+            make.assert_not_called()
+            self.assertEqual(self.files(),before)
+
+    def test_explicit_empty_motion_clears_only_metadata_and_keeps_asset(self):
+        asset=self.folder/"original.mov";asset.write_bytes(b"retained original")
+        (self.folder/video_editor.OVERLAYS).write_text(json.dumps([{"start":2,"duration":1,"file":str(asset)}]))
+        self.answer["motion"]=[]
+        self.answer.update(identity.issue("clip",self.path))
+        with patch.object(kit_settings,"make_motion") as make:
+            result=web.import_clip(self.path,self.answer)
+        make.assert_not_called()
+        self.assertEqual(json.loads((self.folder/video_editor.OVERLAYS).read_text()),[])
+        self.assertEqual(asset.read_bytes(),b"retained original")
+        self.assertIn(video_editor.OVERLAYS,result["written"])
+
+    def test_requested_motion_replaces_list_with_actual_word_anchor(self):
+        asset=self.folder/"original.mov";asset.write_bytes(b"retained original")
+        (self.folder/video_editor.OVERLAYS).write_text(json.dumps([{"start":2,"duration":1,"file":str(asset)}]))
+        self.answer["motion"]=[{"n":1,"template":"hook-title","params":{"key":"literal","duration":1},
+            "anchor":{"kind":"word","cue_id":"0","word":2},"reason":"Explain the spoken keyword"}]
+        self.answer.update(identity.issue("clip",self.path))
+        def make(body):
+            plan=motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height,placement=body.placement)
+            target=kit_settings._motion_destination.get()/"generated.mov"
+            target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(b"generated fixture")
+            return {"file":str(target),"recipe":plan}
+        metadata={"duration":8,"width":1920,"height":1080,"fps":30}
+        with patch.object(kit_settings,"make_motion",side_effect=make), \
+                patch.object(render,"probe",return_value=metadata), patch.object(draft_quality,"probe",return_value=metadata):
+            web.import_clip(self.path,self.answer)
+        rows=json.loads((self.folder/video_editor.OVERLAYS).read_text())
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]["start"],4)
+        self.assertEqual(rows[0]["reason"],"Explain the spoken keyword")
+        self.assertEqual(rows[0]["ownership"]["mode"],"decorate")
+        self.assertEqual(asset.read_bytes(),b"retained original")
 
     def test_failure_at_each_real_file_replacement_restores_existing_and_absent_files(self):
         before = self.files()

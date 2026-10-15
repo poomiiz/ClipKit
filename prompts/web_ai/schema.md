@@ -151,7 +151,16 @@ source wording, and supply translated captions when `caption_language` is not nu
 | `hook` | HL Hook | `[]` is valid; otherwise 1-2 source-supported lines, `color` white / orange / red |
 | `lines[].items` | Subtitle (lead, white) + เน้น (punch, colour) | all original `n` = 1..N and their `cue_id` in order; group heads have items covering their exact combined text (spaces may differ), continuation entries have only `n` and `cue_id`; item `[lead, punch]` + optional search string and/or options `{look: pair|white|color|red|hold|skip, show: [white, colour], color: "#rrggbb", second: "..."}` |
 | `cut` | (footage) | optional; line numbers dropped with their footage (up to the next line), via `trim_pauses(ranges=...)`; whole lines only, order kept; a cut line keeps its `n`/`cue_id` but needs no items / caption / motion; at least one line stays. The draft is backed up and the import journal covers all applied metadata. Export again for a different answer after cutting; an exact retry returns its receipt |
-| `motion` | Motion text | optional; line number + template, rendered here like the editor's Motion button. `hook-title` / `sentence-pair` are made from the line's words; any other template from the export's `motion_templates` needs `params` (its fields; `duration` defaults to the line's length), checked against the template's clipkit-motion block before anything is written |
+| `motion` | Motion text | optional desired list; omitted preserves existing motion, `[]` clears metadata while retaining assets, a list replaces all placements transactionally. Each item has `n`, `template`, optional `params`, `anchor`, `placement`, `ownership`, `reason` (1–500 chars). Every item passes shared layout/ownership/interval preflight before any renderer starts. Hook/stat default to decoration; sentence-pair derives actual cue-role replacement |
+
+Motion anchors reuse insert anchors: `word` with the selected line's `cue_id` and copied 1-based `word` index,
+or `phrase`/`keyword` with cue ID and zero-based phrase index; manual `timeline` takes exact `start`.
+The importer resolves anchors after cuts/merges against current word clocks. Do not copy a pre-merge word
+index into a merged cue: omit the anchor to start at the group head. Hook/stat `placement` is a normalized
+`x/y/w/h` rectangle; sentence-pair preserves the verified subtitle preset. Optional `ownership` uses
+`mode`, `targets:[{cue_id,roles}]`, and `caption_policy`; decoration preserves every caption. The shared
+validator rejects unsupported policies, collisions and incomplete held-event replacement. Explicit `null`
+is not a motion list. Layout conflicts abort the import without changing original project files.
 | `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per retained group head or ungrouped line number |
 
 Grouping changes subtitle line numbers. Export a fresh packet before another answer; the backup and seal cover
