@@ -374,10 +374,41 @@ def saved_stories_come_back_after_restart():
 
 
 def name_check_works():
+    import re
     import sync_team
-    assert sync_team.names_in(("style from Ni" + "na 07").encode()), "a client name was not found"  # split: this file is synced too
-    assert not sync_team.names_in("github.com/poomiiz/ClipKit".encode()), "the allowed repo link was flagged"
-    assert not sync_team.names_in("github.com/poomiiz/EditorKrab".encode()), "the new repo link was flagged"
+    assert "state/private-names.json" in sync_team.TEAM_OWN, "private names could be copied to the team"
+    example = "Example" + "Person"
+    names = re.compile(example + "|poomiiz", re.I)
+    assert sync_team.names_in(("style from " + example.lower()).encode(), names), "a private name was not found"
+    assert not sync_team.names_in(b"ordinary reference", names), "ordinary reference was flagged"
+    assert not sync_team.names_in(b"github.com/poomiiz/ClipKit", names), "the allowed repo link was flagged"
+    assert not sync_team.names_in(b"github.com/poomiiz/EditorKrab", names), "the new repo link was flagged"
+    original = sync_team.ROOT
+    with tempfile.TemporaryDirectory() as folder:
+        try:
+            sync_team.ROOT = Path(folder)
+            try:
+                sync_team.private_names()
+            except FileNotFoundError:
+                pass
+            else:
+                raise AssertionError("missing private names were accepted")
+            private = sync_team.ROOT / "state" / "private-names.json"
+            private.parent.mkdir()
+            for invalid in ("{", "[]", "null", "3", '""', '"   "', '"["'):
+                private.write_text(invalid, encoding="utf-8")
+                try:
+                    sync_team.private_names()
+                except (ValueError, re.error):
+                    pass
+                else:
+                    raise AssertionError("invalid private names were accepted")
+            private.write_text(json.dumps(example), encoding="utf-8")
+            loaded = sync_team.private_names()
+            assert loaded.search(example.upper()), "private names are not case insensitive"
+            assert sync_team.names_in(example.encode(), loaded), "loaded private names were not used"
+        finally:
+            sync_team.ROOT = original
 
 
 def preset_pack_roundtrip():

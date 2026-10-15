@@ -24,5 +24,14 @@ delivery_statuses.json.tmp
 presets/pace/
 .env
 
+# generated media, browser sessions/captures and private AI workspaces
+output/
+.playwright-cli/
+.codex/visualizations/
+envato-profile/
+.clipkit-web-ai/
+*.web-ai-state/
+*.private.json
+
 # job status kept between restarts (app/jobstore.py)
 state/

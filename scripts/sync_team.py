@@ -5,8 +5,10 @@
 
 Every file the team repo has is refreshed from here, except the ones written for the team edition (TEAM_OWN).
 A file new in this repo is not added there by itself: copy it once by hand when the team needs it.
+Provide ignored state/private-names.json containing a nonempty JSON regex string before syncing.
 """
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -15,22 +17,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEAM_OWN = {"README.md", "AGENTS.md", "skills/make-clip/SKILL.md", "scripts/setup.ps1", "scripts/doctor.py",
-            ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"}
+            ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", "state/private-names.json"}
 
 
-# personal and client names never leave this repo; the sync stops and lists where they are
-NAMES = re.compile(r"Sample|REF|p'?ohm|poomi|พี่โอม", re.I)
+# Keep name patterns private; stop syncing when a configured name is found.
 ALLOWED = ("poomiiz/ClipKit", "poomiiz/EditorKrab")  # the GitHub owner in links
 
 
-def names_in(data: bytes) -> list[str]:
+def private_names() -> re.Pattern[str]:
+    pattern = json.loads((ROOT / "state" / "private-names.json").read_text(encoding="utf-8-sig"))
+    if not isinstance(pattern, str) or not pattern.strip():
+        raise ValueError("state/private-names.json must contain a nonempty JSON regex string")
+    return re.compile(pattern, re.I)
+
+
+def names_in(data: bytes, names: re.Pattern[str]) -> list[str]:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         return []  # images, fonts
     for a in ALLOWED:
         text = text.replace(a, "")
-    return [f"{n}: {line.strip()[:100]}" for n, line in enumerate(text.splitlines(), 1) if NAMES.search(line)]
+    return [f"{n}: {line.strip()[:100]}" for n, line in enumerate(text.splitlines(), 1) if names.search(line)]
 
 
 def git(repo: Path, *args: str) -> str:
@@ -42,6 +50,7 @@ def main() -> int:
     ap.add_argument("team")
     ap.add_argument("--push", action="store_true")
     a = ap.parse_args()
+    names = private_names()
     team = Path(a.team)
     if subprocess.run([sys.executable, str(ROOT / "scripts" / "smoke_test.py")]).returncode:
         sys.exit("smoke test failed - nothing was copied")
@@ -54,7 +63,7 @@ def main() -> int:
             continue
         if src.read_bytes() != (team / rel).read_bytes():
             todo.append(rel)
-    found = {rel: hits for rel in todo if (hits := names_in((ROOT / rel).read_bytes()))}
+    found = {rel: hits for rel in todo if (hits := names_in((ROOT / rel).read_bytes(), names))}
     if found:
         for rel, hits in found.items():
             print(rel, *hits, sep="\n  ")

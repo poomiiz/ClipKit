@@ -38,6 +38,7 @@ def main():
         r = run(clone, "--check")
         assert r.returncode != 0 and "no release" in r.stderr, r.stderr
 
+        git(clone, "tag", "v99.0.0")  # a newer local tag is not a published release
         git(src, "tag", "v0.1.0")
         commit(src, "a.txt", "released")
         git(src, "tag", "v0.2.0")
@@ -60,6 +61,20 @@ def main():
         assert r.returncode == 0 and "updated to v0.10.0" in r.stdout and "packages updated" in r.stdout, r.stdout + r.stderr
         assert "backup/local-" in r.stdout and not (clone / "mine.txt").exists(), "local commit not kept on a branch"
         assert "backup/local-" in git(clone, "branch", "--list", "backup/*")
+
+        git(src, "push", "-q", "--delete", str(origin), "v0.1.0", "v0.2.0", "v0.10.0")
+        (clone / "a.txt").write_text("local work after releases were removed", encoding="utf-8")
+        before = {"head": git(clone, "rev-parse", "HEAD"), "status": git(clone, "status", "--porcelain"),
+                  "stashes": git(clone, "stash", "list"), "tags": git(clone, "tag", "--list"),
+                  "backups": git(clone, "branch", "--list", "backup/*")}
+        r = run(clone)
+        assert r.returncode != 0 and "no release" in r.stderr, r.stdout + r.stderr
+        assert git(clone, "rev-parse", "HEAD") == before["head"], "reset to a deleted remote release"
+        assert git(clone, "status", "--porcelain") == before["status"], "changed local work"
+        assert (clone / "a.txt").read_text(encoding="utf-8") == "local work after releases were removed"
+        assert git(clone, "stash", "list") == before["stashes"], "stashed before checking remote releases"
+        assert git(clone, "tag", "--list") == before["tags"], "deleted retained local tags"
+        assert git(clone, "branch", "--list", "backup/*") == before["backups"], "created a backup before release validation"
     print("PASS update follows release tags, keeps local commits, reinstalls changed requirements")
 
 
