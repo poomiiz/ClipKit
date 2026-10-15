@@ -18,6 +18,7 @@ import video_edit
 import video_editor
 import run_clip
 import jobstore
+import web_ai_identity
 from pydantic import ValidationError
 
 
@@ -33,7 +34,8 @@ class StoryTarget(unittest.TestCase):
             self.assertLess(packet.index("ราว 3 นาที"), packet.index("line 0"))
             self.assertIn('"max_minutes": 3', packet)
             self.assertEqual(video_editor.brief(raw)["max_minutes"], 3)
-            web.import_stories(raw, {"clipkit_web_ai": 1, "step": "stories", "video": "talk.mp4",
+            web.import_stories(raw, {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", raw),
+                                    "step": "stories", "video": "talk.mp4",
                                     "stories": [{"title": "Complete thought", "start": 0, "end": 210}]})
             with patch.object(video_edit, "transcribe_file", return_value=phrases), \
                  patch.object(video_edit, "_split_long", side_effect=AssertionError("hard split")):
@@ -51,12 +53,21 @@ class StoryTarget(unittest.TestCase):
     def test_clip_packet_inherits_source_preference(self):
         with tempfile.TemporaryDirectory() as folder:
             raw = str(Path(folder) / "raw.mp4")
+            Path(raw).write_bytes(b"media")
             web.save_story_target(raw, 3)
             project = Path(folder) / "project"
             project.mkdir()
             (project / "clipkit.json").write_text(json.dumps({"raw": raw}), encoding="utf-8")
-            with patch.object(web.capcut_edit, "read_draft", return_value={"subtitles": [{"id": "spoken-1", "start": 0, "end": 200, "text": "spoken"}]}), \
-                 patch.object(web, "_motion_menu", return_value=[]):
+            draft = {"id": "draft", "duration": 200_000_000, "materials": {
+                "videos": [{"id": "video", "path": raw}], "texts": [{"id": "text", "font_size": 15,
+                    "content": json.dumps({"text": "spoken", "styles": []})}]}, "tracks": [
+                {"type": "video", "segments": [{"id": "video", "material_id": "video",
+                    "source_timerange": {"start": 0, "duration": 200_000_000},
+                    "target_timerange": {"start": 0, "duration": 200_000_000}}]},
+                {"type": "text", "segments": [{"id": "spoken-1", "material_id": "text", "clip": {"transform": {"y": 0}},
+                    "target_timerange": {"start": 0, "duration": 200_000_000}}]}]}
+            (project / "draft_content.json").write_text(json.dumps(draft), encoding="utf-8")
+            with patch.object(web, "_motion_menu", return_value=[]):
                 packet = web.export_clip(str(project)).read_text(encoding="utf-8")
                 self.assertIn("ราว 3 นาที", packet)
                 self.assertIn('"max_minutes": 3', packet)
@@ -109,7 +120,8 @@ class StoryTarget(unittest.TestCase):
                  patch.object(video_edit, "transcribe_file", return_value=phrases), \
                  patch.object(video_edit, "_split_long", side_effect=AssertionError("natural length must not split")):
                 self.assertEqual(video_editor.story_plan_status(raw)["status"], "waiting")
-                web.import_stories(raw, {"clipkit_web_ai": 1, "step": "stories", "video": "talk.mp4",
+                web.import_stories(raw, {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", raw),
+                                        "step": "stories", "video": "talk.mp4",
                                         "stories": [{"title": "Natural", "start": 0, "end": 400}]})
                 result = video_editor.story_plan_status(raw)
                 self.assertEqual(result["status"], "done")

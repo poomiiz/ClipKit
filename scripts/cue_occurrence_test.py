@@ -16,11 +16,13 @@ import hf_build
 import render
 import video_editor
 import web_ai_json
+import web_ai_identity
 import capcut_font_test
 
 
 class OccurrenceTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch("host_platform.capcut_running", return_value=False))
         self.f = fixture.TrimTiming()
         self.f.setUp()
         self.addCleanup(self.f.doCleanups)
@@ -33,7 +35,8 @@ class OccurrenceTests(unittest.TestCase):
 
     def test_ai_import_stores_distinct_picks_captions_and_packet_clocks(self):
         self.f.write("clipkit_style.json", {"anim": "pair", "preset": "with-caption"})
-        answer = {"clipkit_web_ai": 1, "step": "clip", "project": "project", "hook": [],
+        answer = {"clipkit_web_ai": 2, **web_ai_identity.issue("clip", self.path),
+                  "step": "clip", "project": "project", "hook": [],
                   "caption": {"1": "first occurrence", "2": "second occurrence"},
                   "lines": [{"n": 1, "cue_id": "0", "items": [["normal", "keyword"]]},
                             {"n": 2, "cue_id": "1", "items": [["normal keyword", ""]]}]}
@@ -77,7 +80,8 @@ class OccurrenceTests(unittest.TestCase):
         self.assertEqual(self.f.read("draft_content.json"), before)
 
     def test_cut_first_occurrence_places_motion_on_second_cue_at_its_new_time(self):
-        answer = {"clipkit_web_ai": 1, "step": "clip", "project": "project", "hook": [],
+        answer = {"clipkit_web_ai": 2, **web_ai_identity.issue("clip", self.path),
+                  "step": "clip", "project": "project", "hook": [],
                   "cut": [1], "lines": [{"n": 1, "cue_id": "0"},
                                          {"n": 2, "cue_id": "1", "items": [["normal", "keyword"]]}],
                   "motion": [{"n": 2, "template": "hook-title"}]}

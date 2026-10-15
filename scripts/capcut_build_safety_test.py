@@ -104,6 +104,15 @@ class NativeBuildSafetyTests(unittest.TestCase):
         self.assertNotIn("previous_project_only", build._T)
         self.assert_preserved()
 
+    def test_new_native_revision_excludes_source_ai_identity_and_receipts(self):
+        state = self.project / ".clipkit-web-ai" / "receipts"
+        state.mkdir(parents=True)
+        (state / "private.json").write_text('{"target_id":"source project"}', encoding="utf-8")
+        self.before_source = snapshot(self.project)
+        output, _ = build.build(str(self.project))
+        self.assertFalse((output / ".clipkit-web-ai").exists())
+        self.assert_preserved()
+
     def test_another_build_preserves_every_byte_of_previous_revision(self):
         output, _ = build.build(str(self.project))
         (output / "draft_content.json").write_bytes(b"edited in CapCut by a person")

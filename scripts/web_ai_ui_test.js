@@ -88,6 +88,153 @@ async function check(via, step = 'clip', fail = false, switched = false, pollFai
   }
 }
 
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return {promise, resolve, reject};
+}
+
+function legacy(overrides = {}) {
+  const nodes = {}, calls = [], timers = [];
+  const context = {
+    document: {getElementById: id => nodes[id] ||= {value: '{"cut":[1]}'}, createElement: () => ({click() {}})},
+    Blob: class {}, URL: {createObjectURL: () => 'blob:test', revokeObjectURL() {}},
+    setTimeout: (run, delay = 0) => timers.push({run, delay}),
+    state: {draft: {path: 'project'}}, drafts: [], renderGuide() {}, loadFilmstrip() {}, ckErr: e => e.message,
+    api: async (path, body) => {
+      calls.push([path, body]);
+      if (overrides[path]) return overrides[path](body);
+      if (path === 'web-ai/export') return {text: 'packet', name: 'packet.md'};
+      if (path === 'web-ai/import') return {lines: 2, cut: 1};
+      if (path.startsWith('draft/timeline?')) return {via: 'capcut'};
+      if (path === 'draft/prepare') return {steps: []};
+      if (path === 'drafts') return {drafts: [{path: 'project'}]};
+      throw new Error('unexpected ' + path);
+    }
+  };
+  vm.runInNewContext(box + "; webAiBox('clip', 'project', 'AI');", context);
+  timers.shift().run();
+  const prefix = Object.keys(nodes).find(id => id.endsWith('dl')).slice(0, -2);
+  for (const suffix of ['in', 'ta', 'max', 'msg']) context.document.getElementById(prefix + suffix);
+  return {
+    node: suffix => Object.entries(nodes).find(([id]) => id.endsWith(suffix))[1],
+    count: path => calls.filter(([p]) => p === path).length,
+    poll: () => {
+      const index = timers.findIndex(t => t.delay === 3000);
+      assert.notEqual(index, -1, 'a current poll timer exists');
+      return timers.splice(index, 1)[0].run();
+    },
+    timers
+  };
+}
+
+async function checkSingleSubmissionLane() {
+  const manual = legacy();
+  await manual.node('dl').onclick();
+  await manual.node('in').onclick();
+  await manual.poll(); // local answer receipt must not repeat native preparation
+  assert.equal(manual.count('web-ai/import'), 1);
+  assert.equal(manual.count('draft/prepare'), 1);
+  assert.equal(manual.node('ta').value, '');
+
+  for (const first of ['manual', 'poll']) {
+    const pending = deferred(), l = legacy({'web-ai/import': () => pending.promise});
+    await l.node('dl').onclick();
+    const active = first === 'poll' ? l.poll() : l.node('in').onclick();
+    assert.equal(l.node('in').disabled, true);
+    await l.node('in').onclick(); // even a direct/programmatic second click cannot duplicate the request
+    if (first === 'manual') await l.poll();
+    assert.equal(l.count('web-ai/import'), 1);
+    pending.resolve({lines: 2, cut: 1});
+    await active;
+    if (first === 'manual') await l.poll();
+    assert.equal(l.count('draft/prepare'), 1);
+    assert.equal(l.node('in').disabled, false);
+    assert.equal(l.node('ta').value, '');
+  }
+}
+
+async function checkOldGenerationResponses() {
+  for (const fail of [false, true]) {
+    const pending = deferred();
+    let imports = 0;
+    const l = legacy({'web-ai/import': () => ++imports === 1 ? pending.promise : {lines: 2, cut: 1}});
+    await l.node('dl').onclick();
+    const stale = l.poll();
+    await l.node('dl').onclick(); // a newer exported packet owns all further responses
+    const message = l.node('msg').textContent;
+    if (fail) pending.reject(new Error('old poll failed'));
+    else pending.resolve({lines: 2, cut: 1});
+    await stale;
+    assert.equal(l.count('draft/prepare'), 0);
+    assert.equal(l.node('msg').textContent, message);
+    assert.equal(l.node('ta').value, '{"cut":[1]}');
+    assert.equal(l.node('in').disabled, false);
+    await l.poll();
+    assert.equal(l.count('web-ai/import'), 2);
+    assert.equal(l.count('draft/prepare'), 1);
+  }
+
+  const timeline = deferred();
+  let reads = 0;
+  const l = legacy({'draft/timeline?path=project': () => ++reads === 1 ? timeline.promise : {via: 'capcut'}});
+  await l.node('dl').onclick();
+  const stale = l.node('in').onclick();
+  await Promise.resolve(); await Promise.resolve();
+  await l.node('dl').onclick();
+  timeline.resolve({via: 'capcut'});
+  await stale;
+  assert.equal(l.count('draft/prepare'), 0, 'old refresh must not build after a new packet was exported');
+  await l.poll(); // obsolete timer from the first export
+  assert.equal(l.count('web-ai/import'), 1);
+  await l.poll(); // current export timer
+  assert.equal(l.count('draft/prepare'), 1);
+}
+
+async function checkRetryAndCommittedRefreshFailure() {
+  const pendingExport = deferred(), failedExport = legacy({'web-ai/export': () => pendingExport.promise});
+  const download = failedExport.node('dl').onclick();
+  assert.equal(failedExport.node('dl').disabled, true);
+  assert.equal(failedExport.node('in').disabled, true);
+  await failedExport.node('dl').onclick();
+  await failedExport.node('in').onclick();
+  assert.equal(failedExport.count('web-ai/export'), 1);
+  assert.equal(failedExport.count('web-ai/import'), 0);
+  pendingExport.reject(new Error('export failed'));
+  await download;
+  assert.equal(failedExport.node('ta').value, '{"cut":[1]}');
+  assert.equal(failedExport.node('dl').disabled, false);
+  assert.equal(failedExport.node('in').disabled, false);
+
+  let imports = 0;
+  const l = legacy({'web-ai/import': () => {
+    if (++imports === 1) throw new Error('response lost');
+    return {lines: 2, cut: 1}; // backend receipt supplies the same committed result on retry
+  }});
+  await l.node('in').onclick();
+  assert.equal(l.node('ta').value, '{"cut":[1]}');
+  assert.equal(l.node('in').disabled, false);
+  await l.node('in').onclick();
+  assert.equal(l.count('draft/prepare'), 1);
+  assert.equal(l.node('ta').value, '');
+
+  const bad = legacy({'draft/timeline?path=project': () => { throw new Error('refresh failed'); }});
+  await bad.node('dl').onclick();
+  await bad.node('in').onclick();
+  assert.equal(bad.node('ta').value, '');
+  assert.match(bad.node('msg').textContent, /refresh failed/);
+  await bad.poll();
+  bad.node('ta').value = '{"cut":[1]}';
+  await bad.node('in').onclick();
+  assert.equal(bad.count('web-ai/import'), 1, 'committed import must not replay after refresh fails');
+  assert.equal(bad.node('ta').value, '{"cut":[1]}');
+
+  const empty = legacy();
+  empty.node('ta').value = ' ';
+  await empty.node('in').onclick();
+  assert.equal(empty.count('web-ai/import'), 0);
+}
+
 (async () => {
   await check('clipkit');
   await check('capcut');
@@ -99,11 +246,14 @@ async function check(via, step = 'clip', fail = false, switched = false, pollFai
   await checkEditor('import');
   await checkEditor('refresh');
   await checkEditor('', true);
+  await checkSingleSubmissionLane();
+  await checkOldGenerationResponses();
+  await checkRetryAndCommittedRefreshFailure();
   assert.match(editor, /\$\('aiDownload'\)\.onclick = downloadAi/);
   assert.match(editor, /\$\('aiImport'\)\.onclick = importAi/);
   assert.match(editor.slice(editor.indexOf('async function load()'), editor.indexOf('let building')), /live\(\)/);
   const auto = source.slice(source.indexOf('async function autoRun()'), source.indexOf('async function saLoad('));
   assert.match(auto, /webAiBox\('clip', state\.draft\.path/);
   assert.doesNotMatch(auto, /agentBox\(/);
-  console.log('PASS web AI callers: route, refresh, navigation guard, stories, errors, auto entry');
+  console.log('PASS web AI callers: route, refresh, navigation guard, stories, errors, auto entry, single submission, stale polls and receipt retries');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -754,7 +754,7 @@ def create_capcut_draft(video_path: str, project_name: str,
     shutil.copytree(_template_dir(), target,
                     ignore=shutil.ignore_patterns("*.bak_*", "*.bak", "draft_content.before_*",
                                                   "draft_content.user_edited_*", "*.tmp",
-                                                  "clipkit*.json"))  # the template project's own raw file / motions / subs
+                                                  "clipkit*.json", ".clipkit-web-ai"))  # the template project's own raw file / motions / subs
 
     content_path = target / "draft_content.json"
     draft = json.loads(content_path.read_text(encoding="utf-8"))

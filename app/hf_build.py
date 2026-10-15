@@ -135,6 +135,8 @@ def build(path: str) -> Path:
 
 
 def _build(path: str) -> Path:
+    import web_ai_transaction
+    web_ai_transaction.recover("clip", path)
     t = render.render_draft(path, "", dry=True)
     W, H, D = t["width"], t["height"], t["duration"]
     st = t["style"] or {}

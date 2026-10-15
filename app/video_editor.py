@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atomic
 import jobstore
+import project_lock
 import subprocess
 import sys
 import json
@@ -405,6 +406,7 @@ def _template(name: str) -> dict[str, Any]:
     return {**TEMPLATE_DEFAULT, **json.loads(f.read_text(encoding="utf-8"))}
 
 
+@project_lock.edit
 def apply_template(path: str, name: str) -> dict[str, Any]:
     """Put a template's settings into a project (clipkit_style.json); the steps they switch on run in prepare."""
     t = _template(name)
@@ -457,6 +459,7 @@ class Prepare(BaseModel):
 
 
 @router.post("/draft/prepare")
+@project_lock.edit
 def draft_prepare(req: Prepare) -> dict[str, Any]:
     """Everything the template switches on, then (capcut) the finished layout as a CapCut project to keep editing:
     subtitles, breaths cut, colour, then capcut_build. No MP4 preview here (that is the ClipKit route)."""
@@ -585,6 +588,7 @@ class ExportRequest(BaseModel):
 
 
 @router.post("/draft/export")
+@project_lock.edit
 def draft_export(req: ExportRequest) -> dict[str, Any]:
     """MP4 straight from ClipKit (no CapCut): <output_dir>/exports/<project>.mp4"""
     import kit_settings
@@ -600,6 +604,7 @@ def draft_export(req: ExportRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/subs")
+@project_lock.edit
 def draft_subs(req: DraftSubsRequest) -> dict[str, Any]:
     try:
         return capcut_edit.set_subtitles(
@@ -616,6 +621,7 @@ class MergeSubtitlesRequest(BaseModel):
 
 
 @router.post("/draft/subs/merge")
+@project_lock.edit
 def draft_merge_subtitles(req: MergeSubtitlesRequest) -> dict[str, Any]:
     try:
         rows = capcut_edit.merge_subtitles(req.path, [(req.first, req.last)])
@@ -647,6 +653,7 @@ def draft_text_check(path: str = Query(...)) -> dict[str, Any]:
 
 
 @router.post("/draft/tidy")
+@project_lock.edit
 def draft_tidy(req: TidyRequest) -> dict[str, Any]:
     try:
         return capcut_edit.tidy_subtitles(req.path, req.mode)
@@ -655,6 +662,7 @@ def draft_tidy(req: TidyRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/subs/fill")
+@project_lock.edit
 def draft_subs_fill(req: FillGapsRequest) -> dict[str, Any]:
     """Subtitle only the stretches that have none, for footage added later."""
     try:
@@ -670,6 +678,7 @@ class SubsLangRequest(BaseModel):
 
 
 @router.post("/draft/subs-lang")
+@project_lock.edit
 def draft_subs_lang(req: SubsLangRequest) -> dict[str, Any]:
     try:
         return capcut_edit.subtitles_language(req.path, req.lang)
@@ -693,6 +702,7 @@ class TextLayoutRequest(BaseModel):
 
 
 @router.post("/draft/layout")
+@project_lock.edit
 def draft_layout(req: TextLayoutRequest) -> dict[str, Any]:
     try:
         return capcut_edit.set_text_layout(req.path, [i.model_dump() for i in req.items])
@@ -701,6 +711,7 @@ def draft_layout(req: TextLayoutRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/style")
+@project_lock.edit
 def draft_style(req: DraftStyleRequest) -> dict[str, Any]:
     try:
         return capcut_edit.restyle_subtitles(req.path, size=req.size, y=req.y,
@@ -710,6 +721,7 @@ def draft_style(req: DraftStyleRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/trim")
+@project_lock.edit
 def draft_trim(req: DraftTrimRequest) -> dict[str, Any]:
     try:
         return capcut_edit.trim_pauses(req.path, keep=req.keep,
@@ -719,6 +731,7 @@ def draft_trim(req: DraftTrimRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/grade")
+@project_lock.edit("req.target")
 def draft_grade(req: GradeRequest) -> dict[str, Any]:
     try:
         return capcut_edit.copy_grade(req.source, req.target)
@@ -752,6 +765,7 @@ def animations() -> dict[str, Any]:
 
 
 @router.post("/draft/animation")
+@project_lock.edit
 def draft_animation(req: AnimationRequest) -> dict[str, Any]:
     try:
         return capcut_edit.apply_animation(req.path, req.name, req.target, req.duration)
@@ -760,6 +774,7 @@ def draft_animation(req: AnimationRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/animation/clear")
+@project_lock.edit
 def draft_animation_clear(req: AnimationClearRequest) -> dict[str, Any]:
     try:
         return capcut_edit.clear_animations(req.path, req.target)
@@ -791,6 +806,7 @@ def music() -> dict[str, Any]:
 
 
 @router.post("/draft/music")
+@project_lock.edit
 def draft_music(req: MusicRequest) -> dict[str, Any]:
     try:
         return capcut_edit.add_music(req.path, req.music, req.volume,
@@ -810,6 +826,7 @@ def sounds() -> dict[str, Any]:
 
 
 @router.post("/draft/sound")
+@project_lock.edit
 def draft_sound(req: SoundRequest) -> dict[str, Any]:
     try:
         return capcut_edit.add_sound_on_subtitles(req.path, req.sound, req.volume,
@@ -819,6 +836,7 @@ def draft_sound(req: SoundRequest) -> dict[str, Any]:
 
 
 @router.post("/draft/sound/clear")
+@project_lock.edit
 def draft_sound_clear(req: DraftPath) -> dict[str, Any]:
     try:
         return capcut_edit.clear_sounds(req.path)
@@ -940,6 +958,7 @@ class OverlayRequest(BaseModel):
 
 
 @router.post("/draft/overlay")
+@project_lock.edit
 def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     import kit_settings
     import math
@@ -1003,6 +1022,7 @@ class OverlayDelete(BaseModel):
 
 
 @router.post("/draft/overlay-remove")
+@project_lock.edit
 def draft_overlay_remove(req: OverlayDelete) -> dict[str, Any]:
     items = [o for o in _overlays(req.path) if abs(o["start"] - req.start) > 0.05]
     atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -1015,6 +1035,7 @@ class SubAnimRequest(BaseModel):
 
 
 @router.post("/draft/sub-anim")
+@project_lock.edit
 def draft_sub_anim(req: SubAnimRequest) -> dict[str, Any]:
     """How subtitles move in the MP4 export: still, pop in, or the spoken word lit up."""
     f = Path(req.path) / "clipkit_style.json"
@@ -1039,6 +1060,7 @@ class ZoomCut(BaseModel):
 
 
 @router.post("/draft/zoomcut")
+@project_lock.edit
 def draft_zoomcut(req: ZoomCut) -> dict[str, Any]:
     """Every other subtitle line punched in (an editing effect for the MP4 export)."""
     f = Path(req.path) / "clipkit_style.json"
@@ -1049,6 +1071,7 @@ def draft_zoomcut(req: ZoomCut) -> dict[str, Any]:
 
 
 @router.post("/draft/spelling-request")
+@project_lock.edit
 def draft_spelling_request(req: DraftPath) -> dict[str, Any]:
     """Lines for the agent to check for misheard words; the editor pastes the returned command into chat."""
     lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
@@ -1059,6 +1082,7 @@ def draft_spelling_request(req: DraftPath) -> dict[str, Any]:
 
 
 @router.post("/draft/punch-request")
+@project_lock.edit
 def draft_punch_request(req: DraftPath) -> dict[str, Any]:
     """Lines for the agent to pick punch words from; the editor pastes the returned command into chat."""
     lines = [s["text"] for s in capcut_edit.read_draft(req.path)["subtitles"]]
@@ -1137,6 +1161,7 @@ def stock_free_download(req: FreeDownload) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@project_lock.edit
 def broll_fill(path: str) -> dict[str, Any]:
     """Free b-roll for the phrases the agent tagged with a search (3rd item in clipkit_punch.json):
     the first Pixabay hit for each search is saved and listed in clipkit_broll.json."""
@@ -1170,6 +1195,7 @@ def broll_fill(path: str) -> dict[str, Any]:
 
 
 @router.post("/draft/broll-auto")
+@project_lock.edit
 def draft_broll_auto(req: DraftPath) -> dict[str, Any]:
     try:
         return broll_fill(req.path)
@@ -1183,6 +1209,7 @@ class BrollRemove(BaseModel):
 
 
 @router.post("/draft/broll-remove")
+@project_lock.edit
 def draft_broll_remove(req: BrollRemove) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_broll.json"
     chosen = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
@@ -1197,6 +1224,7 @@ class AutoRequest(BaseModel):
 
 
 @router.post("/draft/auto")
+@project_lock.edit
 def draft_auto(req: AutoRequest) -> dict[str, Any]:
     """Every step in one go, ending in a quick preview for a person to review before the real export:
     subtitles (if none yet) -> silence trimmed -> subtitle look + zoom cut -> b-roll (where the agent asked)
@@ -1277,6 +1305,7 @@ class PlacedRequest(BaseModel):
 
 
 @router.post("/draft/placed")
+@project_lock.edit
 def draft_placed_save(req: PlacedRequest) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_placed.json"
     if req.reset:
@@ -1324,6 +1353,7 @@ class PhraseEdit(BaseModel):
 
 
 @router.post("/draft/phrases")
+@project_lock.edit
 def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
     """Save the editor's split / words / b-roll search for one subtitle line. New words also change the line."""
     folder = Path(req.path)
@@ -1347,6 +1377,7 @@ class LookRequest(BaseModel):
 
 
 @router.post("/draft/look")
+@project_lock.edit
 def draft_look(req: LookRequest) -> dict[str, Any]:
     f = Path(req.path) / "clipkit_style.json"
     style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
@@ -1355,6 +1386,7 @@ def draft_look(req: LookRequest) -> dict[str, Any]:
     return {"style": style}
 
 
+@project_lock.edit
 def auto_color(path: str) -> dict[str, Any]:
     """A first colour pick from the footage itself, over 6 frames of the clip: white balance (grey-world, 60 %
     of the way, so warm indoor light stays a little warm), brightness towards a mid level, contrast up when the
@@ -1393,6 +1425,7 @@ def auto_color(path: str) -> dict[str, Any]:
 
 
 @router.post("/draft/auto-color")
+@project_lock.edit
 def draft_auto_color(req: DraftPath) -> dict[str, Any]:
     try:
         return auto_color(req.path)
@@ -1410,6 +1443,7 @@ class LineTime(BaseModel):
 
 
 @router.post("/draft/line-time")
+@project_lock.edit
 def draft_line_time(req: LineTime) -> dict[str, Any]:
     try:
         return capcut_edit.set_line_time(req.path, req.line, req.start, req.end, req.cue_id)
@@ -1428,6 +1462,7 @@ class HookEdit(BaseModel):
 
 
 @router.post("/draft/hook")
+@project_lock.edit
 def draft_hook(req: HookEdit) -> dict[str, Any]:
     """The clip title (first 4 s), edited in the editor: 1-2 lines, each white / orange / red."""
     import render
@@ -1456,6 +1491,7 @@ class CaptionEdit(BaseModel):
 
 
 @router.post("/draft/caption")
+@project_lock.edit
 def draft_caption(req: CaptionEdit) -> dict[str, Any]:
     """The small translated caption of one spoken line (empty = none for that line)."""
     rows = capcut_edit.read_draft(req.path)["subtitles"]
@@ -1479,6 +1515,7 @@ UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_punch.json", 
 
 
 @router.post("/draft/cut")
+@project_lock.edit
 def draft_cut(req: CutRange) -> dict[str, Any]:
     """Cut a stretch of the talk out of the clip (subtitles inside it go too, later ones move up); undoable."""
     import shutil
@@ -1500,6 +1537,7 @@ def draft_cut(req: CutRange) -> dict[str, Any]:
 
 
 @router.post("/draft/uncut")
+@project_lock.edit
 def draft_uncut(req: DraftPath) -> dict[str, Any]:
     """Undo the last cut made in the editor."""
     import shutil
@@ -1517,6 +1555,7 @@ def draft_uncut(req: DraftPath) -> dict[str, Any]:
     return {"undo": len(steps) - 1}
 
 
+@project_lock.edit
 def auto_cover(path: str) -> str:
     """A cover from the story title on the frame where the speaker's face is biggest; kept in clipkit_style.json."""
     import re
@@ -1538,6 +1577,7 @@ def auto_cover(path: str) -> str:
 
 
 @router.post("/draft/auto-cover")
+@project_lock.edit
 def draft_auto_cover(req: DraftPath) -> dict[str, Any]:
     try:
         return {"file": auto_cover(req.path)}
@@ -1600,6 +1640,8 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     cleanup_warning = ""
     try:
         with hf_build.build_lock(req.path), hf_build.build_lock(str(target)):
+            import web_ai_transaction
+            web_ai_transaction.recover("clip", req.path)
             expected = capcut_edit._load(Path(req.path))
             page = hf_build._build(req.path)  # reservation stays held while HyperFrames reads its composition
             stage = Path(tempfile.mkdtemp(prefix=".render-", dir=target.parent))

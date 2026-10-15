@@ -42,6 +42,7 @@ if os.name == "nt":
 import kit_settings  # noqa: E402
 import style_lab_api  # noqa: E402
 import video_editor  # noqa: E402
+import project_lock  # noqa: E402
 import team_hub  # noqa: E402
 import team_workspace  # noqa: E402
 import drive  # noqa: E402
@@ -68,6 +69,8 @@ WIDGET_ORIGINS = _widget_origins(HELPER_URL)
 
 
 def jobs_running() -> bool:
+    if project_lock.busy():
+        return True
     if any(job.get("status") == "running" for job in list(kit_settings._jobs.values())):
         return True
     if any(proc.poll() is None for proc in list(video_editor._transcribe_jobs.values())):

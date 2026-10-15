@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory() as import_folder:
         import capcut_edit
 import render
 import web_ai_json as web_ai
+import web_ai_identity
 import video_editor
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -24,6 +25,7 @@ from fastapi.testclient import TestClient
 
 class MergeTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch("host_platform.capcut_running", return_value=False))
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name) / "project"
@@ -44,15 +46,18 @@ class MergeTests(unittest.TestCase):
         self.content.write_text(json.dumps(self.draft))
         self.words = {"in": [[0, .5, "in"]], "the": [[0, .5, "the"]], "office": [[0, 2, "office"]]}
         (self.folder / "clipkit_words.json").write_text(json.dumps(self.words))
-        self.answer = {"clipkit_web_ai": 1, "step": "clip", "project": "project", "hook": [], "motion": [], "caption": None,
+        self.answer = {"clipkit_web_ai": 2, "step": "clip", "project": "project", "hook": [], "motion": [], "caption": None,
                        "lines": [{"n": 1, "through": 3, "items": [["in the", "office"]]}, {"n": 2}, {"n": 3}]}
         self.patch = patch.object(capcut_edit, "_log_change")
         self.patch.start()
         self.addCleanup(self.patch.stop)
 
+    def import_answer(self, answer):
+        return web_ai.import_clip(str(self.folder), {**answer, **web_ai_identity.issue("clip", self.folder)})
+
     def test_import_preserves_actual_clock_style_backup_and_seal(self):
         before = self.content.read_bytes()
-        result = web_ai.import_clip(str(self.folder), self.answer)
+        result = self.import_answer(self.answer)
         self.assertIn("merge_subs", result["written"])
         rows = capcut_edit.read_draft(str(self.folder))["subtitles"]
         self.assertEqual([(s["text"], s["start"], s["end"], s["size"]) for s in rows], [("in the office", 0, 3.8, 20)])
@@ -94,16 +99,16 @@ class MergeTests(unittest.TestCase):
             answer = copy.deepcopy(self.answer)
             change(answer)
             variants.append(answer)
-        before = {p.name: p.read_bytes() for p in self.folder.iterdir()}
+        before = {p.name: p.read_bytes() for p in self.folder.iterdir() if p.is_file()}
         for answer in variants:
             with self.subTest(answer=answer), self.assertRaises(render.VideoEditError):
-                web_ai.import_clip(str(self.folder), answer)
-            self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir()}, before)
+                self.import_answer(answer)
+            self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir() if p.is_file()}, before)
         (self.folder / "clipkit_words.json").write_text(json.dumps({"in": self.words["in"]}))
-        before = {p.name: p.read_bytes() for p in self.folder.iterdir()}
+        before = {p.name: p.read_bytes() for p in self.folder.iterdir() if p.is_file()}
         with self.assertRaisesRegex(render.VideoEditError, "เวลาระดับคำ"):
-            web_ai.import_clip(str(self.folder), self.answer)
-        self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir()}, before)
+            self.import_answer(self.answer)
+        self.assertEqual({p.name: p.read_bytes() for p in self.folder.iterdir() if p.is_file()}, before)
 
     def test_manual_endpoint_uses_same_merge(self):
         app = FastAPI()
@@ -117,7 +122,7 @@ class MergeTests(unittest.TestCase):
     def test_cut_before_group_preserves_original_line_numbers_and_shifts_clock(self):
         answer = {**self.answer, "cut": [1], "lines": [
             {"n": 1}, {"n": 2, "through": 3, "items": [["the", "office"]]}, {"n": 3}]}
-        web_ai.import_clip(str(self.folder), answer)
+        self.import_answer(answer)
         row = capcut_edit.read_draft(str(self.folder))["subtitles"][0]
         self.assertEqual((row["text"], row["start"], row["end"]), ("the office", 0, 3.1))
         self.assertEqual(json.loads((self.folder / "clipkit_words.json").read_text())["cue:s2"],
@@ -126,7 +131,7 @@ class MergeTests(unittest.TestCase):
     def test_plain_group_without_clock_does_not_invent_word_times(self):
         (self.folder / "clipkit_words.json").unlink()
         self.answer["lines"][0]["items"] = [["in the office", ""]]
-        web_ai.import_clip(str(self.folder), self.answer)
+        self.import_answer(self.answer)
         self.assertEqual(json.loads((self.folder / "clipkit_words.json").read_text())["cue:s1"], [])
 
 

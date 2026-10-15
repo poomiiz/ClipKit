@@ -50,19 +50,45 @@ The app does the mechanical work; the thinking steps are yours. It shows the per
 The same two steps (แบ่งเรื่อง, เลือกคำเน้น) use one answer contract for browser AI and optional local agents:
 `scripts/web_ai.py` exports a self-contained packet and imports its JSON answer (`prompts/web_ai/schema.md`).
 Always import the answer through this validator; do not write the resulting sidecars or `draft_content.json` directly.
-Manual editor controls remain available without AI; they edit the same project artifacts.
+Manual editor controls remain available without AI; they edit the same project artifacts under the shared writer lock.
+
+**Current stories/clip answer contract is v2.** Copy `clipkit_web_ai: 2`, `step`, `video`/`project`, and the exact
+`packet_id`, `revision`, `source_id` from the exported packet. All three identifiers are opaque: never generate
+them, transplant them into an old answer or infer identity from a basename. Preserve each line's `n` and
+`cue_id`, including cut/group-continuation entries. The separate `inserts` stock-link matcher remains v1.
+
+Each uploaded packet names only the local answer **basename**. Browser AI returns JSON without another prompt;
+an optional local agent saves that answer beside the packet. Exporting again keeps pending answers as
+`.answer.json.before-export-<timestamp>`; successful local imports retain `.answer.json.imported-<packet_id>`.
+Old v1 packets/answers remain readable history but cannot mutate stories or clips; export a new v2 packet.
+
+Every new/unreceipted answer needs the latest active packet and unchanged source/dependency revision, including
+transcript, brief, target, cue/word clock, native timelines, style and preset/font/template dependencies. After
+an edit or a new decision, export again. A committed packet plus the same canonical JSON answer returns its
+durable receipt even after later exports or edits: it does not cut twice or restore an earlier project state.
+The same packet with different content is rejected. CLI import, browser paste and local polling share this rule.
+
+Import validates/prepares all metadata and unique private motion assets in staging before applying under the
+writer lock. Ordinary failure rolls back; an interrupted application without a receipt recovers before the next
+edit/import. A durable receipt commits the successful result and must never be rolled back on retry. Recovery
+that finds unexpected external/native edits preserves both versions and stops for review; do not delete the
+recovery state, reseal a draft or bypass the importer to continue. Close CapCut before modifying its project.
+Successful JSON/import checks still require human viewing/listening and native CapCut acceptance before calling
+a clip done. Obtain approval of one pilot before building a batch.
 
 ### `ClipKit: แบ่งเรื่อง "<video path>"`
-1. Read `<video path>.lines.json` (list of `{start, end, text}`, seconds). Missing = tell the person to press the button in the app again.
-   If `<video path>.brief.txt` is there, it is what the person wants from this video in their own words (style, mood, which parts):
-   choose and shape the stories to match it, still following every rule below.
-2. Read the saved duration preference before selecting ranges. Follow `prompts/story_split.md`: one point each,
+1. Run `python scripts/web_ai.py export stories "<video path>"` and read the complete packet
+   `<video path>.web-ai-stories.md`. It contains current transcript lines (`start`, `end`, `text`, seconds), the
+   person's brief and their saved duration choice. Missing transcript = report the error and ask them to
+   transcribe first. Choose and shape stories to match the brief while following the rules below.
+2. Read the packet's duration preference before selecting ranges. Follow `prompts/story_split.md`: one point each,
    a meaningful opening and finished ending near that target, without a compulsory title or fixed length bracket.
-3. Run `python scripts/web_ai.py export stories "<video path>"`, read the packet, and write its complete answer
-   schema as UTF-8 to `<video path>.web-ai-stories.answer.json` (not directly to `.stories.json`).
+3. Write its complete v2 answer schema with the copied identity fields as UTF-8 to the named answer file beside
+   the packet, `<video path>.web-ai-stories.answer.json` (not directly to `.stories.json`).
 4. Run `python scripts/web_ai.py import stories "<video path>" "<video path>.web-ai-stories.answer.json"`
-   when working from the CLI. In the app, its active AI box polls and imports that saved answer instead; use only
-   one importer. Reply with the list (number, title, length) after validation succeeds.
+   when working from the CLI. The active app AI box can poll/import the same answer; a duplicate returns its
+   receipt. Reply with the list (number, title, length) after validation succeeds. For a changed answer, export
+   another packet rather than reusing its identifiers.
 
 ### `ClipKit: แปลซับเป็นอังกฤษ "<CapCut project folder>"`
 1. Read `<folder>/clipkit_subs_th.json` (list of `{start, end, text}`).
@@ -102,9 +128,11 @@ First run `python scripts/web_ai.py export clip "<folder>"` and read `<folder>/c
 The rules below describe choices for the packet's `lines`, `hook`, `caption`, and `motion` fields.
 Save one complete answer to `<folder>/clipkit_web_ai.answer.json`; import it with
 `python scripts/web_ai.py import clip "<folder>" "<folder>/clipkit_web_ai.answer.json"` for CLI work,
-or let the active app AI box import it. Do not use both: a clip answer may cut footage.
+or let the active app AI box import it. Include the packet's exact v2 identity fields; a duplicate paste/poll/CLI
+import returns its receipt, while changing the answer requires a fresh export. The packet displays only
+`clipkit_web_ai.answer.json`; save it beside that packet, never invent an absolute path from an uploaded file.
 1. Read `<folder>/clipkit_lines.json` and the packet's original numbered ASR lines in context. Transport lines
-   may end mid-thought: group consecutive lines with `through: <last n>` on the head and `{n}` continuations,
+   may end mid-thought: group consecutive lines with `through: <last n>` on the head and `{n, cue_id}` continuations,
    then cover the group's complete source text with semantic items. Never group across a cut; caption/motion
    refer to heads. The shared importer preserves actual word times for browser AI and local agents; manual
    consecutive-line merge uses the same helper.

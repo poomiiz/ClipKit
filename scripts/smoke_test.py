@@ -511,6 +511,11 @@ def web_ai_answers_are_checked():
     import capcut_edit
     import web_ai_json as web_ai
     from video_edit import VideoEditError
+    from unittest.mock import patch
+    def identity(packet):
+        data = json.loads(packet.rsplit("```json", 1)[1].split("```", 1)[0])
+        return {key: data[key] for key in ("packet_id", "revision", "source_id")}
+
     with tempfile.TemporaryDirectory() as t:
         video = Path(t) / "ep.mov"
         video.write_bytes(b"")
@@ -530,8 +535,9 @@ def web_ai_answers_are_checked():
         assert video_editor.brief(str(video))["brief"]
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief=""))
         assert video_editor.brief(str(video)) == {"brief": "", "max_minutes": None}
-        assert "ความต้องการของผู้ตัดต่อ" not in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
-        head = {"clipkit_web_ai": 1, "step": "stories", "video": "ep.mov"}
+        packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        assert "ความต้องการของผู้ตัดต่อ" not in packet
+        head = {"clipkit_web_ai": 2, **identity(packet), "step": "stories", "video": "ep.mov"}
         for bad in ({**head, "video": "other.mov", "stories": [{"title": "a", "start": 9, "end": 15}]},
                     {**head, "stories": [{"title": "a", "start": 3, "end": 5}]},
                     {**head, "stories": [{"title": "a", "start": 9, "end": 15}]}):  # wrong video / no speech / past transcript
@@ -546,33 +552,42 @@ def web_ai_answers_are_checked():
         # an AI on this machine saves its answer next to the file instead: imported once, then gone
         assert web_ai.import_answer("stories", str(video), "") == {"waiting": True}
         saved = web_ai.answer_file("stories", str(video))
-        assert str(saved) in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
+        assert saved.name in packet
+        head.update(identity(packet))
         saved.write_text(json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 14}]}), encoding="utf-8")
         assert web_ai.import_answer("stories", str(video), "")["stories"][0]["end"] == 14 and not saved.exists()
 
         proj = Path(t) / "proj"
         proj.mkdir()
-        keep = capcut_edit.read_draft
-        capcut_edit.read_draft = lambda p: {"subtitles": [{"id": "cue-1", "start": 0.0, "end": 2.0, "text": "เงินไม่พอใช้"}]}
-        try:
-            web_ai.export_clip(str(proj))
-            assert "ยาวราว" not in web_ai.export_clip(str(proj)).read_text(encoding="utf-8")
-            aimed = web_ai.export_clip(str(proj), 1.5).read_text(encoding="utf-8")
-            assert "ยาวราว 1.5 นาที" in aimed and aimed.index("ยาวราว") < aimed.index("## 1. Subtitle"), "the length aim is not in the cut rules"
-            good = {"clipkit_web_ai": 1, "step": "clip", "project": "proj", "hook": [{"text": "เงินหมด", "color": "red"}],
-                    "lines": [{"n": 1, "items": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}]}
-            for bad in ({**good, "lines": [{"n": 1, "items": [["เงิน", "พอใช้"]]}]},  # words changed
-                        {**good, "hook": [{"text": "x", "color": "blue"}]},
-                        {**good, "cut": [1]}):  # nothing left
-                try:
+        span = {"start": 0, "duration": 2_000_000}
+        draft = {"id": "draft", "duration": span["duration"], "canvas_config": {"width": 1080, "height": 1920},
+                 "materials": {"videos": [{"id": "v", "path": str(video)}], "texts": [
+                     {"id": "t", "font_size": 15, "content": json.dumps({"text": "เงินไม่พอใช้", "styles": []})}]},
+                 "tracks": [{"type": "video", "segments": [{"id": "v", "material_id": "v",
+                     "source_timerange": span, "target_timerange": span}]},
+                     {"type": "text", "segments": [{"id": "cue-1", "material_id": "t",
+                         "target_timerange": span, "clip": {"transform": {"x": 0, "y": 0}}}]}]}
+        (proj / "draft_content.json").write_text(json.dumps(draft), encoding="utf-8")
+        (proj / "clipkit_words.json").write_text(json.dumps({"cue:cue-1": [[0, 1, "เงิน"], [1, 2, "ไม่พอใช้"]]}), encoding="utf-8")
+        web_ai.export_clip(str(proj))
+        assert "ยาวราว" not in web_ai.export_clip(str(proj)).read_text(encoding="utf-8")
+        aimed = web_ai.export_clip(str(proj), 1.5).read_text(encoding="utf-8")
+        assert "ยาวราว 1.5 นาที" in aimed and aimed.index("ยาวราว") < aimed.index("## 1. Subtitle"), "the length aim is not in the cut rules"
+        good = {"clipkit_web_ai": 2, **identity(aimed), "step": "clip", "project": "proj", "hook": [{"text": "เงินหมด", "color": "red"}],
+                "lines": [{"n": 1, "cue_id": "cue-1", "items": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}]}
+        for bad in ({**good, "lines": [{"n": 1, "items": [["เงิน", "พอใช้"]]}]},  # words changed
+                    {**good, "hook": [{"text": "x", "color": "blue"}]},
+                    {**good, "cut": [1]}):  # nothing left
+            try:
+                with patch("host_platform.capcut_running", return_value=False):
                     web_ai.import_answer("clip", str(proj), json.dumps(bad))
-                    raise AssertionError(f"accepted {bad}")
-                except VideoEditError:
-                    pass
-            assert not (proj / "clipkit_punch.json").exists()
+                raise AssertionError(f"accepted {bad}")
+            except VideoEditError:
+                pass
+        assert not (proj / "clipkit_punch.json").exists()
+        with patch("host_platform.capcut_running", return_value=False):
             web_ai.import_answer("clip", str(proj), json.dumps(good))
-        finally:
-            capcut_edit.read_draft = keep
         punch = json.loads((proj / "clipkit_punch.json").read_text(encoding="utf-8"))
         assert punch == {"cue:cue-1": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}, punch
         assert json.loads((proj / "clipkit_hook.json").read_text(encoding="utf-8"))[0]["color"] == "red"

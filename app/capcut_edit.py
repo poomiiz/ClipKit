@@ -21,6 +21,7 @@ from typing import Any
 
 import video_edit as _ve  # noqa: F401  (puts scripts/capcut on sys.path)
 import kitconfig
+import project_lock
 from video_edit import (capcut_drafts_root, US, VideoEditError,
                                  detect_pauses, quiet_spans, suggest_cuts)
 
@@ -47,6 +48,7 @@ def _seal(folder: Path, text: str) -> None:
     atomic.write_text((folder / SEAL), json.dumps({"draft_content": _digest(text)}), encoding="utf-8")
 
 
+@project_lock.edit
 def accept(folder: str) -> None:
     """The person changed the project on purpose (in CapCut): ClipKit carries on from that version."""
     f = Path(folder)
@@ -67,6 +69,7 @@ def _load(folder: Path) -> dict[str, Any]:
     return json.loads(text)
 
 
+@project_lock.edit
 def sync_timeline(folder: Path, text: str) -> None:
     """CapCut 9.x keeps the open timeline in Timelines/<main_timeline_id>/draft_content.json as well as the
     project's own draft_content.json; it loads that copy, so every edit is written to both."""
@@ -78,6 +81,7 @@ def sync_timeline(folder: Path, text: str) -> None:
             atomic.write_text((inner / "draft_content.json"), text, encoding="utf-8")
 
 
+@project_lock.edit
 def fresh_ids(folder: Path) -> str:
     """A cloned project gets its own timeline id (project.json, the Timelines/<id> folder, draft_content id):
     two projects sharing one id make CapCut open the other project's timeline or hang."""
@@ -139,6 +143,7 @@ def history(folder: str) -> list[str]:
     return sorted(p.name for p in d.glob("*.json.gz")) if d.is_dir() else []
 
 
+@project_lock.edit
 def restore(folder: str, version: str) -> None:
     """Put a saved version back (itself recorded as a new edit, so nothing is lost)."""
     import gzip
@@ -182,6 +187,7 @@ def _newest_draft_file(folder: Path) -> Path:
     return content
 
 
+@project_lock.edit
 def record_outside(folder: str) -> str | None:
     """An edit saved by CapCut itself goes into the history and change log like ClipKit's own edits.
     Returns what would stop CapCut opening it (the last good version stays in the history), else None.
@@ -211,6 +217,7 @@ def record_outside(folder: str) -> str | None:
 def watch(root: str, every: float = 5.0, settle: float = 3.0, report=print) -> None:
     """The bot: every few seconds, record each project CapCut has saved since the last look.
     A file is read only after it has not changed for `settle` seconds, so a save in progress is not caught half-way."""
+    import hf_build
     seen: dict[Path, float] = {}
     while True:
         for c in Path(root).glob("*/draft_content.json"):
@@ -218,8 +225,11 @@ def watch(root: str, every: float = 5.0, settle: float = 3.0, report=print) -> N
             m = _newest_draft_file(f).stat().st_mtime
             if seen.get(f) == m or time.time() - m < settle:
                 continue
+            try:
+                problem = record_outside(str(f))
+            except hf_build.BuildBusy:
+                continue  # Retry after the editor/export releases its project reservation.
             seen[f] = m
-            problem = record_outside(str(f))
             if problem:
                 report(f"{time.strftime('%H:%M:%S')} {f.name}: CapCut would not open this - {problem}. "
                        f'Put back a good version: python scripts/draft_history.py "{f}"')
@@ -367,6 +377,7 @@ def timeline_to_source(draft: dict[str, Any]) -> list[tuple[float, float, float]
     return pieces
 
 
+@project_lock.edit
 def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = None,
                   y: float | None = None, color: str | None = None,
                   stroke: float | None = None, replace: bool = True) -> dict[str, Any]:
@@ -478,6 +489,7 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
     return {"name": folder.name, "subtitles": len(text["segments"]), "added": len(made)}
 
 
+@project_lock.edit
 def merge_subtitles(path: str, groups: list[tuple[int, int]], *, dry: bool = False) -> list[dict[str, Any]]:
     """Merge explicit consecutive line ranges; preserve their real word clock and the head's styling."""
     folder = Path(path)
@@ -563,6 +575,7 @@ def _borrow_text_style(root: str | None = None) -> tuple[dict, dict]:
                          "styling from — add one subtitle in CapCut once")
 
 
+@project_lock.edit
 def restyle_subtitles(path: str, size: float | None = None, y: float | None = None,
                       color: str | None = None, stroke: float | None = None,
                       line_h: float | None = None) -> dict[str, Any]:
@@ -615,6 +628,7 @@ def restyle_subtitles(path: str, size: float | None = None, y: float | None = No
 TIDY_MODES = ("lines", "split", "shrink")
 
 
+@project_lock.edit
 def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
     """Make long subtitles readable before export (render.split_sub): two lines broken where the Thai reads right
     ("lines"), a new subtitle from that point ("split", also when two lines still overflow), or one smaller line
@@ -688,6 +702,7 @@ class NeedsAgent(VideoEditError):
 SUBS_PRESET = {"size": 14.0, "y": -0.44, "color": "#ffffff", "stroke": 0.08}   # plain white; two lines stay inside render.SAFE_BOTTOM
 
 
+@project_lock.edit
 def subtitles_language(path: str, lang: str) -> dict[str, Any]:
     """Plain white subtitles in Thai or English with the recommended look. English is translated from the
     Thai lines (kept in clipkit_subs_th.json beside the draft, so switching back restores the original)."""
@@ -717,6 +732,7 @@ def subtitles_language(path: str, lang: str) -> dict[str, Any]:
     return {**out, "lang": lang, "lines": len(subs)}
 
 
+@project_lock.edit
 def set_text_layout(path: str, items: list[dict[str, Any]]) -> dict[str, Any]:
     """Place each subtitle where the editor put it on the 9:16 preview: position (x, y in -1..1),
     tilt in degrees and font size. Only the listed segments change; a backup is kept as .bak_layout."""
@@ -750,6 +766,7 @@ def set_text_layout(path: str, items: list[dict[str, Any]]) -> dict[str, Any]:
 WORD_PAD = 0.10  # silence left before and after a word at a cut
 
 
+@project_lock.edit
 def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                 apply: bool = True, ranges: list[tuple[float, float]] | None = None) -> dict[str, Any]:
     """Find the pauses left in a draft's timeline and cut them out, sliding the
@@ -932,6 +949,7 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     return preview
 
 
+@project_lock.edit("target_path")
 def copy_grade(source_path: str, target_path: str) -> dict[str, Any]:
     """Copy the colour grade (adjust effects, HSL, curves) from one draft onto
     every clip of another."""
@@ -1096,6 +1114,7 @@ def _find_animation(name: str, target: str, root: str | None = None) -> dict[str
                          f"add it once in CapCut, then it can be reused")
 
 
+@project_lock.edit
 def apply_animation(path: str, name: str, target: str = "text",
                     duration: float | None = None) -> dict[str, Any]:
     """Put one animation on every clip (or every subtitle) of a draft."""
@@ -1138,6 +1157,7 @@ def apply_animation(path: str, name: str, target: str = "text",
             if template.get("animations") else None}
 
 
+@project_lock.edit
 def clear_animations(path: str, target: str = "text") -> dict[str, Any]:
     """Take the animations back off, in case the look is not wanted."""
     folder = Path(path)
@@ -1214,6 +1234,7 @@ def _borrow_sound(name: str, root: str | None = None) -> tuple[dict, dict, list[
     raise VideoEditError(f"sound '{name}' is not used in any project here")
 
 
+@project_lock.edit
 def add_sound_on_subtitles(path: str, sound: str, volume: float = 0.35,
                            every_line: bool = True, offset: float = 0.0) -> dict[str, Any]:
     """Drop a sound effect at the start of each subtitle — the pairing used in
@@ -1272,6 +1293,7 @@ def add_sound_on_subtitles(path: str, sound: str, volume: float = 0.35,
             "volume": volume, "file": material.get("path")}
 
 
+@project_lock.edit
 def clear_sounds(path: str) -> dict[str, Any]:
     """Remove audio tracks this tool added (keeps the clip's own sound)."""
     folder = Path(path)
@@ -1333,6 +1355,7 @@ def list_music(dirs: list[str] | None = None) -> list[dict[str, Any]]:
     return found
 
 
+@project_lock.edit
 def add_music(path: str, music_path: str, volume: float = 0.10,
               fade_out: float = 5.0, start: float = 0.0,
               fade_in: float | None = None) -> dict[str, Any]:
@@ -1482,6 +1505,7 @@ def subtitle_gaps(path: str, min_gap: float = 1.0, pad: float = 0.15) -> list[di
     return gaps
 
 
+@project_lock.edit
 def fill_subtitle_gaps(path: str, min_gap: float = 1.0, preview: bool = False,
                        pad: float = 0.15) -> dict[str, Any]:
     """Transcribe only the bare stretches and add those lines, leaving every
@@ -1549,6 +1573,7 @@ def relisten(path: str, text: str, pad: float = 0.4, cue_id: str | None = None) 
     return " ".join(heard)
 
 
+@project_lock.edit
 def set_line_time(path: str, text: str, start: float, end: float, cue_id: str | None = None) -> dict[str, Any]:
     """Move / stretch one subtitle line on the timeline (the timeline editor)."""
     if end - start < 0.3:
@@ -1598,6 +1623,7 @@ def _repick(picked: list, old: str, new: str) -> list:
     return out
 
 
+@project_lock.edit
 def set_line_text(path: str, old: str, new: str, cue_id: str | None = None) -> dict[str, Any]:
     """Change one subtitle line's words (the timeline editor). The ClipKit side files keyed by the line text
     (word times, punch picks) are moved to the new text so they stay attached."""

@@ -1,14 +1,21 @@
 """Semantic story edges retain complete words across ASR transport rows."""
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
-import capcut_edit
+with tempfile.TemporaryDirectory() as import_folder:
+    config = Path(import_folder) / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+        import capcut_edit
 import video_edit
 import web_ai_json as web
+import web_ai_identity
 
 
 class StoryTiming(unittest.TestCase):
@@ -23,7 +30,8 @@ class StoryTiming(unittest.TestCase):
         video_edit.transcript_file(self.raw).write_text(json.dumps(self.phrases), encoding="utf-8")
 
     def answer(self, stories):
-        return {"clipkit_web_ai": 1, "step": "stories", "video": "talk.mp4", "stories": stories}
+        return {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", self.raw),
+                "step": "stories", "video": "talk.mp4", "stories": stories}
 
     def test_word_end_inside_transport_row_survives_import_and_consumers(self):
         web.import_stories(self.raw, self.answer([{"title": "complete", "start": 0, "end": 2.4}]))

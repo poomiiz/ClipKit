@@ -34,3 +34,8 @@ At 1440×1000, selected the second equal-text timeline item and changed its emph
 **375px acceptance failed:** existing editor layout clips controls and leaves the edit panel outside the viewport. This data-identity change does not resolve the responsive UI work. The isolated harness also lacks the shell's version/update endpoints (404 console messages), and the player reports its existing iframe-sandbox warning. These are recorded, not treated as a clean whole-app pass.
 
 The added-line raw-colour diff check found no new raw colours. No customer draft, transcript or media was modified in this pass. Native CapCut playback and representative real-footage acceptance remain pending under the overall plan.
+
+CI follow-up: the new cue fixtures initially depended on private machine configuration. Commit `d97c554`
+isolates that configuration; [CI run 38698122737](https://github.com/poomiiz/EditorKrab/actions/runs/38698122737)
+passed on that exact commit. Subsequent packet identity and recovery work is recorded in
+[the EK-03 checkpoint](ai-import-20261015.md).

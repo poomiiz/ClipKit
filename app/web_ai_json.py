@@ -19,11 +19,14 @@ from pathlib import Path
 from typing import Any
 
 import capcut_edit
+import project_lock
+import web_ai_identity as identity
+import web_ai_transaction as transaction
 import render
 import video_edit
 from video_edit import VideoEditError
 
-VERSION = 1
+VERSION = identity.VERSION
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 LOOKS = {"pair", "white", "color", "red", "hold", "skip"}
 
@@ -56,15 +59,36 @@ def answer_file(step: str, target: str) -> Path:
 
 def _packet(prompt: str, data: dict[str, Any], out: Path) -> Path:
     ans = out.with_suffix(".answer.json")
-    ans.unlink(missing_ok=True)  # an answer to an older export must not be imported for this one
     atomic.write_text(out, "# คำสั่งสำหรับ AI: ทำงานจากไฟล์แนบนี้ได้ทันที\n\n"
                    "> ใช้ AI บนเว็บได้โดยไม่ต้องติดตั้ง agent: อ่านคำสั่งและข้อมูลทั้งหมดในไฟล์นี้ "
                    "ทำงานตามขั้นที่ระบุ แล้วตอบ JSON ตามรูปแบบด้านล่าง ผู้ใช้ไม่ต้องพิมพ์ prompt เพิ่ม "
                    "และจะนำคำตอบกลับไปวางใน EditorKrab\n\n"
-                   f"> ทางเลือกสำหรับ AI ที่เขียนไฟล์ในเครื่องได้: บันทึก JSON ลง `{ans}` แล้ว EditorKrab จะนำเข้าเอง\n\n"
+                   f"> ทางเลือกสำหรับ AI ที่เขียนไฟล์ในเครื่องได้: บันทึก JSON ลง `{ans.name}` ในโฟลเดอร์เดียวกับไฟล์นี้ แล้ว EditorKrab จะนำเข้าเอง\n\n"
                    + prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
                    + json.dumps(data, ensure_ascii=False, indent=1) + "\n```\n", encoding="utf-8")
+    if ans.is_file():
+        ans.replace(ans.with_name(ans.name + f".before-export-{time.time_ns()}"))
     return out
+
+
+def _issue_packet(step, target, prompt, data):
+    active = identity.state_dir(step, target) / "active.json"
+    previous = active.read_text(encoding="utf-8") if active.is_file() else None
+    output = packet_file(step, target)
+    old_packet = output.read_text(encoding="utf-8") if output.is_file() else None
+    try:
+        data.update(identity.issue(step, target, {"max_minutes": data["max_minutes"]}))
+        return _packet(prompt, data, packet_file(step, target))
+    except Exception:
+        if previous is None:
+            active.unlink(missing_ok=True)
+        else:
+            atomic.write_text(active, previous)
+        if old_packet is None:
+            output.unlink(missing_ok=True)
+        else:
+            atomic.write_text(output, old_packet)
+        raise
 
 
 def _caption_lang(path: str) -> str | None:
@@ -107,7 +131,9 @@ def save_story_target(video: str, value: float | None) -> bool:
     return changed
 
 
+@project_lock.edit
 def export_stories(video: str, max_minutes: float | None = None) -> Path:
+    transaction.recover("stories", video)
     if max_minutes is not None or not has_story_target(video):
         save_story_target(video, max_minutes)
     max_minutes = story_target(video)
@@ -127,9 +153,10 @@ def export_stories(video: str, max_minutes: float | None = None) -> Path:
                   "อย่าตัดประโยคหรือเติมเนื้อหาเพื่อให้ครบเวลา\n\n" + prompt)
     else:
         prompt = "ความยาว: ตามเนื้อหา ผู้ใช้เลือกแล้ว ไม่ต้องถามเพิ่ม เลือกช่วงที่จบครบประเด็น\n\n" + prompt
-    return _packet(prompt, data, packet_file("stories", video))
+    return _issue_packet("stories", video, prompt, data)
 
 
+@project_lock.edit
 def export_clip(path: str, max_minutes: float | None = None) -> Path:
     """max_minutes: about how long the person wants the clip; a rough aim for the cut, not a hard limit."""
     if max_minutes is None:
@@ -159,7 +186,7 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
         prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "
                                 f"{subs[-1]['end'] / 60:.1f} นาที): ตัดพูดซ้ำ พูดผิด ออกนอกเรื่องก่อน ถ้ายังยาวกว่ามาก ให้ตัดบรรทัดที่เป็น"
                                 "รายละเอียดรองที่ตัดแล้วยังเล่าต่อกันรู้เรื่อง คุมคร่าวๆ เกินได้บ้าง อย่าตัดใจความจนเรื่องขาด\n\n## 1. Subtitle", 1)
-    return _packet(prompt, data, packet_file("clip", path))
+    return _issue_packet("clip", path, prompt, data)
 
 
 def parse(text: str) -> dict[str, Any]:
@@ -176,8 +203,9 @@ def parse(text: str) -> dict[str, Any]:
 
 
 def _head(ans: dict[str, Any], step: str, key: str, name: str) -> None:
-    if ans.get("clipkit_web_ai") != VERSION:
-        raise VideoEditError(f"clipkit_web_ai ต้องเป็น {VERSION} (ได้ {ans.get('clipkit_web_ai')!r}): ใช้ไฟล์ที่ export จาก ClipKit รุ่นนี้")
+    version = 1 if step == "inserts" else VERSION
+    if ans.get("clipkit_web_ai") != version:
+        raise VideoEditError(f"clipkit_web_ai ต้องเป็น {version} (ได้ {ans.get('clipkit_web_ai')!r}): ใช้ไฟล์ที่ export จาก ClipKit รุ่นนี้")
     if ans.get("step") != step:
         raise VideoEditError(f"คำตอบนี้เป็นขั้น {ans.get('step')!r} แต่กำลังนำเข้าขั้น {step!r}")
     if ans.get(key) != name:
@@ -190,11 +218,10 @@ def _num(x: Any, where: str) -> float:
     return float(x)
 
 
-def import_stories(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
+def _story_selection(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
     _head(ans, "stories", "video", Path(video).name)
     phrases = json.loads(video_edit.transcript_file(video).read_text(encoding="utf-8"))
     out = video_edit.validate_stories(ans.get("stories"), phrases)
-    atomic.write_text(video_edit.stories_file(video), json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
 
 
@@ -217,18 +244,19 @@ def _item(it: Any, where: str) -> list:
     return it
 
 
-def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
-    """Checks the whole answer first, then writes every file: a bad answer changes nothing."""
+def _prepare_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
+    """Run existing editing operations only inside the transaction staging folder."""
     _head(ans, "clip", "project", Path(path).name)
     subs = capcut_edit.read_draft(path)["subtitles"]
     tight = lambda t: "".join(t.split())  # noqa: E731  (spaces may be dropped, nothing else - render._pair)
     lines = ans.get("lines")
-    if not isinstance(lines, list) or [x.get("n") if isinstance(x, dict) else None for x in lines] != list(range(1, len(subs) + 1)):
+    if (not isinstance(lines, list) or any(not isinstance(x, dict) or type(x.get("n")) is not int for x in lines)
+            or [x["n"] for x in lines] != list(range(1, len(subs) + 1))):
         raise VideoEditError(f"lines ต้องมีครบ {len(subs)} บรรทัด เรียง n = 1..{len(subs)} ตามไฟล์ที่ส่งไป")
     if any(x.get("cue_id", s["id"]) != s["id"] for x, s in zip(lines, subs)):
         raise VideoEditError("cue ID ไม่ตรงกับซับล่าสุด · ส่งออกคำสั่ง AI ใหม่")
-    cut = ans.get("cut") or []
-    if not isinstance(cut, list) or any(n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
+    cut = [] if ans.get("cut") is None else ans["cut"]
+    if not isinstance(cut, list) or any(type(n) is not int or n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
         raise VideoEditError(f"cut ต้องเป็นรายการเลขบรรทัด 1..{len(subs)} ที่จะตัดทิ้ง และต้องเหลืออย่างน้อย 1 บรรทัด")
     groups, continuation = [], set()
     for x in lines:
@@ -267,7 +295,8 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         punch[cue_data.key(s["id"])] = items
     hook = ans.get("hook", [])
     if not isinstance(hook, list) or len(hook) > 2 or any(
-            not isinstance(h, dict) or not str(h.get("text", "")).strip() or h.get("color") not in render.HOOK_COLORS for h in hook):
+            not isinstance(h, dict) or not isinstance(h.get("text"), str) or not h["text"].strip()
+            or h.get("color") not in render.HOOK_COLORS for h in hook):
         raise VideoEditError('hook ต้องเป็น [] หรือ 1-2 บรรทัด [{"text": "...", "color": "white|orange|red"}]')
     lang = _caption_lang(path)
     caption = None
@@ -277,10 +306,10 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
                                             for n in range(1, len(subs) + 1) if n not in cut and n not in continuation):
             raise VideoEditError(f'preset นี้มีซับแปล ({lang}): caption ต้องเป็น {{"1": "...", ...}} ครบทุกบรรทัด')
         caption = {cue_data.key(s["id"]): cap[str(s["n"])].strip() for s in merged if s["n"] not in cut}
-    motion = ans.get("motion") or []
+    motion = [] if ans.get("motion") is None else ans["motion"]
     import video_editor
     quick = video_editor.QUICK_MOTION
-    if not isinstance(motion, list) or any(not isinstance(m, dict) or m.get("n") not in range(1, len(subs) + 1)
+    if not isinstance(motion, list) or any(not isinstance(m, dict) or type(m.get("n")) is not int or m.get("n") not in range(1, len(subs) + 1)
                                            or m["n"] in cut or m["n"] in continuation for m in motion):
         raise VideoEditError('motion ต้องเป็น [{"n": เลขบรรทัด, "template": "...", "params": {...}}]')
     for m in motion:  # checked before anything is written; params only for templates not made from the line
@@ -322,15 +351,52 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _import(step: str, target: str, ans: dict[str, Any]) -> dict[str, Any]:
+    _head(ans, step, "video" if step == "stories" else "project", Path(target).name)
+    with project_lock.writer(target, recover=False):
+        transaction.recover(step, target)
+        previous = transaction.receipt(step, target, ans)
+        if previous is not None:
+            return previous
+        identity.verify(step, target, ans)
+
+        def prepare(work, assets):
+            if step == "stories":
+                stories = _story_selection(target, ans)
+                atomic.write_text(work / "stories.json", json.dumps(stories, ensure_ascii=False, indent=1))
+                return {"stories": stories}
+            import host_platform
+            import kit_settings
+            if host_platform.capcut_running():
+                raise VideoEditError("ปิด CapCut ก่อนนำเข้าคำตอบ AI เพื่อรักษางานที่เปิดอยู่")
+            with kit_settings.motion_destination(assets):
+                return _prepare_clip(str(work), ans)
+
+        return transaction.apply(step, target, ans, prepare)
+
+
+def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
+    return _import("clip", path, ans)
+
+
+def import_stories(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
+    return _import("stories", video, ans)["stories"]
+
+
 def import_answer(step: str, target: str, text: str) -> dict[str, Any]:
-    """text = the pasted answer; empty = the answer file an AI on this machine saved ({"waiting": True} until then)."""
+    """Paste, local polling and CLI share one revision check, transaction and durable receipt."""
     if step not in ("stories", "clip"):
         raise VideoEditError(f"unknown step: {step}")
-    saved = answer_file(step, target) if not text.strip() else None
-    if saved and not saved.is_file():
-        return {"waiting": True}
-    ans = parse(saved.read_text(encoding="utf-8-sig") if saved else text)
-    out = {"stories": import_stories(target, ans)} if step == "stories" else import_clip(target, ans)
-    if saved:
-        saved.unlink()  # imported once: a clip answer cuts footage, so it must never run twice
-    return out
+    with project_lock.writer(target, recover=False):
+        transaction.recover(step, target)
+        saved = answer_file(step, target) if not text.strip() else None
+        if saved and not saved.is_file():
+            return {"waiting": True}
+        payload = saved.read_text(encoding="utf-8-sig") if saved else text
+        ans = parse(payload)
+        out = _import(step, target, ans)
+        if saved:
+            # Keep local agent evidence; a response/unlink failure cannot replay a committed cut.
+            if saved.read_text(encoding="utf-8-sig") == payload:
+                saved.replace(saved.with_name(saved.name + ".imported-" + ans["packet_id"]))
+        return out

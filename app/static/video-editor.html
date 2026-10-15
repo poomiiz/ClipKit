@@ -2798,13 +2798,18 @@ function webAiBox(step, target, note) {
   setTimeout(() => {
     const el = k => document.getElementById(id + k);
     if (!el('dl')) return;
-    let polling = false;
-    const done = async r => {
+    let polling = false, importing = false, imported = false, generation = 0;
+    const current = g => g === generation && !!el('dl');
+    const done = async (r, g) => {
+      if (!current(g)) return;
       if (step === 'stories') { el('msg').textContent = '✓ นำเข้า ' + r.stories.length + ' เรื่อง'; return; }
       el('msg').textContent = 'นำเข้าแล้ว · กำลังอัปเดตโปรเจกต์';
       const timeline = await api('draft/timeline?path=' + encodeURIComponent(target));
+      if (!current(g)) return;
       if (timeline.via !== 'clipkit') await api('draft/prepare', {path: target, capcut: true});
+      if (!current(g)) return;
       const refreshed = await api('drafts');
+      if (!current(g)) return;
       drafts = refreshed.drafts;
       if (state.draft && state.draft.path === target) {
         state.draft = drafts.find(d => d.path === target) || state.draft;
@@ -2813,31 +2818,51 @@ function webAiBox(step, target, note) {
       }
       el('msg').textContent = (timeline.via === 'clipkit' ? 'นำเข้าแล้ว · ดูตัวอย่างก่อนส่งออก' : 'สร้างแล้ว · เปิดโปรเจกต์ลงท้าย · CapCut') + (r.same_text ? ' · ⚠️ ' + r.same_text : '');
     };
-    const poll = async () => {  // until the box is replaced or the saved answer is in
-      if (!el('dl')) return;
+    const submit = async (answer, g) => {
+      if (!current(g) || importing || imported) return;
+      importing = true;
+      el('in').disabled = true;
       try {
-        const r = await api('web-ai/import', {step, target, answer: ''});
-        if (!r.waiting) { polling = false; await done(r); return; }
+        const r = await api('web-ai/import', {step, target, answer});
+        if (!current(g) || r.waiting) return;
+        imported = true;
+        polling = false;
+        el('ta').value = ''; // A committed answer stays consumed even if refreshing the project fails.
+        await done(r, g);
       } catch (e) {
-        el('msg').textContent = '❌ ' + ckErr(e);
-        if (!polling) return;  // the answer was imported; retrying could cut the footage twice
+        if (current(g)) el('msg').textContent = '❌ ' + ckErr(e);
+      } finally {
+        if (current(g)) { importing = false; el('in').disabled = false; }
       }
-      setTimeout(poll, 3000);
+    };
+    const poll = async g => {  // Each export owns one poll chain; old responses cannot finish a newer request.
+      if (!current(g) || !polling || imported) return;
+      await submit('', g);
+      if (current(g) && polling && !imported) setTimeout(() => poll(g), 3000);
     };
     el('dl').onclick = async () => {
+      if (el('dl').disabled) return;
+      const g = ++generation;
+      polling = false; imported = false; importing = true;
+      el('dl').disabled = true; el('in').disabled = true;
       try {
         const r = await api('web-ai/export', {step, target, max_minutes: step === 'clip' ? +el('max').value || null : null});
+        if (!current(g)) return;
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([r.text], {type: 'text/markdown'}));
         a.download = r.name; a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         el('msg').textContent = 'แนบไฟล์ให้ AI บนเว็บได้เลย แล้ววาง JSON ด้านล่าง';
-        if (!polling) { polling = true; setTimeout(poll, 3000); }
-      } catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
+        polling = true;
+        setTimeout(() => poll(g), 3000);
+      } catch (e) { if (current(g)) el('msg').textContent = '❌ ' + ckErr(e); }
+      finally {
+        if (current(g)) { importing = false; el('dl').disabled = false; el('in').disabled = false; }
+      }
     };
     el('in').onclick = async () => {
-      try { await done(await api('web-ai/import', {step, target, answer: el('ta').value})); }
-      catch (e) { el('msg').textContent = '❌ ' + ckErr(e); }
+      const answer = el('ta').value;
+      if (answer.trim()) await submit(answer, generation);
     };
   });
   return '<div class="agent-cmd"><div class="hint">' + note + '</div>'

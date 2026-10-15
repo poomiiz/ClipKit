@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import capcut_edit
+import project_lock
 import draft_quality
 import render
 import video_edit
@@ -123,7 +124,7 @@ _BUILD_LOCK = threading.Lock()  # _T is shared by the native text writers.
 
 def build(path: str) -> tuple[Path, list[str]]:
     """Returns the new project folder and what this machine lacks (shown to the person, never hidden)."""
-    with _BUILD_LOCK:
+    with _BUILD_LOCK, project_lock.writer(path):
         if host_platform.capcut_running():
             raise VideoEditError("Close CapCut before building a native project")
         src = Path(path).resolve()
@@ -185,7 +186,7 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     t = render.render_draft(path, "", dry=True)
     st = t["style"] or {}
     src = Path(path)
-    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("clipkit*", "*.bak*", "draft_content.before_*"))
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("clipkit*", ".clipkit-web-ai", "*.bak*", "draft_content.before_*"))
     meta_f = dst / "draft_meta_info.json"
     if meta_f.is_file():
         meta = json.loads(meta_f.read_text(encoding="utf-8"))
