@@ -54,15 +54,22 @@ window.CKAIPlan = (() => {
     }};
   }
   function motion(button, box, request, preview, apply, errorText) {
-    let checked = '', revision = '';
+    let checked = '', revision = '', generation = 0, busy = false;
+    const clear = () => {
+      checked = ''; revision = ''; generation++; box.replaceChildren();
+      if (!busy) { button.textContent = 'ตรวจ motion'; button.disabled = false; }
+    };
     button.onclick = async () => {
+      if (busy) return;
+      const current = generation;
       let applied = false;
-      button.disabled = true;
+      busy = true; button.disabled = true;
       try {
         const value = request(), key = JSON.stringify(value);
         if (checked === key && revision) {
           button.textContent = 'กำลังสร้าง…';
           await apply({...value, review_revision: revision});
+          if (!button.isConnected || current !== generation || JSON.stringify(request()) !== key) { clear(); return; }
           applied = true; button.textContent = 'ใส่แล้ว';
           return;
         }
@@ -70,7 +77,7 @@ window.CKAIPlan = (() => {
         box.setAttribute('aria-busy','true');
         const placeholder = node('div'); placeholder.className='ai-plan-skeleton'; box.replaceChildren(placeholder);
         const plan = await preview(value);
-        if (!button.isConnected || JSON.stringify(request()) !== key) return;
+        if (!button.isConnected || current !== generation || JSON.stringify(request()) !== key) return;
         render(box, {motion_only:true,hook:[],motion_before:plan.motion_before || 0,
           motion_after:(plan.motion_before || 0) + (value.placement_id ? 0 : 1),
           motion_action:value.placement_id ? 'replace' : 'add',motion_plan:[plan]});
@@ -78,10 +85,11 @@ window.CKAIPlan = (() => {
       } catch (error) {
         checked = ''; revision = ''; box.replaceChildren(node('p', errorText(error))); button.textContent = 'ตรวจ motion';
       } finally {
-        box.setAttribute('aria-busy','false'); button.disabled = applied;
+        busy = false; box.setAttribute('aria-busy','false'); button.disabled = applied;
         if (!checked) button.textContent = 'ตรวจ motion';
       }
     };
+    return {clear};
   }
   return {render, review, motion};
 })();

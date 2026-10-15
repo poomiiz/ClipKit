@@ -338,8 +338,11 @@ def verify_timeline(folder, timeline, *, strict=True):
                     or recipe["params"] != current["source_params"] or item["params"] != recipe["params"]
                     or item["canvas"] != current["canvas"] or item["bounds"] != current["bounds"]
                     or item["duration"] != current["duration"] or item["ownership"] != plan["ownership"]
-                    or (media["width"], media["height"], media["duration"]) !=
-                       (current["canvas"]["width"], current["canvas"]["height"], current["duration"])):
+                    or (media["width"], media["height"]) != (current["canvas"]["width"], current["canvas"]["height"])
+                    or any(isinstance(media[key], bool) or not isinstance(media[key], (int, float)) or
+                           not math.isfinite(media[key]) for key in ("duration", "fps"))
+                    or media["fps"] <= 0 or media["duration"] <= 0
+                    or abs(media["duration"] - current["duration"]) > 1 / media["fps"] + 1e-6):
                 raise VideoEditError("motion ไม่ตรงข้อความ เวลา หรือขนาดภาพล่าสุด")
         except (VideoEditError, HTTPException, KeyError, TypeError, ValueError, OSError) as exc:
             message = str(exc.detail) if isinstance(exc, HTTPException) else str(exc)

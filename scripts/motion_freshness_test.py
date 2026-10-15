@@ -53,6 +53,17 @@ class MotionFreshnessTests(unittest.TestCase):
             self.assertEqual(motion_plan.verify_timeline(self.folder, timeline), [])
         self.assertEqual(self.f.files(), before)
 
+    def test_media_clock_allows_frame_quantization_but_rejects_invalid_or_long_duration(self):
+        for duration in (4.000000000000001, 4 + 1/30):
+            row=copy.deepcopy(self.old);row['recipe']['media']['duration']=duration
+            self.f.f.write('clipkit_overlays.json',[row])
+            self.assertEqual(self.timeline()['motion_recipe_errors'],[])
+        for duration, fps in ((4.04,30),(float('nan'),30),(4,0),(4,True),(4,'30')):
+            with self.subTest(duration=duration,fps=fps):
+                row=copy.deepcopy(self.old);row['recipe']['media'].update(duration=duration,fps=fps)
+                self.f.f.write('clipkit_overlays.json',[row])
+                self.assertTrue(self.timeline()['motion_recipe_errors'])
+
     def test_changed_word_clock_is_visible_for_repair_but_stops_all_export_adapters(self):
         words = self.f.f.read('clipkit_words.json')
         words['normal keyword'][1][0] = 1.8

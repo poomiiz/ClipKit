@@ -1644,6 +1644,9 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
     base["motions"] = []
     events = render.pair_events_from_timeline(base) if t["look"] == "pair" else []
     t["motion_cues"] = [{"cue_id": sub["id"], "text": sub["text"],
+                         "roles": {role: {"start": min(e["start"] for e in events if e.get("cue_id") == sub["id"] and e["role"] == role),
+                                          "end": max(e["end"] for e in events if e.get("cue_id") == sub["id"] and e["role"] == role)}
+                                   for role in sorted({e["role"] for e in events if e.get("cue_id") == sub["id"]})},
                          "start": min(p["start"] for p in t["phrases"] if p.get("cue_id") == sub["id"]),
                          "end": max(event["end"] for event in events if event.get("cue_id") == sub["id"])}
                         for sub in t["subs"] if any(p.get("cue_id") == sub["id"] for p in t["phrases"])

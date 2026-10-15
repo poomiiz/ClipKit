@@ -150,7 +150,7 @@ class MotionCutTests(unittest.TestCase):
 
     def test_legacy_undo_does_not_remove_existing_style(self):
         video_editor.draft_cut(video_editor.CutRange(path=self.path,start=0,end=.5))
-        undo=next((self.folder/'clipkit_undo').iterdir());manifest=json.loads((undo/'files.json').read_text())
+        undo=next((self.folder/'clipkit_undo').iterdir());manifest=json.loads((undo/'files.json').read_text(encoding='utf-8'))
         (undo/'files.json').write_text(json.dumps([name for name in manifest['files'] if name!='clipkit_style.json']))
         (undo/'clipkit_style.json').unlink();style=self.f.read('clipkit_style.json');style['new_setting']='keep'
         self.f.write('clipkit_style.json',style)
@@ -204,6 +204,8 @@ class MotionCutTests(unittest.TestCase):
         self.assertEqual(after,before)
         cue=next(item for item in after if item['cue_id']=='0')
         self.assertEqual((cue['start'],cue['end']),(2,6))
+        self.assertEqual(cue['roles']['normal'],{'start':2,'end':6})
+        self.assertEqual(cue['roles']['emphasis'],{'start':4,'end':6})
 
     def test_manual_review_rejects_changed_request_or_metadata_before_render(self):
         request=self.manual_request();plan=video_editor.draft_overlay_preview(request)
@@ -255,7 +257,7 @@ class MotionCutTests(unittest.TestCase):
         with video_editor.project_lock.writer(self.path):pass
         self.assertEqual(self.files(),before);self.assertEqual(Path(old['file']).read_bytes(),original)
         identity.verify('clip',self.path,browser)
-        journals=[json.loads(p.read_text()) for p in identity.state_dir('clip',self.path).glob('transactions/*/journal.json')]
+        journals=[json.loads(p.read_text(encoding='utf-8')) for p in identity.state_dir('clip',self.path).glob('transactions/*/journal.json')]
         self.assertEqual(sorted(item['phase'] for item in journals),['committed','rolled_back'])
 
     def test_legacy_api_source_edit_during_render_is_preserved_without_publishing_motion(self):

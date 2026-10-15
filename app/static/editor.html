@@ -72,6 +72,11 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .insert-panel video,.insert-panel img{width:100%;max-height:220px;object-fit:contain}
 .insert-panel .hint{overflow-wrap:anywhere}
 .insert-panel .reason{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.motion-editor input:not([type=checkbox]),.motion-editor select,.motion-editor button,.motion-editor summary,.motion-editor .role{min-height:44px;max-width:100%}
+.motion-editor input,.motion-editor select{min-width:0;flex:1}
+.motion-editor .role{display:inline-flex;align-items:center;gap:8px}
+.motion-editor .role input{flex:none}
+.motion-editor{overflow-wrap:anywhere}
 .ov{position:absolute;pointer-events:none;z-index:4;background:rgba(5,7,12,.55)}.ov[hidden]{display:none}
 .ov .safe{position:absolute;border:1.5px dashed rgba(255,196,0,.85);border-radius:4px}
 .ov .col{position:absolute;right:0;bottom:0;background:rgba(239,68,68,.22);border-left:1.5px dashed rgba(239,68,68,.8)}
@@ -513,7 +518,7 @@ function sidePhrase(s, p) {
     return {path: PATH, template: 'sentence-pair', start: cue.start, end: cue.end, cue_id: cue.cue_id, text: cue.text};
   }, request => api('draft/overlay-preview', request), async request => {
     const result = await api('draft/overlay', request);
-    T.motions = result.overlays; drawTL(); live(); say('ใส่แล้ว');
+    setMotions(result.overlays); drawTL(); live(); say('ใส่แล้ว');
   }, ckErr);
 }
 function sideBroll(s, b, i) {
@@ -569,9 +574,56 @@ function sideBroll(s, b, i) {
   };
 }
 function sideMotion(s, m) {
-  s.innerHTML = `${back()}<h3>🔠 ข้อความใหญ่กลางจอ ${mm(m.start)}</h3><div class="hint">${esc(m.text)}</div>
-    <div class="row"><button id="mdel" style="color:#fca5a5">ลบ</button></div>`;
-  $('mdel').onclick = () => del();
+  const pair = m.template === 'sentence-pair', params = m.params || {}, attr = value => esc(String(value ?? '')).replace(/"/g,'&quot;');
+  const editable = m.placement_id && m.recipe?.version === 1 && ['sentence-pair','hook-title','stat-number'].includes(m.template);
+  const input = (key,label,value) => `<div class="row"><label for="m${key}">${label}</label><input id="m${key}" maxlength="500" value="${attr(value)}"></div>`;
+  const number = (key,label,value,max) => `<div class="row"><label for="m${key}">${label}</label><input type="number" min="0" max="${max}" step="any" id="m${key}" value="${attr(value)}"></div>`;
+  s.innerHTML = `${back()}<div class="motion-editor" id="motionEditor"><h3>แก้ motion</h3>
+    <details><summary class="ai-plan-excerpt">${esc(m.text || m.template || 'Motion เดิม')}</summary><p>${esc(m.text || '')}</p></details>
+    ${editable ? (pair ? '<div class="row"><label for="mCue">ข้อความ</label><select id="mCue"></select></div><div id="mRoles" class="row"></div><div class="hint">ขนาดและตำแหน่งตามสไตล์ซับของคลิป</div>' :
+      (m.template === 'hook-title' ? input('key','คำเด่น',params.key) + input('sub','คำรอง',params.sub) :
+        input('number','ตัวเลข',params.number) + input('unit','หน่วย',params.unit) + input('label','คำอธิบาย',params.label)) +
+      number('Start','เริ่ม (วินาที)',m.start,T.duration) + number('End','จบ (วินาที)',m.start+m.duration,T.duration) +
+      '<div class="row"><label for="mAnchor">จุดเริ่ม</label><select id="mAnchor"><option value="keep">จุดอ้างอิงเดิม</option><option value="time">ตามเวลาที่เลือก</option></select></div>' +
+      '<details><summary>พื้นที่และฟอนต์</summary>' + ['x','y','w','h'].map((key,i)=>number(key,['ซ้าย (%)','บน (%)','กว้าง (%)','สูง (%)'][i],(m.recipe.placement?.[key] ?? {x:.11,y:.15,w:.78,h:.3}[key])*100,100)).join('') +
+      '<div class="row"><label for="mFont">ฟอนต์</label><select id="mFont"><option value="keep">ฟอนต์เดิม</option><option value="default">ฟอนต์ของแอป</option></select></div></details>') +
+      input('Reason','เหตุผล',m.reason) : '<p class="hint">ข้อมูลเดิมไม่ครบ · เลือกซับเพื่อสร้าง motion ใหม่</p>'}
+    <div id="mPlan" class="ai-plan" role="status" aria-live="polite"></div>
+    <div class="row"><button class="pri" id="mSave" ${editable?'':'disabled'}>ตรวจ motion</button><button id="mdel">ลบ motion</button></div></div>`;
+  const editor = $('motionEditor'), box = $('mPlan'), error = (T.motion_recipe_errors || []).find(e=>e.placement_id===m.placement_id);
+  box.textContent = error ? 'ต้องสร้างใหม่ · ' + error.error : 'ยังไม่ได้ตรวจแผน';
+  $('mdel').onclick = async () => { if (await ckConfirm('ลบ motion นี้?\n' + (m.text || m.template || ''))) { try { await removeMotion(m); } catch (e) { say('❌ ' + ckErr(e)); } } };
+  if (!editable) return;
+  const roles = {normal:'ปกติ',emphasis:'คำเน้น',caption:'ซับแปล',second:'บรรทัดสอง'};
+  if (pair) {
+    for (const cue of T.motion_cues || []) { const option=document.createElement('option'); option.value=cue.cue_id; option.textContent=`${mm(cue.start)} ${cue.text}`.slice(0,60); $('mCue').appendChild(option); }
+    $('mCue').value = m.cue_id || m.ownership?.targets?.[0]?.cue_id || '';
+    const showRoles = () => {
+      const cue=(T.motion_cues || []).find(c=>c.cue_id===$('mCue').value), selected=m.ownership?.targets?.find(target=>target.cue_id===cue?.cue_id)?.roles;
+      $('mRoles').innerHTML=Object.entries(roles).filter(([role])=>cue?.roles?.[role]).map(([role,label])=>`<label class="role"><input type="checkbox" data-role="${role}" ${selected?.includes(role)?'checked':''}>${label}</label>`).join('');
+    };
+    showRoles(); $('mCue').onchange=showRoles;
+  }
+  const review=CKAIPlan.motion($('mSave'), box, () => {
+    const request={path:PATH,template:m.template,placement_id:m.placement_id,text:m.text || '',reason:$('mReason').value};
+    if (pair) {
+      const cue=(T.motion_cues || []).find(c=>c.cue_id===$('mCue').value), selected=[...$('mRoles').querySelectorAll('input:checked')].map(input=>input.dataset.role);
+      if (!cue || !selected.length) throw Error('เลือกข้อความและบทบาทก่อนตรวจ');
+      request.start=Math.min(...selected.map(role=>cue.roles[role].start)); request.end=Math.max(...selected.map(role=>cue.roles[role].end));
+      Object.assign(request,{cue_id:cue.cue_id,text:cue.text,anchor:{kind:'timeline',start:request.start},ownership:{mode:'replace',targets:[{cue_id:cue.cue_id,roles:selected}],caption_policy:selected.includes('caption')?'replace':'preserve'}});
+    } else {
+      request.start=+$('mStart').value; request.end=+$('mEnd').value;
+      Object.assign(request,{ownership:m.ownership,anchor:$('mAnchor').value==='time'?{kind:'timeline',start:request.start}:m.anchor,
+        params:{...params,duration:request.end-request.start},placement:Object.fromEntries(['x','y','w','h'].map(key=>[key,+$('m'+key).value/100]))});
+      for (const key of m.template==='hook-title'?['key','sub']:['number','unit','label']) request.params[key]=$('m'+key).value;
+      if ($('mFont').value==='default') delete request.params.font;
+    }
+    return request;
+  }, request=>api('draft/overlay-preview',request), async request=>{
+    const result=await api('draft/overlay',request); setMotions(result.overlays);
+    T.motion_recipe_errors=(T.motion_recipe_errors || []).filter(e=>e.placement_id!==m.placement_id); drawTL(); live(); say('บันทึก motion แล้ว');
+  },ckErr);
+  editor.oninput=review.clear;
 }
 function sideMusic(s) {
   const q = encodeURIComponent((T.style && T.style.music_mood) || 'corporate background');
@@ -595,10 +647,24 @@ function sideMusic(s) {
   $('mv').oninput = e => { $('mvt').textContent = Math.round(e.target.value * 100) + '%'; };
   $('mv').onchange = e => { PL.music.volume = +e.target.value; savePL(); drawTL(); };
 }
+function setMotions(items) {
+  const motionSelected = SEL?.type === 'motion', selected = motionSelected ? T.motions[SEL.i] : null;
+  T.motions = items;
+  if (motionSelected) {
+    const matches = items.map((m,i) => ({m,i})).filter(({m}) => selected && (selected.placement_id ? m.placement_id === selected.placement_id : m.file === selected.file && m.start === selected.start && m.duration === selected.duration));
+    SEL = matches.length === 1 ? {type:'motion',i:matches[0].i,key:'m'+matches[0].i} : null;
+  }
+}
+async function removeMotion(m) {
+  const result = await api('draft/overlay-remove', {path:PATH,placement_id:m.placement_id,start:m.start});
+  setMotions(result.overlays);
+  T.motion_recipe_errors = (T.motion_recipe_errors || []).filter(e => e.placement_id !== m.placement_id);
+  drawTL(); if (!SEL) side(); live();
+}
 async function del() {
   if (!SEL) return;
   if (SEL.type === 'broll') { PL.broll.splice(SEL.i, 1); savePL(); }
-  else if (SEL.type === 'motion') { await api('draft/overlay-remove', {path: PATH, placement_id: T.motions[SEL.i].placement_id, start: T.motions[SEL.i].start}); await reload(); }
+  else if (SEL.type === 'motion') return removeMotion(T.motions[SEL.i]);
   else return;
   SEL = null; drawTL(); side();
 }
