@@ -1017,6 +1017,21 @@ def transcribe_file(video: str) -> list[dict[str, Any]]:
     """Save each completed piece atomically; resume only the same source and ASR settings."""
     tf = transcript_file(video)
     part, meta = tf.with_suffix(".part.json"), tf.with_suffix(".meta.json")
+    media = Path(video)
+    stat = media.stat()
+    source_stat = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+
+    def check_source():
+        try:
+            current = media.stat()
+            unchanged = (current.st_size, current.st_mtime_ns, current.st_ctime_ns, current.st_ino) == source_stat
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            if not part.exists():
+                atomic.write_text(part, json.dumps({"source": None, "end": 0.0, "language": None, "phrases": []}), encoding="utf-8")
+            raise VideoEditError("ฟุตเปลี่ยนระหว่างถอดเสียง · เริ่มถอดเสียงจากฟุตล่าสุดใหม่")
+
     cfg = kitconfig._load()
     engine = _model_settings()
     with Path(video).open("rb") as source:
@@ -1024,14 +1039,27 @@ def transcribe_file(video: str) -> list[dict[str, Any]]:
                     "model": "/".join(engine), "models_dir": cfg.get("models_dir"),
                     "language": speech_language(),
                     "batched": cfg.get("whisper_batched", True), "chunk_s": CHUNK_S}
-    # shortcut: legacy transcripts have no source identity; retain them until explicitly regenerated.
-    cached = (json.loads(meta.read_text(encoding="utf-8")) == identity) if meta.is_file() else not part.is_file()
+    check_source()
+    # An unbound legacy transcript cannot prove which footage/settings produced its words.
+    cached = not part.exists() and meta.is_file() and json.loads(meta.read_text(encoding="utf-8")) == identity
     if tf.is_file() and cached:
         phrases = json.loads(tf.read_text(encoding="utf-8"))
     else:
         done = json.loads(part.read_text(encoding="utf-8")) if part.is_file() else None
         if done is None or done["source"] != identity:
             done = {"source": identity, "end": 0.0, "language": None, "phrases": []}
+        if "backups" not in done:
+            stamp = f".before-retranscribe-{time.time_ns()}-{uuid.uuid4().hex[:8]}"
+            done["backups"] = []
+            for original in (tf, meta, lines_file(video)):
+                if original.is_file():
+                    backup = original.with_name(original.name + stamp)
+                    shutil.copy2(original, backup)
+                    done["backups"].append(backup.name)
+            # Persist even the zero-second checkpoint: interruption before the first chunk
+            # must retain the originals and reuse this backup rather than make one per retry.
+            check_source()
+            atomic.write_text(part, json.dumps(done, ensure_ascii=False), encoding="utf-8")
         total = probe(video)["duration"]
         while done["end"] < total:
             start = done["end"]
@@ -1046,13 +1074,19 @@ def transcribe_file(video: str) -> list[dict[str, Any]]:
                                   for a, b, w in p.get("words", [])]} for p in piece]
             done["phrases"].extend(shifted)
             done["end"] = end
+            check_source()
             atomic.write_text(part, json.dumps(done, ensure_ascii=False), encoding="utf-8")
         phrases = done["phrases"]
+        check_source()
         atomic.write_text(tf, json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+        check_source()
         atomic.write_text(meta, json.dumps(identity), encoding="utf-8")
+        check_source()
         part.unlink(missing_ok=True)
+    check_source()
     atomic.write_text(lines_file(video), json.dumps([{k: p[k] for k in ("start", "end", "text")}
                                                    for p in phrases], ensure_ascii=False, indent=1), encoding="utf-8")
+    check_source()
     return phrases
 
 
@@ -1127,49 +1161,26 @@ def slice_transcript(phrases: list[dict[str, Any]], start: float, end: float) ->
     return out
 
 
-def validate_stories(items: Any, phrases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def validate_stories(items: Any, phrases: list[dict[str, Any]], *, max_minutes: float | None = None) -> list[dict[str, Any]]:
     """One trust boundary for browser answers and persisted local/manual selections."""
-    if not isinstance(items, list) or not items or not phrases:
-        raise VideoEditError("stories ต้องเป็นรายการเรื่องอย่างน้อย 1 เรื่อง และมีบทถอดเสียง")
-    out = []
-    for n, item in enumerate(items, 1):
-        if not isinstance(item, dict) or not isinstance(item.get("title"), str) or not item["title"].strip():
-            raise VideoEditError(f"เรื่องที่ {n}: ต้องมี title")
-        a, b = item.get("start"), item.get("end")
-        if any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in (a, b)):
-            raise VideoEditError(f"เรื่องที่ {n}: เวลาต้องเป็นตัวเลขวินาทีที่ถูกต้อง")
-        if not 0 <= a < b <= max(p["end"] for p in phrases) + 1e-6:
-            raise VideoEditError(f"เรื่องที่ {n}: เวลาเริ่ม–จบต้องอยู่ภายในฟุตและเรียงจากน้อยไปมาก")
-        if out and a < out[-1]["end"]:
-            raise VideoEditError(f"เรื่องที่ {n}: ช่วงซ้ำ ทับกัน หรือไม่ได้เรียงตามเวลา")
-        if not slice_transcript(phrases, a, b):
-            raise VideoEditError(f"เรื่องที่ {n}: ไม่มีเสียงพูดในช่วงนั้น")
-        out.append({"title": item["title"].strip(), "summary": str(item.get("summary", "")).strip(),
-                    "start": float(a), "end": float(b)})
-    return out
+    import story_selection
+    return story_selection.validate(items, phrases, max_minutes=max_minutes)
 
 
 def stories_from_agent(video: str, phrases: list[dict[str, Any]], *, split_long: bool = True) -> list[dict[str, Any]] | None:
-    """Stories the agent wrote to <video>.stories.json as [{title, summary, start, end}] (seconds).
-    None while the file is not there yet; a broken file raises."""
-    path = stories_file(video)
-    if not path.is_file():
+    """Current, explicitly validated selection; legacy/unbound/stale files remain historical.
+
+    split_long is retained for callers, but an accepted semantic selection is never split again.
+    """
+    import story_selection
+    items = story_selection.read_selection(video, phrases)
+    if items is None:
         return None
-    try:
-        items = validate_stories(json.loads(path.read_text(encoding="utf-8-sig")), phrases)
-    except (ValueError, KeyError, TypeError) as exc:
-        raise VideoEditError(f"{path.name} is not a story list: {exc}") from exc
     out = []
     for item in items:
-        start, end, title, summary = (item[k] for k in ("start", "end", "title", "summary"))
+        start, end = item["start"], item["end"]
         part = slice_transcript(phrases, start, end)
-        if split_long:
-            parts = _split_long(0, len(part) - 1, part, title, summary)
-            parts[0]["start"], parts[-1]["end"] = start, end
-            out.extend(parts)
-        else:
-            out.append({"title": title, "summary": summary, "start": start, "end": end, "lines": len(part),
-                        "speech": round(sum(p["end"] - p["start"] for p in part), 1)})
+        out.append({**item, "lines": len(part), "speech": round(sum(p["end"] - p["start"] for p in part), 1)})
     return out
 
 

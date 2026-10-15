@@ -94,6 +94,7 @@
 - CLI resume เปลี่ยนจาก key start/end อย่างเดียวเป็น manifest source/story/options revision; เปลี่ยน shape/look/preset แล้วสร้าง revision ใหม่หรือแจ้ง rebuild อย่างชัดเจน
 - จุดกระทบ: `app/video_editor.py:320–344`, `app/web_ai_json.py:79–129`, `app/video_edit.py:1100–1201`, `scripts/run_clip.py:133–165,390–395`, story UI, `prompts/story_split.md`, `prompts/web_ai/stories.md`
 - **เทสรับงาน**: natural/30s/1/2/3/5min roundtrip; เปลี่ยน brief; แถว ASR คร่อมสองเรื่อง; เปิดประโยคกลางคำถูกปฏิเสธ; project resume ต่าง preset/ratio ไม่ใช้ร่างเก่า; คนตรวจว่าเปิดรู้เรื่อง มีประเด็นหลัก และจบโดยไม่ต้องพึ่งเรื่องก่อนหน้า
+- **หลักฐาน EK-04**: [ชุดตรวจสัญญาข้อมูลและ UI](test-logs/ek04-20261015.md) ผ่านอัตโนมัติ 14 โปรแกรม; ยังรอคนตรวจความครบประเด็นและคลิปจริง จึงอยู่ระหว่าง review
 
 ### EK-05 — ซับสามบทบาทตรงเสียงและขนาดคงที่ตาม ratio (P1)
 

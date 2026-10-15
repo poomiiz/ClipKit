@@ -24,6 +24,7 @@ import web_ai_identity as identity
 import web_ai_transaction as transaction
 import render
 import video_edit
+import story_selection
 from video_edit import VideoEditError
 
 VERSION = identity.VERSION
@@ -124,9 +125,10 @@ def save_story_target(video: str, value: float | None) -> bool:
         answer = answer_file("stories", video)
         if answer.is_file():
             answer.replace(answer.with_name(answer.name + f".before-target-{time.time_ns()}"))
-        stories = video_edit.stories_file(video)
-        if stories.is_file():
-            stories.replace(stories.with_name(stories.name + f".before-target-{time.time_ns()}"))
+        stamp = time.time_ns()
+        for stories in (video_edit.stories_file(video), story_selection.selection_file(video)):
+            if stories.is_file():
+                stories.replace(stories.with_name(stories.name + f".before-target-{stamp}"))
         atomic.write_text(Path(video + ".story-preferences.json"), json.dumps({"max_minutes": value}), encoding="utf-8")
     return changed
 
@@ -140,8 +142,7 @@ def export_stories(video: str, max_minutes: float | None = None) -> Path:
     tf = video_edit.transcript_file(video)
     if not tf.is_file():
         raise VideoEditError(f"ยังไม่ได้ถอดเสียง: ไม่มี {tf.name} (กด ถอดเสียงและแบ่งเรื่อง ก่อน)")
-    lines = [{"start": round(p["start"], 2), "end": round(p["end"], 2), "text": p["text"]}
-             for p in json.loads(tf.read_text(encoding="utf-8"))]
+    lines = story_selection.source_rows(json.loads(tf.read_text(encoding="utf-8")))
     data = {"clipkit_web_ai": VERSION, "step": "stories", "video": Path(video).name, "max_minutes": max_minutes, "lines": lines}
     prompt, brief = _prompt("stories.md"), video_edit.read_brief(video)
     if brief:  # the person's own words go first, so the AI picks stories for them
@@ -221,7 +222,7 @@ def _num(x: Any, where: str) -> float:
 def _story_selection(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
     _head(ans, "stories", "video", Path(video).name)
     phrases = json.loads(video_edit.transcript_file(video).read_text(encoding="utf-8"))
-    out = video_edit.validate_stories(ans.get("stories"), phrases)
+    out = video_edit.validate_stories(ans.get("stories"), phrases, max_minutes=story_target(video))
     return out
 
 
@@ -364,7 +365,9 @@ def _import(step: str, target: str, ans: dict[str, Any]) -> dict[str, Any]:
             if step == "stories":
                 stories = _story_selection(target, ans)
                 atomic.write_text(work / "stories.json", json.dumps(stories, ensure_ascii=False, indent=1))
-                return {"stories": stories}
+                binding = story_selection.selection_binding(target, work / "stories.json")
+                atomic.write_text(work / "selection.json", json.dumps(binding, ensure_ascii=False, indent=1))
+                return {"stories": stories, "input_revision": binding["input_revision"]}
             import host_platform
             import kit_settings
             if host_platform.capcut_running():

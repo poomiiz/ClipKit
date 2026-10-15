@@ -78,16 +78,23 @@ a clip done. Obtain approval of one pilot before building a batch.
 
 ### `ClipKit: แบ่งเรื่อง "<video path>"`
 1. Run `python scripts/web_ai.py export stories "<video path>"` and read the complete packet
-   `<video path>.web-ai-stories.md`. It contains current transcript lines (`start`, `end`, `text`, seconds), the
+   `<video path>.web-ai-stories.md`. It contains source rows (`cue_id`, `start`, `end`, `text`) and full-word
+   `words` clocks (`n`, `end_n`, `start`, `end`, `text`, seconds), the
    person's brief and their saved duration choice. Missing transcript = report the error and ask them to
    transcribe first. Choose and shape stories to match the brief while following the rules below.
 2. Read the packet's duration preference before selecting ranges. Follow `prompts/story_split.md`: one point each,
    a meaningful opening and finished ending near that target, without a compulsory title or fixed length bracket.
+   Use source `start_anchor`/`end_anchor` (`cue_id`, `word` copied from `words[].n`) to choose whole-word edges
+   inside ASR rows. Word numbers may skip because partial Thai pieces form one complete word. With no word
+   clock, omit `word` and use the row edge. Numeric times, if included, must match the actual anchors. Retain
+   `reason` and `duration_reason`; duration deviation requests review and never authorizes truncation or approval.
 3. Write its complete v2 answer schema with the copied identity fields as UTF-8 to the named answer file beside
    the packet, `<video path>.web-ai-stories.answer.json` (not directly to `.stories.json`).
 4. Run `python scripts/web_ai.py import stories "<video path>" "<video path>.web-ai-stories.answer.json"`
    when working from the CLI. The active app AI box can poll/import the same answer; a duplicate returns its
-   receipt. Reply with the list (number, title, length) after validation succeeds. For a changed answer, export
+   receipt. The list and `.story-selection.json` binding commit together; never write either directly. Missing
+   or stale bindings require explicit validation/save, including legacy local lists. Reply with the list
+   (number, title, actual length versus target and review reason) after validation succeeds. For a changed answer, export
    another packet rather than reusing its identifiers.
 
 ### `ClipKit: แปลซับเป็นอังกฤษ "<CapCut project folder>"`

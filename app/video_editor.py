@@ -10,6 +10,7 @@ import sys
 import json
 import cue_data
 import re
+from threading import RLock, Thread
 from pathlib import Path
 from typing import Any
 
@@ -290,48 +291,108 @@ class StoryPlanRequest(BaseModel):
 
 
 _story_jobs = jobstore.JobStore("story-plan", failed="error")
+_story_guard = RLock()
 
 
-def _run_story_plan(file: str) -> None:
-    """Transcribe once and save <file>.transcript.json; the agent (Claude / Codex with the ClipKit skill)
-    reads it and writes <file>.stories.json, which the status call below picks up."""
-    job = _story_jobs[file]
+def _story_file(file: str) -> str:
+    import web_ai_identity
+    return str(web_ai_identity._canonical(file))
+
+
+def _story_result(file: str, job: dict, phrases: list[dict]) -> None:
+    import story_selection
+    import web_ai_json
+    revision = story_selection.source_revision(file, include_stories=True)
+    stories = story_selection.read_selection(file, phrases)
+    result = dict(status="done" if stories else "waiting", step="เลือกเรื่อง" if stories else "รอเลือกเรื่อง",
+               transcript=str(video_edit.transcript_file(file)), max_minutes=web_ai_json.story_target(file),
+               input_revision=story_selection.source_revision(file),
+               plan_revision=revision,
+               source_rows=story_selection.source_rows(phrases),
+               command=video_edit.agent_command("stories", file),
+               duration=round(max((p["end"] for p in phrases), default=0), 1),
+               speech=round(sum(p["end"] - p["start"] for p in phrases), 1),
+               unverified_selection=video_edit.stories_file(file).is_file() and stories is None)
+    if stories:
+        result["stories"] = stories
+    if story_selection.source_revision(file, include_stories=True) != revision:
+        raise HTTPException(409, "รายการเรื่องเปลี่ยนระหว่างอ่าน · โหลดข้อมูลล่าสุดอีกครั้ง")
+    job.pop("error", None)
+    job.pop("stories", None)
+    job.update(result)
+
+
+def _run_story_plan(file: str, job: dict | None = None) -> None:
+    """One source writer owns ASR; obsolete workers cannot publish into a replacement job."""
+    import web_ai_identity
+    import web_ai_transaction
+    job = job if job is not None else _story_jobs[file]
     try:
-        tf = video_edit.transcript_file(file)
-        if not tf.is_file():
-            job["step"] = "ถอดเสียง"
-        phrases = video_edit.transcribe_file(file)
-        import web_ai_json
-        job.update(status="waiting", step="รอ Claude แบ่งเรื่อง", transcript=str(tf),
-                   max_minutes=web_ai_json.story_target(file),
-                   command=video_edit.agent_command("stories", file),
-                   duration=round(phrases[-1]["end"] if phrases else 0, 1),
-                   speech=round(sum(p["end"] - p["start"] for p in phrases), 1))
-    except Exception as exc:  # surface every failure to the page
-        job.update(status="error", error=str(exc))
+        with project_lock.writer(file, recover=False):
+            with _story_guard:
+                if _story_jobs.get(file) is not job:
+                    return
+            web_ai_transaction.recover("stories", file)
+            before = web_ai_identity._stat(Path(file))
+            phrases = video_edit.transcribe_file(file)
+            if web_ai_identity._stat(Path(file)) != before:
+                raise VideoEditError("ฟุตเปลี่ยนระหว่างถอดเสียง · เริ่มแบ่งเรื่องใหม่")
+            with _story_guard:
+                if _story_jobs.get(file) is job:
+                    _story_result(file, job, phrases)
+                    _story_jobs.save()
+    except Exception as exc:
+        with _story_guard:
+            if _story_jobs.get(file) is job:
+                job.update(status="error", error=str(exc))
+                _story_jobs.save()
+
+
+def _new_story_job(file: str, revision: str) -> dict:
+    job = {"status": "running", "step": "ถอดเสียง", "input_revision": revision}
+    _story_jobs[file] = job
     _story_jobs.save()
+    return job
+
+
+def _story_http(exc: VideoEditError) -> HTTPException:
+    import hf_build
+    return HTTPException(409 if isinstance(exc, hf_build.BuildBusy) else 422, str(exc))
 
 
 @router.post("/story-plan")
 def story_plan(req: StoryPlanRequest) -> dict[str, Any]:
     """Transcribe a whole file and split it into stories before choosing CapCut or HyperFrames."""
-    import threading
-    if not Path(req.file).is_file():
+    file = _story_file(req.file)
+    if not Path(file).is_file():
         raise HTTPException(status_code=400, detail="file not found")
+    import story_selection
     import web_ai_json
-    changed = (web_ai_json.save_story_target(req.file, req.max_minutes)
-               if "max_minutes" in req.model_fields_set else False)
-    if req.brief is not None:  # saved before the split, so the agent or the web AI packet reads it
-        if req.brief.strip():
-            atomic.write_text(video_edit.brief_file(req.file), req.brief.strip(), encoding="utf-8")
-        else:
-            video_edit.brief_file(req.file).unlink(missing_ok=True)
-    job = _story_jobs.get(req.file)
-    if not job or job["status"] == "error" or (changed and job["status"] != "running"):
-        _story_jobs[req.file] = {"status": "running", "step": "เริ่ม"}
-        _story_jobs.save()
-        threading.Thread(target=_run_story_plan, args=(req.file,), daemon=True).start()
-    return _story_jobs[req.file]
+    import web_ai_transaction
+    start = False
+    try:
+        with project_lock.writer(file, recover=False), _story_guard:
+            web_ai_transaction.recover("stories", file)
+            if "max_minutes" in req.model_fields_set:
+                web_ai_json.save_story_target(file, req.max_minutes)
+            if req.brief is not None:
+                if req.brief.strip():
+                    atomic.write_text(video_edit.brief_file(file), req.brief.strip(), encoding="utf-8")
+                else:
+                    video_edit.brief_file(file).unlink(missing_ok=True)
+            revision = story_selection.source_revision(file, require_transcript=False)
+            job = _story_jobs.get(file)
+            if not job or job["status"] == "error" or (job["status"] != "running" and job.get("input_revision") != revision):
+                job, start = _new_story_job(file, revision), True
+            elif job["status"] != "running":
+                phrases = json.loads(video_edit.transcript_file(file).read_text(encoding="utf-8"))
+                _story_result(file, job, phrases)
+                _story_jobs.save()
+    except VideoEditError as exc:
+        raise _story_http(exc) from exc
+    if start:
+        Thread(target=_run_story_plan, args=(file, job), daemon=True).start()
+    return dict(job)
 
 
 @router.get("/brief")
@@ -342,25 +403,71 @@ def brief(file: str = Query(...)) -> dict[str, Any]:
 
 @router.get("/story-plan")
 def story_plan_status(file: str = Query(...)) -> dict[str, Any]:
-    import web_ai_json
+    import story_selection
+    import web_ai_transaction
+    file = _story_file(file)
     job = _story_jobs.get(file)
-    if job and job["status"] == "done" and job.get("max_minutes") != web_ai_json.story_target(file):
-        _run_story_plan(file)
-    if not job and video_edit.stories_file(file).is_file() and video_edit.transcript_file(file).is_file():
-        job = _story_jobs[file] = {"status": "running"}  # split before ClipKit restarted: reload it, no Whisper
-        _run_story_plan(file)
-    if not job:
+    if job and job["status"] in ("running", "error"):
+        return dict(job)
+    if not job and not video_edit.transcript_file(file).is_file():
         raise HTTPException(status_code=404, detail="no plan started for this file")
-    if job["status"] == "waiting":
-        try:
-            phrases = json.loads(Path(job["transcript"]).read_text(encoding="utf-8"))
-            stories = video_edit.stories_from_agent(file, phrases, split_long=not web_ai_json.has_story_target(file))
-        except VideoEditError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if stories is not None:
-            job.update(status="done", stories=stories)
+    start = False
+    try:
+        with project_lock.writer(file, recover=False), _story_guard:
+            web_ai_transaction.recover("stories", file)
+            job = _story_jobs.get(file)
+            if job and job["status"] == "running":
+                return dict(job)
+            revision = story_selection.source_revision(file, require_transcript=False)
+            if job and job.get("input_revision") == revision:
+                phrases = json.loads(video_edit.transcript_file(file).read_text(encoding="utf-8"))
+                _story_result(file, job, phrases)
+                _story_jobs.save()
+            else:
+                job, start = _new_story_job(file, revision), True
+    except VideoEditError as exc:
+        raise _story_http(exc) from exc
+    if start:
+        Thread(target=_run_story_plan, args=(file, job), daemon=True).start()
+    return dict(job)
+
+
+class StorySaveRequest(BaseModel):
+    file: str
+    plan_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    stories: list[dict[str, Any]]
+
+
+@router.post("/story-plan/save")
+def story_plan_save(req: StorySaveRequest) -> dict[str, Any]:
+    import story_selection
+    import web_ai_identity
+    import web_ai_json
+    import web_ai_transaction
+    file = _story_file(req.file)
+    try:
+        with project_lock.writer(file, recover=False), _story_guard:
+            web_ai_transaction.recover("stories", file)
+            if story_selection.source_revision(file, include_stories=True) != req.plan_revision:
+                raise HTTPException(409, "ข้อมูลแบ่งเรื่องเปลี่ยนแล้ว · โหลดข้อมูลล่าสุดก่อนบันทึก")
+            expected_input = story_selection.source_revision(file)
+            phrases = json.loads(video_edit.transcript_file(file).read_text(encoding="utf-8"))
+            stories = story_selection.validate(req.stories, phrases, max_minutes=web_ai_json.story_target(file))
+            if story_selection.source_revision(file, include_stories=True) != req.plan_revision:
+                raise HTTPException(409, "ข้อมูลแบ่งเรื่องเปลี่ยนระหว่างตรวจ · โหลดข้อมูลล่าสุดก่อนบันทึก")
+            # Manual acceptance supersedes a pending AI answer through the same durable transaction.
+            answer = {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", file),
+                      "step": "stories", "video": Path(file).name, "stories": stories}
+            if (answer["revision"] != expected_input or
+                    story_selection.source_revision(file, include_stories=True) != req.plan_revision):
+                raise HTTPException(409, "ข้อมูลแบ่งเรื่องเปลี่ยนระหว่างบันทึก · โหลดข้อมูลล่าสุดก่อนบันทึก")
+            web_ai_json.import_stories(file, answer)
+            job = _story_jobs.setdefault(file, {})
+            _story_result(file, job, phrases)
             _story_jobs.save()
-    return job
+            return dict(job)
+    except VideoEditError as exc:
+        raise _story_http(exc) from exc
 
 
 @router.post("/capcut")

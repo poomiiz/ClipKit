@@ -16,6 +16,8 @@ with tempfile.TemporaryDirectory() as import_folder:
     config.write_text("{}", encoding="utf-8")
     with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
         import run_clip
+from cli_resume_test import accept_selection, write_project
+import jobstore
 
 
 class InsertContract(unittest.TestCase):
@@ -23,6 +25,9 @@ class InsertContract(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        lock_state = patch.object(jobstore, "STATE", self.root / "locks")
+        lock_state.start()
+        self.addCleanup(lock_state.stop)
         self.raw = self.root / "talk.mp4"
         self.raw.write_bytes(b"synthetic source")
         self.downloads = self.root / "downloads"
@@ -30,19 +35,25 @@ class InsertContract(unittest.TestCase):
         for name in ("coffee.mp4", "office.mov", "building.mp4"):
             (self.downloads / name).write_bytes(("synthetic " + name).encode())
         self.projects = [self.root / "first", self.root / "second"]
-        for project, queries in zip(self.projects, (["coffee", "office"], ["building"])):
-            project.mkdir()
+        self.stories = accept_selection(self.raw,
+            [{"start": 0, "end": 10, "text": "first story"}, {"start": 10, "end": 20, "text": "second story"}],
+            [{"title": "First", "start": 0, "end": 10}, {"title": "Second", "start": 10, "end": 20}])
+        for project, story, queries in zip(self.projects, self.stories, (["coffee", "office"], ["building"])):
+            write_project(project, self.raw, story)
             (project / "clipkit_punch.json").write_text(json.dumps(
                 {"cue:spoken": [["normal", "keyword", query] for query in queries]}), encoding="utf-8")
-        self.stories = [{"start": 0, "end": 10}, {"start": 10, "end": 20}]
-        self.state = {"0.00-10.00": str(self.projects[0]), "10.00-20.00": str(self.projects[1])}
+        self.context = run_clip._resume_context(str(self.raw), shape="portrait", look="pair", preset="default")
+        self.state_file = Path(str(self.raw) + ".clipkit_run.json")
+        self.state = run_clip._load_resume(self.state_file)
+        for project, story in zip(self.projects, self.stories):
+            run_clip._save_project(self.state_file, self.state, run_clip._manifest(self.context, story), str(project))
         self.plan = self.root / "answer.json"
         self.answer = {"clipkit_web_ai": 1, "step": "inserts", "video": self.raw.name,
                        "place": [{"file": "coffee.mp4", "link": 1}, {"file": "building.mp4", "link": 3}]}
 
     def place(self, answer):
         self.plan.write_text(json.dumps(answer), encoding="utf-8")
-        return run_clip.place(str(self.raw), self.stories, [1, 2], self.state, str(self.downloads), str(self.plan))
+        return run_clip.place(str(self.raw), self.stories, [1, 2], self.state, str(self.downloads), str(self.plan), context=self.context)
 
     def assert_refused_without_moves(self, answer):
         before = {file.name: file.read_bytes() for file in self.downloads.iterdir()}

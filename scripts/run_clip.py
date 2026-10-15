@@ -7,19 +7,22 @@
     python scripts/run_clip.py "<video>" --all --no-ai --capcut  # no AI step: straight to CapCut projects
     python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>"  # stock files downloaded there
 
-Steps: transcribe -> split into stories (max --max seconds) -> one project per story (crop on the face,
+Steps: transcribe -> select stories (approximate --max seconds, or --natural) -> one project per story (crop on the face,
 subtitles, silences trimmed, subtitle look, zoom cut) -> punch words and b-roll searches -> free Pixabay
 b-roll -> cover -> HyperFrames page -> "<video> - ClipKit.html" with Pixabay search links -> MP4 on --export.
 
 Two steps need judgement and are done by the AI agent (skill make-clip): splitting stories and picking punch
 words. When one is missing the script prints `WAIT` with the command to run and exits 2; the agent does it
-and runs the same command again. Every step already done is skipped, so rerunning is always safe.
+and runs the same command again. Only current bound selections and matching project manifests are reused.
 """
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import html
 import json
+import os
 import shutil
 import sys
 import time
@@ -30,7 +33,9 @@ def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="One command from a raw video to finished short clips.")
     ap.add_argument("video")
     ap.add_argument("--trial-id", help="benchmark session ID; reuse it for WAIT/retry invocations of the same trial")
-    ap.add_argument("--max", type=int, default=None, help="approximate target seconds; shorter or slightly longer for a complete thought; omitted keeps saved target")
+    duration = ap.add_mutually_exclusive_group()
+    duration.add_argument("--max", type=int, default=None, help="approximate target seconds; shorter or slightly longer for a complete thought; omitted keeps saved target")
+    duration.add_argument("--natural", action="store_true", help="reset saved target to natural length; no forced duration split")
     ap.add_argument("--all", action="store_true", help="every story (default: story 1 only, as a pilot)")
     ap.add_argument("--shape", default="portrait", choices=["portrait", "landscape", "square", "source"])
     ap.add_argument("--look", default="pair", choices=["pair", "karaoke", "pop", "none"])
@@ -46,7 +51,8 @@ def _parser() -> argparse.ArgumentParser:
                     help="picture + prompt of the videos in FOLDER for a web AI to match to the links (answer: --insert-plan)")
     ap.add_argument("--insert-plan", metavar="ANSWER", help="with --insert-from: the web AI's JSON answer to --insert-sheet")
     ap.add_argument("--no-ai", action="store_true",
-                    help="no AI agent: stories split at the longest pauses; each project gets a file for a web AI to pick emphasis + title "
+                    help="no AI agent: pause-based ranges for a target, whole footage for natural length (semantic selection unreviewed); "
+                         "each project gets a file for a web AI to pick emphasis + title "
                          "(scripts/web_ai.py import clip, then run again), until then emphasis on each phrase's last words, no title")
     ap.add_argument("--client", help="with --capcut: check the CapCut project against this client's pace (presets/pace/<client>.json)")
     return ap
@@ -98,9 +104,12 @@ if __name__ == "__main__":
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import capcut_edit  # noqa: E402
+import atomic  # noqa: E402
 import hf_build  # noqa: E402
 import kit_settings  # noqa: E402
 import render  # noqa: E402
+import project_lock  # noqa: E402
+import story_selection  # noqa: E402
 import cutlog  # noqa: E402  (scripts/cutlog.py: the cut log)
 import video_edit  # noqa: E402
 import video_editor as ve  # noqa: E402
@@ -130,21 +139,144 @@ def detail(exc: Exception) -> str:
     return exc.detail if isinstance(exc, HTTPException) else str(exc)
 
 
-def stories(raw: str, max_s: int | None, no_ai: bool = False) -> list[dict] | None:
+@project_lock.edit
+def stories(raw: str, max_s: int | None, no_ai: bool = False, *, natural: bool = False) -> list[dict] | None:
     import web_ai_json
-    if max_s is not None:
-        web_ai_json.save_story_target(raw, max_s / 60)
+    import web_ai_transaction
+    web_ai_transaction.recover("stories", raw)
+    if natural or max_s is not None:
+        web_ai_json.save_story_target(raw, None if natural else max_s / 60)
     target = web_ai_json.story_target(raw)
     if not video_edit.transcript_file(raw).is_file():
         say(step="ถอดเสียงทั้งไฟล์")
     phrases = timed("ถอดเสียง", video_edit.transcribe_file, raw)
-    sf = video_edit.stories_file(raw)
-    if no_ai and not sf.is_file() and phrases:  # written like the agent's, so a rerun (or a person) can use it
-        parts = timed("แบ่งเรื่องจากช่วงพัก", video_edit._split_long, 0, len(phrases) - 1, phrases, Path(raw).stem, "",
-                      **({"max_s": target * 60 * 1.25, "aim_s": target * 60} if target is not None else {}))
-        sf.write_text(json.dumps([{k: p[k] for k in ("title", "summary", "start", "end")} for p in parts],
-                                 ensure_ascii=False, indent=1), encoding="utf-8")
-    return timed("อ่านผลเลือกเรื่อง", video_edit.stories_from_agent, raw, phrases, split_long=not web_ai_json.has_story_target(raw))
+    _, selected = timed("อ่านผลเลือกเรื่อง", _selection_snapshot, raw, phrases)
+    if selected is None and no_ai and phrases:
+        # This is an explicit mechanical fallback, not a claim that the footage is one complete topic.
+        if target is None:
+            parts = [{"title": Path(raw).stem, "summary": "ทั้งฟุตต้นฉบับ · ยังไม่ได้คัดเรื่องตามความหมาย",
+                      "start": phrases[0]["start"], "end": phrases[-1]["end"]}]
+            say(fallback="whole footage; semantic story selection has not been reviewed")
+        else:
+            parts = timed("แบ่งช่วงจากช่วงพัก", video_edit._split_long, 0, len(phrases) - 1, phrases, Path(raw).stem,
+                          "แบ่งจากช่วงพัก · ยังไม่ได้ตรวจความครบประเด็น", max_s=target * 60 * 1.25, aim_s=target * 60)
+        import web_ai_identity
+        # Issue only for a new requested edit; a resume/cache lookup never changes an active AI packet.
+        web_ai_json.import_stories(raw, {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", raw),
+                                        "step": "stories", "video": Path(raw).name, "stories": parts})
+        _, selected = _selection_snapshot(raw, phrases)
+    return selected
+
+
+def _selection_snapshot(raw: str, phrases: list[dict]) -> tuple[str, list[dict] | None]:
+    revision = story_selection.source_revision(raw, include_stories=True)
+    selected = story_selection.read_selection(raw, phrases)
+    if story_selection.source_revision(raw, include_stories=True) != revision:
+        raise video_edit.VideoEditError("source or selection changed while reading stories; run again")
+    return revision, selected
+
+
+def _digest(value) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False,
+                                    separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _file_digest(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _canonical(path: str) -> str:
+    return os.path.normcase(str(Path(path).resolve()))
+
+
+def _resume_context(raw: str, *, shape: str, look: str, preset: str, selected: list[dict] | None = None) -> dict:
+    chosen = render.pair_look({"preset": preset})
+    font = Path(chosen["font"]) if chosen["font"] else render.DEFAULT_FONT
+    try:
+        phrases = json.loads(video_edit.transcript_file(raw).read_text(encoding="utf-8-sig"))
+    except (ValueError, OSError) as exc:
+        raise video_edit.VideoEditError("source transcript is unreadable; restore or transcribe it before resuming") from exc
+    revision, current = _selection_snapshot(raw, phrases)
+    if current is None or selected is not None and current != selected:
+        raise video_edit.VideoEditError("story selection changed or is unbound; import a current answer before resuming")
+    return {"version": 1, "raw": _canonical(raw),
+            "source_revision": revision,
+            "options": {"shape": shape, "look": look, "preset": preset},
+            "preset_sha256": _file_digest(render.PRESETS / f"{preset}.json"),
+            "font_sha256": _file_digest(font), "default_font_sha256": _file_digest(render.DEFAULT_FONT),
+            "skin": render.SKIN_DEFAULT}
+
+
+def _manifest(context: dict, story: dict) -> dict:
+    return copy.deepcopy({"context": context, "story": story})
+
+
+def _load_resume(file: Path) -> dict:
+    try:
+        state = json.loads(file.read_text(encoding="utf-8-sig")) if file.is_file() else {}
+    except (ValueError, OSError) as exc:
+        raise video_edit.VideoEditError("CLI resume state is unreadable; retain it and restore a saved copy") from exc
+    if not isinstance(state, dict):
+        raise video_edit.VideoEditError("CLI resume state must be an object")
+    if state.get("version") == 2:
+        if not isinstance(state.get("projects"), dict):
+            raise video_edit.VideoEditError("CLI resume projects must be an object")
+        return state
+    if any(not isinstance(path, str) for path in state.values()):
+        raise video_edit.VideoEditError("unrecognized CLI resume state; retain it for recovery")
+    return {"version": 2, "projects": {}, "legacy": state}
+
+
+def _assert_current(context: dict) -> None:
+    if _resume_context(context["raw"], **context["options"]) != context:
+        raise video_edit.VideoEditError("source, story selection or style changed during this run; run again")
+
+
+def _resume_project(state: dict, manifest: dict) -> str | None:
+    context = manifest["context"]
+    _assert_current(context)
+    record = state["projects"].get(_digest(manifest))
+    if record is None:
+        return None
+    if not isinstance(record, dict) or record.get("manifest") != manifest or not isinstance(record.get("path"), str):
+        raise video_edit.VideoEditError("CLI project manifest is invalid; retain the state for recovery")
+    path = record["path"]
+    if not Path(path).exists():
+        return None
+    try:
+        with project_lock.writer(path):
+            draft = capcut_edit.read_draft(path)  # includes the existing outside-edit seal check
+            meta = json.loads((Path(path) / "clipkit.json").read_text(encoding="utf-8"))
+            style = json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8"))
+            content = json.loads((Path(path) / "draft_content.json").read_text(encoding="utf-8"))
+        story, options = manifest["story"], context["options"]
+        canvas = content["canvas_config"]
+        wanted = video_edit.CANVAS.get(options["shape"])
+        if (not isinstance(meta, dict) or not isinstance(style, dict)
+                or _canonical(meta["raw"]) != context["raw"] or _canonical(draft["source"]) != context["raw"]
+                or meta.get("start") != story["start"] or meta.get("end") != story["end"]
+                or style.get("anim") != options["look"] or style.get("preset") != options["preset"]
+                or wanted and (canvas["width"], canvas["height"]) != wanted):
+            raise video_edit.VideoEditError("CLI project no longer matches its source/story/style; retain it and rebuild")
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        raise video_edit.VideoEditError("CLI project is incomplete or unreadable; retain it and rebuild") from exc
+    return path
+
+
+def _save_project(file: Path, state: dict, manifest: dict, path: str) -> None:
+    _assert_current(manifest["context"])
+    candidate = {"manifest": manifest, "path": path}
+    updated = {**state, "projects": {**state["projects"], _digest(manifest): candidate}}
+    if _resume_project(updated, manifest) is None:
+        raise video_edit.VideoEditError("new CLI project is missing; resume state was not changed")
+    atomic.write_text(file, json.dumps(updated, ensure_ascii=False, indent=1, allow_nan=False))
+    state.update(updated)
 
 
 def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str = "default") -> str:
@@ -152,13 +284,14 @@ def make_project(raw: str, n: int, st: dict, shape: str, look: str, preset: str 
     r = timed("สร้างร่าง", ve.capcut, ve.DraftRequest(file=raw, name=f"{Path(raw).stem} - {n} {st['title']}", start=st["start"], end=st["end"],
                                   via="clipkit", shape=shape, focus_x=f["x"], focus_y=f["y"]))
     path = r["draft_path"]
-    got = timed("ซับในร่าง", capcut_edit.transcribe_draft, path)
-    timed("วางซับ", capcut_edit.set_subtitles, path, got["subtitles"])
-    timed("ภาษาซับ", capcut_edit.subtitles_language, path, "th")  # spoken lines as heard, any language
-    timed("ตัดช่วงพัก", capcut_edit.trim_pauses, path)
-    timed("จัดบรรทัดซับ", capcut_edit.tidy_subtitles, path)
-    (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "preset": preset, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
-    timed("ปรับสี", ve.auto_color, path)
+    with project_lock.writer(path):
+        got = timed("ซับในร่าง", capcut_edit.transcribe_draft, path)
+        timed("วางซับ", capcut_edit.set_subtitles, path, got["subtitles"])
+        timed("ภาษาซับ", capcut_edit.subtitles_language, path, "th")  # spoken lines as heard, any language
+        timed("ตัดช่วงพัก", capcut_edit.trim_pauses, path)
+        timed("จัดบรรทัดซับ", capcut_edit.tidy_subtitles, path)
+        (Path(path) / "clipkit_style.json").write_text(json.dumps({"anim": look, "preset": preset, "zoomcut": True, "skin": render.SKIN_DEFAULT}), encoding="utf-8")
+        timed("ปรับสี", ve.auto_color, path)
     return path
 
 
@@ -195,14 +328,15 @@ def insert(path: str) -> int:
     return len(files)
 
 
-def _links(sts: list[dict], picked, state: dict) -> list[tuple[str, int, str]]:
+def _links(sts: list[dict], picked, state: dict, context: dict) -> list[tuple[str, int, str]]:
     """(project, its own link number, search) for every stock search link on the page, in page order."""
     out = []
     for n in picked:
         st = sts[n - 1]
-        path = state.get(f"{st['start']:.2f}-{st['end']:.2f}")
-        if path:
-            out += [(path, i, q) for i, q in enumerate(queries(path), 1)]
+        path = _resume_project(state, _manifest(context, st))
+        if path is None:
+            raise video_edit.VideoEditError("no current project for these story/style options; run without insert flags first")
+        out += [(path, i, q) for i, q in enumerate(queries(path), 1)]
     return out
 
 
@@ -213,13 +347,13 @@ def _downloads(folder: str) -> list[Path]:
     return sorted((f for f in src.iterdir() if f.is_file() and f.suffix.lower() in VIDEO_EXT), key=lambda f: f.stat().st_mtime)
 
 
-def sheet(raw: str, sts: list[dict], picked, state: dict, folder: str) -> tuple[Path, Path]:
+def sheet(raw: str, sts: list[dict], picked, state: dict, folder: str, *, context: dict) -> tuple[Path, Path]:
     """For a web AI to match downloads to links: one picture of every downloaded file (a frame each, numbered)
     and a prompt listing the links (search + the words they go under) and the files. Its JSON answer goes to
     --insert-plan."""
     import cv2
     import numpy as np
-    links, files = _links(sts, picked, state), _downloads(folder)
+    links, files = _links(sts, picked, state, context), _downloads(folder)
     if not links or not files:
         raise video_edit.VideoEditError(f"nothing to match: {len(links)} links on the page, {len(files)} videos in {folder}")
     tiles = []
@@ -271,12 +405,12 @@ def sheet(raw: str, sts: list[dict], picked, state: dict, folder: str) -> tuple[
     return md, jpg
 
 
-def place(raw: str, sts: list[dict], picked, state: dict, folder: str, plan: str | None = None) -> list[dict]:
+def place(raw: str, sts: list[dict], picked, state: dict, folder: str, plan: str | None = None, *, context: dict) -> list[dict]:
     """Stock files a person downloaded into one folder, moved into each project's clipkit_insert. With plan (a
     web AI's answer to sheet()), its {"file", "link"} pairs; without, by the page's numbers (counted across all
     projects): a file whose name starts with a number goes to that link, the others fill the links still empty in
     download order. Any bad pairing raises before anything moves."""
-    links, files = _links(sts, picked, state), _downloads(folder)
+    links, files = _links(sts, picked, state, context), _downloads(folder)
     lead = lambda f: f.stem.split()[0].split("_")[0].split("-")[0]  # noqa: E731  (as insert() reads it)
     if plan:
         import web_ai_json
@@ -310,6 +444,7 @@ def place(raw: str, sts: list[dict], picked, state: dict, folder: str, plan: str
         if old:
             raise video_edit.VideoEditError(f"link {k} already has {old[0]} in {Path(path).name}/clipkit_insert: move it out first")
     moved = []
+    _assert_current(context)  # validation and download enumeration must not outlive their source revision
     for k, f in chosen:
         path, i, q = links[k - 1]
         box = Path(path) / "clipkit_insert"
@@ -357,21 +492,30 @@ def main() -> int:
 
 
 def _pipeline(a, raw: str) -> int:
+    import web_ai_transaction
+    with project_lock.writer(raw, recover=False):
+        web_ai_transaction.recover("stories", raw)
+        return _pipeline_locked(a, raw)
+
+
+def _pipeline_locked(a, raw: str) -> int:
     render.pair_look({"preset": a.preset})  # unknown or broken preset: stop before any work
     say(preset=a.preset)
     state_f = Path(raw).with_name(Path(raw).name + ".clipkit_run.json")
-    state = json.loads(state_f.read_text(encoding="utf-8")) if state_f.is_file() else {}
+    state = _load_resume(state_f)
 
-    sts = timed("ถอดเสียง + เรื่อง", stories, raw, a.max, a.no_ai)
+    sts = timed("ถอดเสียง + เรื่อง", stories, raw, a.max, a.no_ai, natural=a.natural)
     if sts is None:
         import web_ai_json
         say(WAIT=video_edit.agent_command("stories", raw), web_ai=str(web_ai_json.export_stories(raw)),
+            reason="story selection is absent, unbound or stale; import a current answer to continue",
             import_answer=f'python scripts/web_ai.py import stories "{raw}" <answer.json>', then=" ".join(sys.argv))
         return 2
     picked = range(1, len(sts) + 1) if a.all else [1]
+    context = _resume_context(raw, shape=a.shape, look=a.look, preset=a.preset, selected=sts)
     if a.insert_sheet:
         try:
-            md, jpg = timed("เตรียมจับคู่ภาพแทรก", sheet, raw, sts, picked, state, a.insert_sheet)
+            md, jpg = timed("เตรียมจับคู่ภาพแทรก", sheet, raw, sts, picked, state, a.insert_sheet, context=context)
         except video_edit.VideoEditError as exc:
             say(error=str(exc))
             return 1
@@ -379,7 +523,7 @@ def _pipeline(a, raw: str) -> int:
         return 0
     if a.insert_from:
         try:
-            say(placed=timed("ย้ายภาพแทรก", place, raw, sts, picked, state, a.insert_from, a.insert_plan))
+            say(placed=timed("ย้ายภาพแทรก", place, raw, sts, picked, state, a.insert_from, a.insert_plan, context=context))
         except video_edit.VideoEditError as exc:
             say(error=str(exc))
             return 1
@@ -387,61 +531,63 @@ def _pipeline(a, raw: str) -> int:
     rows, waits = [], []
     for n in picked:
         st = sts[n - 1]
-        key = f"{st['start']:.2f}-{st['end']:.2f}"
+        manifest = _manifest(context, st)
         try:
-            if key not in state or not Path(state[key]).is_dir():
+            path = _resume_project(state, manifest)
+            if path is None:
                 say(step="ทำโปรเจกต์", story=n, title=st["title"])
-                state[key] = timed("ทำโปรเจกต์", make_project, raw, n, st, a.shape, a.look, a.preset)
-                state_f.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
-            path = state[key]
-            need = [] if a.no_ai else ["clipkit_punch.json", "clipkit_hook.json"]
-            style = json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8"))
-            if style.get("anim") == "pair" and render.pair_look(style)["caption"] and not a.no_ai:
-                need.append("clipkit_caption.json")  # the preset has a small translated caption
-            if not all((Path(path) / f).is_file() for f in need):
-                waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
+                path = timed("ทำโปรเจกต์", make_project, raw, n, st, a.shape, a.look, a.preset)
+                _save_project(state_f, state, manifest, path)
+            with project_lock.writer(path):
+                _resume_project(state, manifest)
+                need = [] if a.no_ai else ["clipkit_punch.json", "clipkit_hook.json"]
+                style = json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8"))
+                if style.get("anim") == "pair" and render.pair_look(style)["caption"] and not a.no_ai:
+                    need.append("clipkit_caption.json")  # the preset has a small translated caption
+                if not all((Path(path) / f).is_file() for f in need):
+                    waits.append(ve.draft_punch_request(ve.DraftPath(path=path))["command"])
+                    import web_ai_json
+                    say(web_ai=str(web_ai_json.export_clip(path)),
+                        import_answer=f'python scripts/web_ai.py import clip "{path}" <answer.json>', story=n)
+                    continue
+                if a.no_ai and not (Path(path) / "clipkit_punch.json").is_file():
+                    import web_ai_json  # emphasis + title from an AI in the browser: upload this file, import its answer, run again
+                    say(web_ai=str(web_ai_json.export_clip(path)), story=n)
+                if a.insert:
+                    say(step="ใส่คลิปที่โหลดมา", story=n, files=timed("ใส่ภาพแทรก", insert, path))
+                note = ""
+                try:
+                    timed("b-roll Pixabay", ve.broll_fill, path)
+                except video_edit.VideoEditError as exc:  # no Pixabay key / offline: the search links still cover it
+                    note = str(exc)
+                if not json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8")).get("cover"):
+                    timed("ปก", ve.auto_cover, path)
+                row = {"n": n, "title": st["title"], "path": path, "hf": str(timed("หน้า HyperFrames", hf_build.build, path)),
+                       "queries": timed("คำค้นภาพประกอบ", queries, path),
+                       "length": round(timed("ความยาวคลิป", ve.draft_timeline, path)["duration"], 1), "pixabay": note}
+                bf = Path(path) / "clipkit_broll.json"
+                row["have"] = list(json.loads(bf.read_text(encoding="utf-8"))) if bf.is_file() else []
+                if a.capcut:
+                    import capcut_build
+                    say(step="ทำโปรเจกต์ CapCut", story=n)
+                    cc, row["capcut_warnings"] = timed("โปรเจกต์ CapCut", capcut_build.build, path)
+                    row["capcut"] = str(cc)
+                    if a.client:
+                        sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
+                        import pace
+                        row["pace"] = timed("ตรวจจังหวะ", pace.check, cc, a.client)
+                        say(pace=row["pace"]["score"], problems=row["pace"]["problems"], story=n)
+                row["safe_zone"] = timed("ตรวจพื้นที่ปลอดภัย", render.safe_zone, row.get("capcut") or path)
+                if row["safe_zone"]:
+                    say(safe_zone=row["safe_zone"], story=n)
+                if a.export:
+                    say(step="ส่งออก MP4", story=n)
+                    row["mp4"] = timed("ส่งออก MP4", ve.draft_hf_export, ve.ExportRequest(path=path))["file"]
+                rows.append(row)
                 import web_ai_json
-                say(web_ai=str(web_ai_json.export_clip(path)),
-                    import_answer=f'python scripts/web_ai.py import clip "{path}" <answer.json>', story=n)
-                continue
-            if a.no_ai and not (Path(path) / "clipkit_punch.json").is_file():
-                import web_ai_json  # emphasis + title from an AI in the browser: upload this file, import its answer, run again
-                say(web_ai=str(web_ai_json.export_clip(path)), story=n)
-            if a.insert:
-                say(step="ใส่คลิปที่โหลดมา", story=n, files=timed("ใส่ภาพแทรก", insert, path))
-            note = ""
-            try:
-                timed("b-roll Pixabay", ve.broll_fill, path)
-            except video_edit.VideoEditError as exc:  # no Pixabay key / offline: the search links still cover it
-                note = str(exc)
-            if not json.loads((Path(path) / "clipkit_style.json").read_text(encoding="utf-8")).get("cover"):
-                timed("ปก", ve.auto_cover, path)
-            row = {"n": n, "title": st["title"], "path": path, "hf": str(timed("หน้า HyperFrames", hf_build.build, path)),
-                   "queries": timed("คำค้นภาพประกอบ", queries, path),
-                   "length": round(timed("ความยาวคลิป", ve.draft_timeline, path)["duration"], 1), "pixabay": note}
-            bf = Path(path) / "clipkit_broll.json"
-            row["have"] = list(json.loads(bf.read_text(encoding="utf-8"))) if bf.is_file() else []
-            if a.capcut:
-                import capcut_build
-                say(step="ทำโปรเจกต์ CapCut", story=n)
-                cc, row["capcut_warnings"] = timed("โปรเจกต์ CapCut", capcut_build.build, path)
-                row["capcut"] = str(cc)
-                if a.client:
-                    sys.path.insert(0, str(ROOT / "scripts" / "capcut"))
-                    import pace
-                    row["pace"] = timed("ตรวจจังหวะ", pace.check, cc, a.client)
-                    say(pace=row["pace"]["score"], problems=row["pace"]["problems"], story=n)
-            row["safe_zone"] = timed("ตรวจพื้นที่ปลอดภัย", render.safe_zone, row.get("capcut") or path)
-            if row["safe_zone"]:
-                say(safe_zone=row["safe_zone"], story=n)
-            if a.export:
-                say(step="ส่งออก MP4", story=n)
-                row["mp4"] = timed("ส่งออก MP4", ve.draft_hf_export, ve.ExportRequest(path=path))["file"]
-            rows.append(row)
-            import web_ai_json
-            log_args = {k: v for k, v in vars(a).items() if k != "video"}
-            log_args.update(max=None, max_minutes=web_ai_json.story_target(raw))
-            row["check"] = timed("ตรวจคลิป + log", cutlog.log_run, raw, st, n, path, log_args, row["length"])
+                log_args = {k: v for k, v in vars(a).items() if k != "video"}
+                log_args.update(max=None, max_minutes=web_ai_json.story_target(raw))
+                row["check"] = timed("ตรวจคลิป + log", cutlog.log_run, raw, st, n, path, log_args, row["length"])
         except (video_edit.VideoEditError, HTTPException) as exc:
             say(error=detail(exc), story=n, title=st["title"])
             return 1

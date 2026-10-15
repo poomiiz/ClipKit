@@ -211,9 +211,41 @@ class PacketIdentity(unittest.TestCase):
     def test_unproven_asr_sha_cannot_hide_changed_media(self):
         metadata = Path(str(self.source) + ".transcript.meta.json")
         self.write(metadata, {"schema_version": 2, "sha256": "0" * 64})
+        with self.assertRaisesRegex(VideoEditError, "คำถอดเสียงไม่ตรง"):
+            self.answer("stories")
+        self.assertFalse(identity.state_dir("stories", self.source).exists())
+
+    def test_matching_asr_sha_still_checks_actual_media_and_replacement(self):
+        metadata = Path(str(self.source) + ".transcript.meta.json")
+        actual = identity.hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.write(metadata, {"schema_version": 2, "sha256": actual})
         answer = self.answer("stories")
         record = identity._json(identity.state_dir("stories", self.source) / "packets" / (answer["packet_id"] + ".json"))
-        self.assertNotEqual(next(iter(record["sources"].values()))["sha256"], "0" * 64)
+        self.assertEqual(next(iter(record["sources"].values()))["sha256"], actual)
+        self.source.write_bytes(b"different source")
+        self.assert_stale(answer, "stories")
+        with self.assertRaisesRegex(VideoEditError, "คำถอดเสียงไม่ตรง"):
+            self.answer("stories")
+
+    def test_pending_asr_blocks_packet_and_verify_but_allows_planning_revision(self):
+        answer = self.answer("stories")
+        active = identity.state_dir("stories", self.source) / "active.json"
+        before = active.read_bytes()
+        original, _ = identity._snapshot("stories", self.source, None, {}, require_transcript=False)
+        part = Path(str(self.source) + ".transcript.part.json")
+        part.write_text("{}", encoding="utf-8")
+        self.assert_stale(answer, "stories")
+        with self.assertRaisesRegex(VideoEditError, "ยังไม่เสร็จ"):
+            self.answer("stories")
+        pending, _ = identity._snapshot("stories", self.source, None, {}, require_transcript=False)
+        self.assertNotEqual(identity._hash(original), identity._hash(pending))
+        self.assertEqual(active.read_bytes(), before)
+        self.assertEqual(part.read_text(encoding="utf-8"), "{}")
+        part.unlink()
+        optional, _ = identity._snapshot("stories", self.source, None, {}, require_transcript=False)
+        required, _ = identity._snapshot("stories", self.source, None, {})
+        self.assertEqual(identity._hash(original), identity._hash(optional))
+        self.assertEqual(identity._hash(optional), identity._hash(required))
 
     def test_missing_declared_media_is_an_error(self):
         self.source.unlink()

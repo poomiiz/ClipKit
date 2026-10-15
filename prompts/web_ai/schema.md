@@ -6,7 +6,7 @@ on this machine from its own media files.
 
 | step | export (upload this file to the AI) | prompt | import writes |
 |---|---|---|---|
-| `stories` | `<video>.web-ai-stories.md` | `stories.md` + `../story_split.md` | `<video>.stories.json` |
+| `stories` | `<video>.web-ai-stories.md` | `stories.md` + `../story_split.md` | `<video>.stories.json` + bound `<video>.story-selection.json` |
 | `clip` | `<project>/clipkit_web_ai.md` | `clip.md` | `clipkit_punch.json`, `clipkit_hook.json`, `clipkit_caption.json` (only when the preset has a translated caption), motion (`clipkit_overlays.json`) |
 
 From the app: download one file from the AI box, attach it to a browser AI without an extra prompt, then paste
@@ -75,12 +75,31 @@ native CapCut compatibility. Keep human playback/listening and native project ac
 ```json
 {"clipkit_web_ai": 2, "step": "stories", "video": "EP07.mov",
  "packet_id": "<copy packet_id exactly>", "revision": "<copy revision exactly>", "source_id": "<copy source_id exactly>",
- "stories": [{"title": "...", "summary": "...", "start": 12.3, "end": 95.0}]}
+ "stories": [{"title": "...", "summary": "...", "reason": "Why this opens and finishes one point",
+              "duration_reason": "Why this duration fits the content and requested target",
+              "start_anchor": {"cue_id": "source-1", "word": 1},
+              "end_anchor": {"cue_id": "source-3", "word": 7}}]}
 ```
 
 `title` required, `start < end` in seconds, each story must contain speech. `max_minutes` in the exported packet
 is the saved approximate target before selecting content: shorter is acceptable and slightly longer can finish
-a complete thought. With a saved target, imported selections are retained rather than split at a hard limit.
+a complete thought. Accepted selections are retained rather than split at a hard limit, including natural duration.
+
+Packet rows contain stable source `cue_id` values and `words` with original `n`, optional group `end_n`, `text`,
+`start`, `end`. Copy `words[].n` for an anchor, even when the numbers skip: Thai ASR pieces are grouped into
+complete words. A start anchor resolves to that word's start; an end anchor resolves to its end. Omitting `word`
+selects the row edge, including rows without a word clock. ASR row boundaries do not impose story boundaries.
+Numeric `start`/`end` remain supported at exact whole-word or row edges; if supplied with anchors they must agree.
+The example anchors above are illustrative and must be replaced by real anchors from the current packet.
+
+Normalized stories retain the reasons, anchors, actual `duration_s`, requested `target_s` and `delta_s`.
+`review_required` marks a duration deviation greater than max(15 seconds, 20% of target); it never truncates,
+splits or approves the story. Humans still judge whether the opening and ending make sense on their own.
+The importer stages the list and its binding together. The binding records the exact current input revision
+and story-file hash. Legacy, externally changed or stale lists stay readable history but are not current
+accepted selections; explicitly revalidate/save them through the manual controls or a current v2 import.
+Brief, target, source, transcript/meta and relevant code changes invalidate acceptance. Read-only cache checks
+do not issue a packet or overwrite a pending answer. A receipt replay remains historical and never restores it.
 
 ## `clip`
 

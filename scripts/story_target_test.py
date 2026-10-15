@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -45,7 +46,7 @@ class StoryTarget(unittest.TestCase):
             self.assertTrue(video_edit.stories_file(raw).is_file())
             self.assertTrue(web.save_story_target(raw, 2))
             self.assertFalse(video_edit.stories_file(raw).exists())
-            self.assertEqual(len(list(Path(folder).glob("*.before-target-*"))), 1)
+            self.assertEqual(len(list(Path(folder).glob("*.before-target-*"))), 2)
             self.assertEqual(web.story_target(raw), 2)
             self.assertTrue(web.save_story_target(raw, None))
             self.assertIsNone(web.story_target(raw))
@@ -89,6 +90,7 @@ class StoryTarget(unittest.TestCase):
             raw = str(Path(folder) / "talk.mp4")
             Path(raw).write_bytes(b"media")
             phrases = [{"start": n, "end": n + 8, "text": f"line {n}"} for n in range(0, 400, 10)]
+            video_edit.transcript_file(raw).write_text(json.dumps(phrases), encoding="utf-8")
             original = video_edit.STORY_MAX_S, video_edit.STORY_AIM_S
             with patch.object(video_edit, "transcribe_file", return_value=phrases):
                 stories = run_clip.stories(raw, 180, no_ai=True)
@@ -117,6 +119,8 @@ class StoryTarget(unittest.TestCase):
             jobs[raw] = {"status": "done", "max_minutes": 3, "transcript": str(transcript)}
             web.save_story_target(raw, None)
             with patch.object(video_editor, "_story_jobs", jobs), \
+                 patch.object(video_editor, "Thread", side_effect=lambda target, args, **kw:
+                              SimpleNamespace(start=lambda: target(*args))), \
                  patch.object(video_edit, "transcribe_file", return_value=phrases), \
                  patch.object(video_edit, "_split_long", side_effect=AssertionError("natural length must not split")):
                 self.assertEqual(video_editor.story_plan_status(raw)["status"], "waiting")

@@ -68,9 +68,10 @@ def _files(folder: Path) -> dict[str, Path]:
 
 def _destination(step: str, target: Path, name: str) -> Path:
     if step == "stories":
-        if name != "stories":
+        suffixes = {"stories": ".stories.json", "selection": ".story-selection.json"}
+        if name not in suffixes:
             raise VideoEditError("Invalid story recovery journal")
-        return Path(str(target) + ".stories.json")
+        return Path(str(target) + suffixes[name])
     relative = Path(name)
     if relative.is_absolute() or not relative.parts or any(p in ("..", ".") for p in relative.parts):
         raise VideoEditError("Invalid AI recovery path")
@@ -168,7 +169,7 @@ def apply(step: str, target: str, answer: dict, prepare):
     work.mkdir(parents=True)
     target_path = Path(target)
     original = (_files(target_path) if step == "clip" else
-                {"stories": Path(str(target) + ".stories.json")})
+                {name: _destination(step, target_path, name) for name in ("stories", "selection")})
     before = {name: _hash(file) for name, file in original.items()}
     if step == "clip":
         for name, source in original.items():
@@ -186,7 +187,7 @@ def apply(step: str, target: str, answer: dict, prepare):
         current = (_files(target_path) if step == "clip" else original)
         if {name: _hash(file) for name, file in current.items()} != before:
             raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียม AI import · ส่งออกคำสั่งใหม่")
-        after = _files(work) if step == "clip" else {"stories": work / "stories.json"}
+        after = _files(work) if step == "clip" else {"stories": work / "stories.json", "selection": work / "selection.json"}
         entries = []
         for name in sorted(set(before) | set(after)):
             new_hash = _hash(after[name]) if name in after else None

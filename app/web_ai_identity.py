@@ -23,7 +23,8 @@ SIDECARS = ("draft_content.json", "clipkit.json", "clipkit_words.json", "clipkit
             "clipkit_punch.json", "clipkit_caption.json", "clipkit_hook.json", "clipkit_style.json",
             "clipkit_overlays.json", "clipkit_placed.json", "clipkit_broll.json", "clipkit_seal.json")
 DEPENDENCIES = ("web_ai_identity.py", "web_ai_json.py", "web_ai_transaction.py", "video_edit.py",
-                "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py")
+                "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py",
+                "story_selection.py")
 
 
 def _hash(value: Any) -> str:
@@ -112,9 +113,16 @@ def _referenced(path: str | Path, folder: Path) -> Path:
     return _canonical(file if file.is_absolute() else folder / file)
 
 
-def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: dict) -> tuple[dict, dict]:
+def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: dict,
+              *, require_transcript: bool = True) -> tuple[dict, dict]:
     target = _canonical(target)
+    if step == "stories" and require_transcript and Path(str(target) + ".transcript.part.json").exists():
+        raise VideoEditError("การถอดเสียงยังไม่เสร็จ · ทำต่อให้ครบก่อนใช้รายการเรื่องหรือคำสั่ง AI")
     files, sources, updated = {}, {}, {}
+    if step == "stories" and not require_transcript:
+        pending = Path(str(target) + ".transcript.part.json")
+        if pending.exists():
+            files["source:.transcript.part.json"] = _file(pending, required=True)
     raw = target if step == "stories" else None
     if step == "clip":
         files = {name: _file(target / name, required=name == "draft_content.json") for name in SIDECARS}
@@ -175,11 +183,17 @@ def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: di
     if raw is not None:
         media.append(str(raw))
         for suffix in (".transcript.json", ".transcript.meta.json", ".brief.txt", ".story-preferences.json"):
-            files["source:" + suffix] = _file(Path(str(raw) + suffix), required=step == "stories" and suffix == ".transcript.json")
+            files["source:" + suffix] = _file(Path(str(raw) + suffix), required=require_transcript and step == "stories" and suffix == ".transcript.json")
     for name in sorted(set(media)):
         source, cached = _media(_referenced(name, target if step == "clip" else target.parent), cache)
         sources[source["path_id"]] = source
         updated[source["path_id"]] = cached
+    if step == "stories" and require_transcript:
+        asr = _json(Path(str(raw) + ".transcript.meta.json"))
+        if asr is not None and not isinstance(asr, dict):
+            raise VideoEditError("ข้อมูลอ้างอิงการถอดเสียงต้องเป็น object")
+        if isinstance(asr, dict) and asr.get("schema_version") == 2 and asr.get("sha256") != sources[_path_id(raw)]["sha256"]:
+            raise VideoEditError("คำถอดเสียงไม่ตรงกับฟุตต้นทาง · ถอดเสียงฟุตล่าสุดก่อนเลือกเรื่อง")
     for name in ("web_ai/schema.md", f"web_ai/{'stories' if step == 'stories' else 'clip'}.md", "story_split.md"):
         files["prompt:" + name] = _file(PROMPTS / name, required=True)
     for name in DEPENDENCIES:

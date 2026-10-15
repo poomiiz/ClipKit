@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
@@ -354,23 +355,29 @@ def benchmark_measurements_are_isolated():
 def saved_stories_come_back_after_restart():
     # the split is saved beside the video; after ClipKit restarts, opening the file shows it again with no new AI round
     import video_editor
+    import video_edit
+    import web_ai_json
+    import web_ai_identity
+    import jobstore
+    from unittest.mock import patch
     from fastapi import HTTPException
-    with tempfile.TemporaryDirectory() as t:
+    with tempfile.TemporaryDirectory() as t, patch.object(jobstore, "STATE", Path(t)), \
+         patch.object(video_editor, "_story_jobs", jobstore.JobStore("story-smoke")), \
+         patch.object(video_editor, "Thread", side_effect=lambda target, args, **kw:
+                      SimpleNamespace(start=lambda: target(*args))):
         video = str(Path(t) / "talk.mp4")
         Path(video).write_bytes(b"x")
-        keep = video_editor._story_jobs.path
-        video_editor._story_jobs.path = Path(t) / "jobs-story-plan.json"  # keep test jobs out of this machine's state/
         try:
             video_editor.story_plan_status(video)
             raise AssertionError("a file never split returned a plan")
         except HTTPException as exc:
             assert exc.status_code == 404
         Path(video + ".transcript.json").write_text(json.dumps([{"start": 1.0, "end": 9.0, "text": "เงิน"}]), encoding="utf-8")
-        Path(video + ".stories.json").write_text(json.dumps([{"title": "เงิน", "start": 1, "end": 9}]), encoding="utf-8")
-        job = video_editor.story_plan_status(video)
+        web_ai_json.import_stories(video, {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", video),
+            "step": "stories", "video": "talk.mp4", "stories": [{"title": "เงิน", "start": 1, "end": 9}]})
+        with patch.object(video_edit, "transcribe_file", return_value=[{"start": 1., "end": 9., "text": "เงิน"}]):
+            job = video_editor.story_plan_status(video)
         assert job["status"] == "done" and job["stories"][0]["title"] == "เงิน" and job["duration"] == 9.0, job
-        video_editor._story_jobs.pop(video)
-        video_editor._story_jobs.path = keep
 
 
 def name_check_works():
@@ -541,22 +548,27 @@ def web_ai_answers_are_checked():
     # the web AI's JSON goes into the same files the local agent writes; a wrong answer writes nothing
     import capcut_edit
     import web_ai_json as web_ai
+    import video_editor
+    import video_edit
+    import jobstore
     from video_edit import VideoEditError
     from unittest.mock import patch
     def identity(packet):
         data = json.loads(packet.rsplit("```json", 1)[1].split("```", 1)[0])
         return {key: data[key] for key in ("packet_id", "revision", "source_id")}
 
-    with tempfile.TemporaryDirectory() as t:
+    with tempfile.TemporaryDirectory() as t, patch.object(jobstore, "STATE", Path(t)), \
+         patch.object(video_editor, "_story_jobs", jobstore.JobStore("web-smoke")), \
+         patch.object(video_editor, "Thread", side_effect=lambda target, args, **kw:
+                      SimpleNamespace(start=lambda: target(*args))), \
+         patch.object(video_edit, "transcribe_file", side_effect=lambda file:
+                      json.loads(video_edit.transcript_file(file).read_text(encoding="utf-8"))):
         video = Path(t) / "ep.mov"
         video.write_bytes(b"")
         (Path(t) / "ep.mov.transcript.json").write_text(json.dumps(
             [{"start": 0.0, "end": 2.0, "text": "สวัสดี"}, {"start": 10.0, "end": 14.0, "text": "เรื่องเงิน"}]), encoding="utf-8")
         assert "เรื่องเงิน" in web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         # what the person typed before the split leads the packet; clearing the box removes it
-        import video_editor
-        video_editor._story_jobs.path = Path(t) / "jobs-story-plan.json"
-        video_editor._story_jobs[str(video)] = {"status": "waiting"}  # a split already going: no Whisper here
         video_editor.story_plan(video_editor.StoryPlanRequest(file=str(video), brief="  vlog สบายๆ เน้นช่วงตลก "))
         assert video_editor.brief(str(video)) == {"brief": "vlog สบายๆ เน้นช่วงตลก", "max_minutes": None}
         packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
@@ -578,7 +590,7 @@ def web_ai_answers_are_checked():
             except VideoEditError:
                 pass
         assert not (Path(t) / "ep.mov.stories.json").exists()
-        ans = "here:\n```json\n" + json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 14}]}) + "\n```"
+        ans = "here:\n```json\n" + json.dumps({**head, "stories": [{"title": "เงิน", "start": 10, "end": 14}]}) + "\n```"
         assert web_ai.import_answer("stories", str(video), ans)["stories"][0]["end"] == 14
         # an AI on this machine saves its answer next to the file instead: imported once, then gone
         assert web_ai.import_answer("stories", str(video), "") == {"waiting": True}
@@ -586,7 +598,7 @@ def web_ai_answers_are_checked():
         packet = web_ai.export_stories(str(video)).read_text(encoding="utf-8")
         assert saved.name in packet
         head.update(identity(packet))
-        saved.write_text(json.dumps({**head, "stories": [{"title": "เงิน", "start": 9, "end": 14}]}), encoding="utf-8")
+        saved.write_text(json.dumps({**head, "stories": [{"title": "เงิน", "start": 10, "end": 14}]}), encoding="utf-8")
         assert web_ai.import_answer("stories", str(video), "")["stories"][0]["end"] == 14 and not saved.exists()
 
         proj = Path(t) / "proj"
