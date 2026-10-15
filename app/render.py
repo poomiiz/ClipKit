@@ -1068,6 +1068,33 @@ def _music(style: dict[str, Any]) -> str | None:
     return str(tracks[0]) if tracks else None
 
 
+def validate_output(file: Path, width: int, height: int, duration: float, *, preview: bool = False,
+                    decode_log: Path | None = None) -> dict[str, Any]:
+    """Probe and decode staged bytes; callers publish only after validation and input CAS succeed."""
+    info = video_edit.probe(str(file))
+    values = [info.get(key) for key in ("duration", "width", "height")]
+    try:
+        valid = all(not isinstance(value, bool) and isinstance(value, (int, float))
+                    and math.isfinite(value) and value > 0 for value in values)
+    except OverflowError:
+        valid = False
+    if not valid or not all(isinstance(info.get(key), str) and info[key] for key in ("video_codec", "audio_codec")):
+        raise VideoEditError("ไฟล์ส่งออกไม่มีภาพ เสียง หรือความยาวที่ถูกต้อง")
+    wrong_size = (info["width"], info["height"]) != (width, height)
+    if preview:
+        wrong_size = abs(info["width"] / info["height"] - width / height) > .005
+    if wrong_size or abs(info["duration"] - duration) > .1:
+        raise VideoEditError("ขนาดหรือความยาวไฟล์ส่งออกไม่ตรงกับโปรเจกต์")
+    decoded = subprocess.run([FFMPEG, "-v", "error", "-xerror", "-i", str(file),
+                              "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
+    if decode_log is not None:
+        atomic.write_text(decode_log, (decoded.stdout or "") + "\n" + (decoded.stderr or ""))
+    if decoded.returncode:
+        raise VideoEditError("ตรวจไฟล์ส่งออกไม่ผ่าน: " + decoded.stderr[-800:])
+    return info
+
+
 def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False, *, final: bool = False) -> dict[str, Any]:
     """Dry plans remain repairable; final=True applies delivery checks to a dry adapter plan."""
     encoder = _video_encoder(preview)
@@ -1369,10 +1396,12 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         encode_seconds = round(time.monotonic() - started, 3)
         if r.returncode != 0 or not encoded.is_file() or not encoded.stat().st_size:
             raise VideoEditError(f"export failed ({encoder[1]}): " + r.stderr.strip()[-800:])
+        check_export()
+        output_info = validate_output(encoded, W, H, length, preview=preview)
         import delivery_manifest
         evidence = delivery_manifest.prepare(path, encoded, target, "mp4", check_export(),
             options={"backend": "ffmpeg", "encoder": encoder, "preview": preview},
-            checks={"encode": "passed", "full_av_decode": "pending"})
+            checks={"encode": "passed", "full_av_decode": "passed", "dimensions": "passed", "duration": "passed", "audio": "passed", "probe": output_info})
         check_export()
         encoded.replace(target)
     return {"file": str(target), "delivery_manifest": str(evidence), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
@@ -1382,7 +1411,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             "sfx": len(sfx) if fx["on"] else 0, "preview": preview,
             "karaoke_estimated": estimated, "pieces": len(segs), "safe_zone_moved": held.get("safe_moved", 0),
             "shrunk": held.get("shrunk", []), "skipped_tracks": skipped,
-            "duration": probe(str(target))["duration"]}
+            "duration": output_info["duration"]}
 
 
 def text_px(m: dict, s: dict, W: int, H: int) -> tuple[Path, float]:

@@ -84,10 +84,10 @@ class ExportSafety(unittest.TestCase):
             raise video_edit.VideoEditError("probe failed")
         return {"duration": .5 if self.failure == "truncated" else 1,
                 "width": 1920 if self.failure == "ratio" else 1080, "height": 1920,
-                "audio_codec": None if self.failure == "audio" else "aac"}
+                "video_codec": None if self.failure == "video" else "h264", "audio_codec": None if self.failure == "audio" else "aac"}
 
     def test_each_failed_stage_preserves_old_mp4_and_diagnostics(self):
-        for failure in ("render", "timeout", "normalize", "probe", "decode", "audio", "truncated", "ratio"):
+        for failure in ("render", "timeout", "normalize", "probe", "decode", "audio", "video", "truncated", "ratio"):
             with self.subTest(failure=failure):
                 self.failure = failure
                 with self.assertRaises(editor.HTTPException) as error:
@@ -96,7 +96,7 @@ class ExportSafety(unittest.TestCase):
                 self.assertEqual(self.target.read_bytes(), b"previous approved video")
                 self.assertTrue((self.stages[-1] / "error.log").is_file())
                 self.assertTrue((self.stages[-1] / "output.mp4").is_file())
-        self.assertEqual(len(set(self.stages)), 8)
+        self.assertEqual(len(set(self.stages)), 9)
         self.assertTrue(any("timeout diagnostic" in (stage / "error.log").read_text(encoding="utf-8")
                             for stage in self.stages))
 

@@ -2062,7 +2062,6 @@ def hf_page(key: str, file: str) -> FileResponse:
 @router.post("/draft/hf-export")
 def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     """MP4 from the same composition the player shows (hyperframes render)."""
-    import math
     import shutil
     import tempfile
     import time as _t
@@ -2106,21 +2105,9 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
                 if result.returncode or not staged.is_file() or not staged.stat().st_size:
                     raise VideoEditError("render failed: " + (result.stderr or result.stdout).strip()[-800:])
                 render.normalize_loudness(staged)
-                info = video_edit.probe(str(staged))
-                if not math.isfinite(info["duration"]) or info["duration"] <= 0 or not info.get("audio_codec") or min(info["width"], info["height"]) <= 0:
-                    raise VideoEditError("ไฟล์ส่งออกไม่มีภาพ เสียง หรือความยาวที่ถูกต้อง")
                 canvas = expected["canvas_config"]
-                wrong_size = (info["width"], info["height"]) != (canvas["width"], canvas["height"])
-                if req.preview:
-                    wrong_size = abs(info["width"] / info["height"] - canvas["width"] / canvas["height"]) > .005
-                if wrong_size or abs(info["duration"] - expected["duration"] / video_edit.US) > .1:
-                    raise VideoEditError("ขนาดหรือความยาวไฟล์ส่งออกไม่ตรงกับโปรเจกต์")
-                decoded = subprocess.run([render.FFMPEG, "-v", "error", "-xerror", "-i", str(staged),
-                                          "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"],
-                                         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
-                atomic.write_text(stage / "decode.log", (decoded.stdout or "") + "\n" + (decoded.stderr or ""))
-                if decoded.returncode:
-                    raise VideoEditError("ตรวจไฟล์ส่งออกไม่ผ่าน: " + decoded.stderr[-800:])
+                info = render.validate_output(staged, canvas["width"], canvas["height"], expected["duration"] / video_edit.US,
+                                              preview=req.preview, decode_log=stage / "decode.log")
                 import delivery_manifest
                 evidence = delivery_manifest.prepare(req.path, staged, target, "mp4", check_export(),
                     options={"backend": "hyperframes", "version": kit_settings.HF_VERSION, "preview": req.preview},
