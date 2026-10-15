@@ -190,6 +190,8 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
                                "emphasis_size": look["punch"][0], "normal_y": look["lead"][1],
                                "emphasis_y": look["punch"][1], "canvas": {key: canvas[key] for key in ("width", "height")},
                                "font_family": family, "font_file": font.name, "safe_box": render.safe_box(style)}
+    import motion_plan
+    data["motion_subject_zones"] = motion_plan.validate_subject_zones(style.get("motion_subject_zones", []), draft["duration"] / capcut_edit.US)
     prompt = _prompt("clip.md")
     if max_minutes:
         prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "

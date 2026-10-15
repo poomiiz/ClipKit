@@ -206,3 +206,7 @@ occurrences. Missing or changed assets, source, cue clocks, catalog, style or op
 Preview is read-only; apply replaces only `placed.broll` while preserving music/SFX. Local polling retains an
 insert answer for review instead of automatically applying it. CLI batch wrappers carry one bound envelope
 per project and resumable per-project receipts; they do not claim an atomic transaction across projects.
+
+`motion_subject_zones` in the clip packet is read-only planning context: manually supplied timed
+normalized x/y/w/h regions on the current canvas. Motion placement must respect those regions. The app
+retimes them when content is cut and validates the resulting plan; a region is not automatic face tracking.

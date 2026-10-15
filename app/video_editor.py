@@ -1174,6 +1174,7 @@ def prepare_overlay(req: OverlayRequest, *, previous=None, timeline=None) -> dic
 
 def overlay_plan(req: OverlayRequest, plan: dict) -> dict[str, Any]:
     """Review content, clocks and geometry without exposing local input paths."""
+    import motion_plan
     prepared = plan["prepared"]
     return {"template": req.template, "text": req.text, "start": req.start, "duration": prepared["duration"],
             "motion_before": len(plan["items"]) + (1 if req.placement_id else 0),
@@ -1183,7 +1184,7 @@ def overlay_plan(req: OverlayRequest, plan: dict) -> dict[str, Any]:
                        if key not in {"font", "subtitle_events"}},
             "events": [{key: event[key] for key in ("role", "text", "start", "end")}
                        for event in prepared["source_params"].get("subtitle_events", [])],
-            "subject_review_pending": not bool(plan["timeline"]["style"].get("motion_subject_zones"))}
+            "subject_review_pending": motion_plan.subject_review_pending(plan["timeline"]["style"].get("motion_subject_zones", []), req.start, req.start + prepared["duration"])}
 
 
 @router.post("/draft/overlay-preview")
@@ -1208,6 +1209,7 @@ def _overlay_revision(req: OverlayRequest) -> str:
 def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
     """Materialize one preflighted recipe without publishing project metadata."""
     import kit_settings
+    import motion_plan
     prepared, timeline = plan["prepared"], plan["timeline"]
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
     rendered = kit_settings.make_motion(kit_settings.MotionRequest(template=req.template, name=name, params=plan["params"],
@@ -1218,7 +1220,7 @@ def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
             "placement_id": req.placement_id or __import__("uuid").uuid4().hex, "params": prepared["source_params"],
             "ownership": plan["ownership"], "anchor": plan["anchor"], "reason": req.reason, "recipe": rendered["recipe"],
             "canvas": prepared["canvas"], "bounds": prepared["bounds"],
-            "subject_review_pending": not bool(timeline["style"].get("motion_subject_zones"))}
+            "subject_review_pending": motion_plan.subject_review_pending(timeline["style"].get("motion_subject_zones", []), req.start, req.start + prepared["duration"])}
     if req.template == "sentence-pair":
         item["cue_id"] = plan["cue_id"]
     return item
@@ -1709,6 +1711,39 @@ def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
         raise HTTPException(422, str(exc)) from exc
 
 
+class SubjectZonesRequest(BaseModel):
+    path: str
+    previous: list[dict[str, Any]]
+    zones: list[dict[str, Any]]
+
+
+@router.post("/draft/subject-zones")
+@project_lock.edit
+def draft_subject_zones(req: SubjectZonesRequest) -> dict[str, Any]:
+    import motion_plan
+    import render
+    import web_ai_transaction as transaction
+    try:
+        duration = capcut_edit.read_draft(req.path)["duration"]
+        motion_plan.validate_subject_zones(req.zones, duration)
+        style_file = Path(req.path) / "clipkit_style.json"
+        style = json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {}
+        if style.get("motion_subject_zones", []) != req.previous:
+            raise HTTPException(409, "พื้นที่เปลี่ยนแล้ว · โหลด Timeline ใหม่ก่อนแก้")
+        def prepare(work):
+            file = work / "clipkit_style.json"
+            current = json.loads(file.read_text(encoding="utf-8")) if file.is_file() else {}
+            if current.get("motion_subject_zones", []) != req.previous:
+                raise VideoEditError("พื้นที่เปลี่ยนแล้ว · โหลด Timeline ใหม่ก่อนแก้")
+            current["motion_subject_zones"] = req.zones
+            atomic.write_text(file, json.dumps(current, ensure_ascii=False, allow_nan=False))
+            timeline = render.render_draft(str(work), "", dry=True)
+            return {"style":current,"motion_recipe_errors":timeline["motion_recipe_errors"],"motions":timeline["motions"]}
+        return transaction.manual(req.path, prepare)
+    except VideoEditError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 class LookRequest(BaseModel):
     path: str
     style: dict[str, Any]   # merged into clipkit_style.json (anim, zoomcut, color, ...)
@@ -1722,6 +1757,8 @@ def draft_look(req: LookRequest) -> dict[str, Any]:
         f = Path(req.path) / "clipkit_style.json"
         style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
         style.update(req.style)
+        if "motion_subject_zones" in req.style:
+            __import__("motion_plan").validate_subject_zones(req.style["motion_subject_zones"], capcut_edit.read_draft(req.path)["duration"])
         web_ai_json.validate_subtitles(req.path, style=style)
         atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
         return {"style": style}

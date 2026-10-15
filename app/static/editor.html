@@ -77,6 +77,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .motion-editor .role{display:inline-flex;align-items:center;gap:8px}
 .motion-editor .role input{flex:none}
 .motion-editor{overflow-wrap:anywhere}
+.subject-box{position:absolute;pointer-events:none;z-index:5;border:2px dashed var(--warn);color:var(--warn);font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ov{position:absolute;pointer-events:none;z-index:4;background:rgba(5,7,12,.55)}.ov[hidden]{display:none}
 .ov .safe{position:absolute;border:1.5px dashed rgba(255,196,0,.85);border-radius:4px}
 .ov .col{position:absolute;right:0;bottom:0;background:rgba(239,68,68,.22);border-left:1.5px dashed rgba(239,68,68,.8)}
@@ -108,7 +109,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   <div class="mid">
     <div class="player" id="player"><div class="empty" id="empty">กำลังเตรียมตัวเล่น…</div>
       <hyperframes-player id="v" controls style="display:none;width:100%;height:100%"></hyperframes-player>
-      <div class="ov" id="ov" hidden><div class="safe" id="osafe"></div><div class="col" id="ocol"></div><div class="otxt" id="otxt"></div></div></div>
+      <div class="subject-box" id="subjectBox" hidden>พื้นที่ที่ระบุ</div><div class="ov" id="ov" hidden><div class="safe" id="osafe"></div><div class="col" id="ocol"></div><div class="otxt" id="otxt"></div></div></div>
     <div class="side" id="side"></div>
   </div>
   <div class="tl">
@@ -125,7 +126,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 <script>
 const $ = id => document.getElementById(id);
 const PATH = new URLSearchParams(location.search).get('path');
-let T = null, PL = null, SEL = null, PX = 40, MUSIC = null;
+let T = null, PL = null, SEL = null, PX = 40, MUSIC = null, zonePreview = null;
 const mm = t => Math.floor(t / 60) + ':' + (t % 60).toFixed(1).padStart(4, '0');
 async function api(path, body) {
   const r = await fetch('/api/video/' + path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -137,13 +138,16 @@ function say(html) { $('busy').innerHTML = html; }
 
 fetch('/api/video/config').then(r => r.json()).then(c => document.body.classList.toggle('simple', !!c.simple)).catch(() => {});
 
-async function load() {
-  T = await api('draft/timeline?path=' + encodeURIComponent(PATH));
+async function load(accept = () => true) {
+  const timeline = await api('draft/timeline?path=' + encodeURIComponent(PATH));
+  if (!accept()) return false;
+  T = timeline;
   $('title').textContent = T.name;
   document.title = T.name + ' · ตัดต่อ';
   PL = {broll: T.broll.map(b => ({...b})), music: {...T.music}, sfx: {...T.sfx}};
   drawTL(); side();
   live();
+  return true;
 }
 let building = null, again = false;
 async function live() {
@@ -260,13 +264,14 @@ function dragLine(d, p) {
 }
 function seek(t) { const v = $('v'); try { v.seek(Math.max(0, t)); } catch {} placePH(t); }
 function placePH(t) { const p = $('ph'); if (p) p.style.left = t * PX + 'px'; $('tc').textContent = mm(t) + ' / ' + mm(T.duration).replace(/\.\d$/, ''); }
-function tick() { placePH($('v').currentTime || 0); }
+function tick() { placePH($('v').currentTime || 0); if (zonePreview) zonePreview(); }
 (function loop() { if (T) tick(); requestAnimationFrame(loop); })();
 $('zoom').oninput = e => { PX = +e.target.value; drawTL(); };
 
 // ── right panel: the selected piece, or the whole clip's settings ──
 const LOOKS = [['pair', 'ข้อความปกติ + ข้อความเน้น'], ['none', 'ซับธรรมดา'], ['pop', 'ซับเด้งเข้า'], ['karaoke', 'ไล่สีทีละคำ']];
 function side() {
+  zonePreview = null; $('subjectBox').hidden = true;
   const s = $('side');
   if (!SEL) return sideClip(s);
   if (SEL.type === 'phrase') return sidePhrase(s, T.phrases[SEL.i]);
@@ -368,6 +373,67 @@ function showInsertPlan(box, rows) {
   };
   select.onchange = show; box.append(select, preview); show();
 }
+function sideSubjectZones(s) {
+  let expected = structuredClone(T.style.motion_subject_zones || []), zones = structuredClone(expected), busy = false;
+  s.innerHTML = `<div class="motion-editor">${back()}<h3>พื้นที่คน/สินค้า</h3>
+    <p class="hint">กรอบใช้ตรวจตำแหน่ง motion · ต้องดูภาพจริง</p>
+    <label for="zSelect">ช่วงเวลา</label><select id="zSelect"></select>
+    ${['start','end','x','y','w','h'].map((key,i)=>`<div class="row"><label for="z${key}">${['เริ่ม (วินาที)','จบ (วินาที)','ซ้าย (%)','บน (%)','กว้าง (%)','สูง (%)'][i]}</label><input id="z${key}" type="number" required min="${i > 3 ? 0.00001 : 0}" max="${i<2?T.duration:100}" step="any"></div>`).join('')}
+    <div class="row"><button id="zAdd">เพิ่มพื้นที่</button><button id="zRemove">ลบพื้นที่</button><button id="zSeek">ดูช่วงนี้</button><button id="zReload">โหลดใหม่</button></div>
+    <div class="hint" id="zMessage" role="status" aria-live="polite"></div>
+    <p class="hint">กรอบปรากฏเฉพาะช่วงที่ระบุ เมื่อตัวเล่นพร้อม</p>
+    <button class="pri" id="zSave">บันทึกพื้นที่</button></div>`;
+  const panel=s.firstElementChild, select=$('zSelect'), message=$('zMessage'), save=$('zSave'), keys=['start','end','x','y','w','h'], fields=keys.map(key=>$('z'+key));
+  const dirty=()=>{message.textContent='ยังไม่บันทึก';};
+  const fill=()=>{
+    const row=zones[+select.value];fields.forEach((input,i)=>{input.disabled=!row;input.value=row?(i<2?row[keys[i]]:row[keys[i]]*100):'';});
+    $('zRemove').disabled=$('zSeek').disabled=!row;
+  };
+  const list=(index=0)=>{
+    select.replaceChildren();zones.forEach((row,i)=>{const option=document.createElement('option');option.value=i;option.textContent=`${mm(row.start)}–${mm(row.end)}`;select.appendChild(option);});
+    select.disabled=!zones.length;select.value=String(Math.min(index,zones.length-1));fill();
+    if (!zones.length) message.textContent='ยังไม่มีพื้นที่ · เลือกเพิ่มพื้นที่';
+  };
+  select.onchange=fill;
+  fields.forEach((input,i)=>input.oninput=()=>{
+    const row=zones[+select.value];if(!row)return;
+    row[keys[i]]=input.valueAsNumber/(i<2?1:100);
+    select.children[+select.value].textContent=Number.isFinite(row.start)&&Number.isFinite(row.end)?`${mm(row.start)}–${mm(row.end)}`:'ตรวจช่วงเวลา';dirty();
+  });
+  $('zAdd').onclick=()=>{const start=Math.max(0,Math.min($('v').currentTime || 0,T.duration-.1));zones.push({start,end:Math.min(T.duration,start+1),x:.1,y:.1,w:.3,h:.4});list(zones.length-1);dirty();};
+  $('zRemove').onclick=async()=>{const index=+select.value,row=zones[index];if(row && await ckConfirm(`ลบพื้นที่ ${mm(row.start)}–${mm(row.end)}?`)){zones.splice(index,1);list(index);dirty();}};
+  $('zSeek').onclick=()=>{const row=zones[+select.value];if(row)seek(row.start);};
+  $('zReload').onclick=async()=>{
+    if(busy)return;
+    busy=true;const button=$('zReload');button.disabled=save.disabled=true;
+    try{
+      if(JSON.stringify(zones)!==JSON.stringify(expected) && !await ckConfirm('โหลดใหม่และทิ้งพื้นที่ที่ยังไม่บันทึก?'))return;
+      const sent=JSON.stringify(zones);
+      const adopted=await load(()=>panel.isConnected && JSON.stringify(zones)===sent);
+      if(adopted)sideSubjectZones($('side'));else if(panel.isConnected)dirty();
+    }catch(e){message.textContent=ckErr(e);}finally{busy=false;button.disabled=save.disabled=false;}
+  };
+  save.onclick=async()=>{
+    if(busy)return;
+    if(fields.some(input=>!input.checkValidity())){message.textContent='ตรวจเวลาและขนาดพื้นที่';return;}
+    const sent=JSON.stringify(zones);busy=true;save.disabled=true;message.textContent='กำลังบันทึก…';
+    try{
+      const result=await api('draft/subject-zones',{path:PATH,previous:expected,zones:JSON.parse(sent)});
+      expected=structuredClone(result.style.motion_subject_zones);T.style=result.style;T.motion_recipe_errors=result.motion_recipe_errors;setMotions(result.motions);drawTL();live();
+      message.textContent=JSON.stringify(zones)!==sent?'ยังไม่บันทึก':result.motion_recipe_errors.length?'บันทึกแล้ว · motion ต้องแก้':'บันทึกแล้ว';
+    }catch(e){message.textContent=ckErr(e);}finally{busy=false;save.disabled=false;}
+  };
+  zonePreview=()=>{
+    // shortcut: pinned HyperFrames 0.8.101 iframe bounds; recheck when upgrading the player.
+    const row=zones[+select.value],player=$('v'),frame=player.shadowRoot?.querySelector('iframe.hfp-iframe'),box=$('subjectBox'),at=player.currentTime || 0;
+    box.hidden=true;
+    if(!row || !player.ready || !frame || player.compositionWidth!==T.width || player.compositionHeight!==T.height || !keys.every(key=>Number.isFinite(row[key])) || at<row.start || at>=row.end || Math.min(row.x,row.y)<0 || Math.min(row.w,row.h)<=0 || row.x+row.w>1 || row.y+row.h>1)return;
+    const canvas=frame.getBoundingClientRect(),parent=$('player').getBoundingClientRect();
+    if(!canvas.width || !canvas.height)return;
+    Object.assign(box.style,{left:canvas.left-parent.left+row.x*canvas.width+'px',top:canvas.top-parent.top+row.y*canvas.height+'px',width:row.w*canvas.width+'px',height:row.h*canvas.height+'px'});box.hidden=false;
+  };
+  list();
+}
 function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
   s.innerHTML = `<h3>⚙️ ตั้งค่าทั้งคลิป</h3>
@@ -387,6 +453,7 @@ function sideClip(s) {
     <div class="row"><button id="insertPreview">ตรวจแผน</button></div>
     <div id="insertPlan"></div><div class="hint" id="insertMessage" role="status" aria-live="polite"></div>
     </details>
+    <div class="motion-editor"><button id="subjectAreas">พื้นที่คน/สินค้า</button></div>
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <h4>หัวคลิป (4 วินาทีแรก)</h4>
     ${[0, 1].map(n => `<div class="row"><input id="hk${n}" style="flex:1" placeholder="${n ? 'บรรทัด 2 (ไม่ใส่ก็ได้)' : 'บรรทัด 1 เช่น ธุรกิจสะดุด'}">
@@ -425,11 +492,14 @@ function sideClip(s) {
     <div class="row media"><label><input type="checkbox" id="fx" ${PL.sfx.on ? 'checked' : ''}> pop ตอนคำเน้น · whoosh ตอนภาพประกอบ</label></div>
     <div class="row media"><label for="fxv">ความดัง</label><input type="range" id="fxv" min="0" max="2" step="0.1" value="${PL.sfx.volume}"></div>
     </details>`;
+  $('subjectAreas').onclick = () => sideSubjectZones(s);
   try { $('adv').open = localStorage.getItem('ck_adv') === '1'; } catch {}
   $('adv').ontoggle = () => { try { localStorage.setItem('ck_adv', $('adv').open ? '1' : '0'); } catch {} };
   s.querySelectorAll('.look').forEach(b => b.onclick = async () => { await api('draft/look', {path: PATH, style: {anim: b.dataset.k}}); await reload(); });
+  const preset = $('preset');
   fetch('/api/video/subtitle-presets').then(r => r.json()).then(r => {
-    $('preset').innerHTML = r.presets.map(n => `<option${n === (st.preset || 'default') ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    if (!preset.isConnected) return;
+    preset.innerHTML = r.presets.map(n => `<option${n === (st.preset || 'default') ? ' selected' : ''}>${esc(n)}</option>`).join('');
   });
   textPanel(st);
   $('preset').onchange = async e => { await api('draft/look', {path: PATH, style: {preset: e.target.value}}); T.style.preset = e.target.value; live(); };

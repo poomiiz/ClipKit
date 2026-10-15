@@ -333,6 +333,7 @@ def verify_timeline(folder, timeline, *, strict=True):
                 anchor=item["anchor"], ownership=item["ownership"], placement=recipe["placement"], reason=item["reason"])
             plan = video_editor.prepare_overlay(request, previous=timeline["motions"], timeline=timeline)
             current = plan["prepared"]
+            item["subject_review_pending"] = subject_review_pending(timeline["style"].get("motion_subject_zones", []), item["start"], item["start"] + item["duration"])
             if (any(recipe[key] != current[key] for key in
                     ("template", "canvas", "placement", "bounds", "duration", "inputs", "hashes", "layout_sha256"))
                     or recipe["params"] != current["source_params"] or item["params"] != recipe["params"]
@@ -384,6 +385,31 @@ def verify_media(file, plan):
             "sha256": insert_plan.file_digest(file), "alpha_decode": True}
 
 
+def validate_subject_zones(zones, duration):
+    finite = lambda v: not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
+    if not isinstance(zones, (list, tuple)):
+        raise VideoEditError("subject zones must be an array")
+    for zone in zones:
+        keys = ("start", "end", "x", "y", "w", "h")
+        if (not isinstance(zone, dict) or set(zone) != set(keys) or any(not finite(zone[k]) for k in keys)
+                or not 0 <= zone["start"] < zone["end"] <= duration + 1e-6
+                or min(zone["x"], zone["y"]) < 0 or min(zone["w"], zone["h"]) <= 0
+                or zone["x"] + zone["w"] > 1 or zone["y"] + zone["h"] > 1):
+            raise VideoEditError("subject zones need valid timed normalized x/y/w/h rectangles")
+    return zones
+
+
+def subject_review_pending(zones, start, end):
+    cursor = start
+    for zone in sorted(zones, key=lambda z: z["start"]):
+        if zone["end"] <= cursor:
+            continue
+        if zone["start"] > cursor + 1e-6:
+            break
+        cursor = max(cursor, zone["end"])
+    return cursor < end - 1e-6
+
+
 def check_placement(motion, events, *, width, height, duration, safe_box, subject_zones=(), others=()):
     """Read-only spatial/time gate before allocating a renderer; no position repair or hiding."""
     def finite(value):
@@ -433,15 +459,7 @@ def check_placement(motion, events, *, width, height, duration, safe_box, subjec
         if other["start"] < end and start < other["start"] + other["duration"]:
             if not rectangle(other.get("bounds")) or intersects(bounds, other["bounds"]):
                 raise VideoEditError(f"motion {start:g}s overlaps another motion; choose another interval or placement")
-    if not isinstance(subject_zones, (list, tuple)):
-        raise VideoEditError("subject zones must be an array")
-    for zone in subject_zones:
-        keys = ("start", "end", "x", "y", "w", "h")
-        if (not isinstance(zone, dict) or set(zone) != set(keys) or any(not finite(zone[k]) for k in keys)
-                or not 0 <= zone["start"] < zone["end"] <= duration + 1e-6
-                or min(zone["x"], zone["y"]) < 0 or min(zone["w"], zone["h"]) <= 0
-                or zone["x"] + zone["w"] > 1 or zone["y"] + zone["h"] > 1):
-            raise VideoEditError("subject zones need valid timed normalized x/y/w/h rectangles")
+    for zone in validate_subject_zones(subject_zones, duration):
         rect = [zone["x"] * width, zone["y"] * height,
                 (zone["x"] + zone["w"]) * width, (zone["y"] + zone["h"]) * height]
         if any(a < zone["end"] and zone["start"] < b and intersects(footprint, rect) for a,b,footprint in footprints):

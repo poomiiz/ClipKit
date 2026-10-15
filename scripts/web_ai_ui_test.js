@@ -270,7 +270,7 @@ async function checkRetryAndCommittedRefreshFailure() {
   await checkRetryAndCommittedRefreshFailure();
   assert.match(editor, /\$\('aiDownload'\)\.onclick = downloadAi/);
   assert.match(editor, /\$\('aiImport'\)\.onclick = importAi/);
-  assert.match(editor.slice(editor.indexOf('async function load()'), editor.indexOf('let building')), /live\(\)/);
+  assert.match(editor.slice(editor.indexOf('async function load('), editor.indexOf('let building')), /live\(\)/);
   const auto = source.slice(source.indexOf('async function autoRun()'), source.indexOf('async function saLoad('));
   assert.match(auto, /webAiBox\('clip', state\.draft\.path/);
   assert.doesNotMatch(auto, /agentBox\(/);
