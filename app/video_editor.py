@@ -1170,6 +1170,28 @@ def prepare_overlay(req: OverlayRequest, *, previous=None) -> dict[str, Any]:
             "cue_id": next(iter(cues)) if req.template == "sentence-pair" else None}
 
 
+def overlay_plan(req: OverlayRequest, plan: dict) -> dict[str, Any]:
+    """Review content, clocks and geometry without exposing local input paths."""
+    prepared = plan["prepared"]
+    return {"template": req.template, "text": req.text, "start": req.start, "duration": prepared["duration"],
+            "anchor": plan["anchor"], "reason": req.reason, "ownership": plan["ownership"],
+            "canvas": prepared["canvas"], "bounds": prepared["bounds"],
+            "params": {key: value for key, value in prepared["source_params"].items()
+                       if key not in {"font", "subtitle_events"}},
+            "events": [{key: event[key] for key in ("role", "text", "start", "end")}
+                       for event in prepared["source_params"].get("subtitle_events", [])],
+            "subject_review_pending": not bool(plan["timeline"]["style"].get("motion_subject_zones"))}
+
+
+@router.post("/draft/overlay-preview")
+def draft_overlay_preview(req: OverlayRequest) -> dict[str, Any]:
+    try:
+        with project_lock.writer(req.path, recover=False):
+            return overlay_plan(req, prepare_overlay(req))
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
     """Materialize one preflighted recipe without publishing project metadata."""
     import kit_settings
@@ -1315,9 +1337,10 @@ def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
 def web_ai_preview(req: WebAiRequest) -> dict[str, Any]:
     import web_ai_json as web_ai
     try:
-        if req.step != "clip" or req.operation != "inserts":
-            raise VideoEditError("ตัวอย่างนี้ใช้กับแผนภาพแทรก")
-        return web_ai.preview_inserts(req.target, req.answer)
+        if req.step != "clip":
+            raise VideoEditError("เลือกโปรเจกต์คลิปก่อนตรวจแผน")
+        return (web_ai.preview_inserts(req.target, req.answer) if req.operation == "inserts"
+                else web_ai.preview_clip(req.target, req.answer))
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
 

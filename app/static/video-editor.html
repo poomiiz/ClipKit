@@ -582,6 +582,7 @@
   body.simple #engine, body.simple #projTabs, body.simple #selHint { display: none !important; }  /* tech words a beginner does not need */
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
+<link rel="stylesheet" href="/ai-plan.css?v=1"><script src="/ai-plan.js?v=1"></script>
 <script src="/ui.js?v=3"></script></head>
 <body>
 <div class="app">
@@ -3033,6 +3034,8 @@ function webAiBox(step, target, note) {
     const el = k => document.getElementById(id + k);
     if (!el('dl')) return;
     let polling = false, importing = false, imported = false, generation = 0;
+    const review = step === 'clip' ? CKAIPlan.review(el('ta'), el('in'), el('plan'),
+      answer => api('web-ai/preview', {step, target, answer})) : null;
     const current = g => g === generation && !!el('dl');
     const done = async (r, g) => {
       if (!current(g)) return;
@@ -3057,6 +3060,10 @@ function webAiBox(step, target, note) {
       importing = true;
       el('in').disabled = true;
       try {
+        if (answer.trim()) el('msg').textContent = '';
+        if (review && answer.trim() && !await review.check(answer)) return;
+        if (!current(g)) return;
+        el('ta').disabled = true;
         const r = await api('web-ai/import', {step, target, answer});
         if (!current(g) || r.waiting) return;
         imported = true;
@@ -3064,19 +3071,21 @@ function webAiBox(step, target, note) {
         el('ta').value = ''; // A committed answer stays consumed even if refreshing the project fails.
         await done(r, g);
       } catch (e) {
-        if (current(g)) el('msg').textContent = '❌ ' + ckErr(e);
+        if (current(g)) { if (review) review.clear(); el('msg').textContent = '❌ ' + ckErr(e); }
       } finally {
-        if (current(g)) { importing = false; el('in').disabled = false; }
+        if (current(g)) { importing = false; el('in').disabled = false; el('ta').disabled = false; }
       }
     };
     const poll = async g => {  // Each export owns one poll chain; old responses cannot finish a newer request.
       if (!current(g) || !polling || imported) return;
+      if (step === 'clip' && el('ta').value.trim()) { polling = false; return; }
       await submit('', g);
       if (current(g) && polling && !imported) setTimeout(() => poll(g), 3000);
     };
     el('dl').onclick = async () => {
       if (el('dl').disabled) return;
       const g = ++generation;
+      if (review) review.clear();
       polling = false; imported = false; importing = true;
       el('dl').disabled = true; el('in').disabled = true;
       try {
@@ -3099,11 +3108,11 @@ function webAiBox(step, target, note) {
       if (answer.trim()) await submit(answer, generation);
     };
   });
-  return '<div class="agent-cmd"><div class="hint">' + note + '</div>'
+  return '<div class="agent-cmd ai-review"><div class="hint">' + note + '</div>'
     + (step === 'clip' ? '<div class="hint">ให้คลิปยาวราว <input id="' + id + 'max" type="number" min="0.5" step="0.5" style="width:72px;display:inline-block"> นาที (ว่าง = ตัดแค่ส่วนเกิน · ใส่ก่อนกดปุ่มไฟล์)</div>' : '')
-    + '<button class="small primary" id="' + id + 'dl">⬇ ไฟล์ให้ AI</button>'
+    + '<button class="small" id="' + id + 'dl">⬇ ไฟล์ให้ AI</button>'
     + '<textarea id="' + id + 'ta" rows="4" style="width:100%" placeholder="AI บนเว็บ: วางคำตอบ JSON ที่นี่"></textarea>'
-    + '<button class="small" id="' + id + 'in">นำเข้าคำตอบ</button><div class="hint" id="' + id + 'msg"></div></div>';
+    + '<div id="' + id + 'plan"></div><button class="small primary" id="' + id + 'in">' + (step === 'clip' ? 'ตรวจแผน' : 'นำเข้าคำตอบ') + '</button><div class="hint" id="' + id + 'msg"></div></div>';
 }
 // plain white subtitles with the recommended look; English lines come from the agent (clipkit_subs_en.json)
 async function subsLang(lang) {

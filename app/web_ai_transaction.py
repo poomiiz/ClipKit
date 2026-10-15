@@ -162,6 +162,26 @@ def recover(step: str, target: str):
         _write(journal, saved)
 
 
+def preview_clip(target: str, answer: dict, prepare):
+    """Stage the same edits in disposable metadata, without receipts or project writes."""
+    identity.verify("clip", target, answer)
+    original = _files(Path(target))
+    before = {name: _hash(file) for name, file in original.items()}
+    with tempfile.TemporaryDirectory(prefix="clipkit_preview_") as temporary:
+        work = Path(temporary) / Path(target).name
+        work.mkdir()
+        for name, source in original.items():
+            destination = work / name
+            _copy(source, destination)
+            if _hash(destination) != before[name]:
+                raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียมตัวอย่าง · ตรวจใหม่")
+        result = prepare(work)
+        identity.verify("clip", target, answer)
+        if {name: _hash(file) for name, file in _files(Path(target)).items()} != before:
+            raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างตรวจแผน · ตรวจใหม่")
+        return result
+
+
 def apply(step: str, target: str, answer: dict, prepare):
     """Caller holds writer lock. prepare runs only against staged metadata and private motion assets."""
     root = identity.state_dir(step, target)

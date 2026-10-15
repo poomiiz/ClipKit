@@ -152,6 +152,7 @@ source wording, and supply translated captions when `caption_language` is not nu
 | `lines[].items` | Subtitle (lead, white) + เน้น (punch, colour) | all original `n` = 1..N and their `cue_id` in order; group heads have items covering their exact combined text (spaces may differ), continuation entries have only `n` and `cue_id`; item `[lead, punch]` + optional search string and/or options `{look: pair|white|color|red|hold|skip, show: [white, colour], color: "#rrggbb", second: "..."}` |
 | `cut` | (footage) | optional; line numbers dropped with their footage (up to the next line), via `trim_pauses(ranges=...)`; whole lines only, order kept; a cut line keeps its `n`/`cue_id` but needs no items / caption / motion; at least one line stays. The draft is backed up and the import journal covers all applied metadata. Export again for a different answer after cutting; an exact retry returns its receipt |
 | `motion` | Motion text | optional desired list; omitted preserves existing motion, `[]` clears metadata while retaining assets, a list replaces all placements transactionally. Each item has `n`, `template`, optional `params`, `anchor`, `placement`, `ownership`, `reason` (1–500 chars). Every item passes shared layout/ownership/interval preflight before any renderer starts. Hook/stat default to decoration; sentence-pair derives actual cue-role replacement |
+| `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per retained group head or ungrouped line number |
 
 Motion anchors reuse insert anchors: `word` with the selected line's `cue_id` and copied 1-based `word` index,
 or `phrase`/`keyword` with cue ID and zero-based phrase index; manual `timeline` takes exact `start`.
@@ -161,7 +162,16 @@ index into a merged cue: omit the anchor to start at the group head. Hook/stat `
 `mode`, `targets:[{cue_id,roles}]`, and `caption_policy`; decoration preserves every caption. The shared
 validator rejects unsupported policies, collisions and incomplete held-event replacement. Explicit `null`
 is not a motion list. Layout conflicts abort the import without changing original project files.
-| `caption` | small translated caption | required only when the export's `caption_language` is not null; one string per retained group head or ungrouped line number |
+
+`POST /api/video/web-ai/preview` with `step: clip`, `operation: clip` and the bound answer stages the same
+subtitle/cut/motion operations in temporary metadata, without rendering, publishing changes or consuming the
+packet. It returns proposed subtitle events, motion content/ownership/canvas/bounds and the
+preserve/clear/replace action. Source and project identity are checked before and after staging. An empty
+answer previews a pending local answer file if present, otherwise returns `waiting: true`; it does not rename
+or consume that file. Manual tools can call `/api/video/draft/overlay-preview` with the apply request to review
+one motion. Both editor pages require preview then confirmation for pasted clip answers; editing JSON
+invalidates review. The existing empty local-agent autoimport lane remains available, but polling pauses
+when the user has typed an answer. A valid plan still requires visual/audio review.
 
 Grouping changes subtitle line numbers. Export a fresh packet before another answer; the backup and seal cover
 the merged draft, and no source footage is removed by grouping itself. The group head's styling is retained.

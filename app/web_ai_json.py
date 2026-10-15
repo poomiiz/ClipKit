@@ -243,6 +243,29 @@ def preview_inserts(path: str, text: str) -> dict[str, Any]:
         return {"operation": "inserts", "project": Path(path).name, "broll": _insert_rows(path, answer)}
 
 
+def preview_clip(path: str, text: str) -> dict[str, Any]:
+    with project_lock.writer(path, recover=False):
+        if not text.strip():
+            saved = answer_file("clip", path)
+            if not saved.is_file():
+                return {"waiting": True}
+            text = saved.read_text(encoding="utf-8-sig")
+            local_answer = text
+        else:
+            local_answer = None
+        answer = parse(text)
+        _head(answer, "clip", "project", Path(path).name)
+        if answer.get("operation") is not None:
+            raise VideoEditError("เลือกช่องตรวจภาพแทรกสำหรับคำตอบภาพแทรก")
+        result = transaction.preview_clip(path, answer,
+            lambda work: _prepare_clip(str(work), answer, preview=True))
+        import video_editor
+        result["motion_before"] = len(video_editor._overlays(path))
+        if local_answer is not None:
+            result["answer"] = local_answer
+        return result
+
+
 def parse(text: str) -> dict[str, Any]:
     """The AI's answer as pasted: bare JSON, or JSON inside a ```json block with words around it."""
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
@@ -302,7 +325,7 @@ def validate_subtitles(path: str, *, picks: dict | None = None, captions: dict |
                                     duration=duration)
 
 
-def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None) -> dict[str, Any]:
+def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None, preview=False) -> dict[str, Any]:
     """Run existing editing operations only inside the transaction staging folder."""
     _head(ans, "clip", "project", Path(path).name)
     if ans.get("operation") == "inserts":
@@ -416,6 +439,7 @@ def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None) -> dict
         kept = {s["id"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
         subs = [kept.get(s["id"], s) for s in subs]
     subtitle_events = validate_subtitles(path)
+    reviewed = []
     if motion:
         import insert_plan
         plans, candidates = [], []
@@ -434,14 +458,21 @@ def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None) -> dict
             plan = video_editor.prepare_overlay(request, previous=candidates)
             plans.append((request, plan))
             candidates.append(plan["candidate"])
-        # Every requested item must pass before the first renderer allocates an asset.
-        rendered = [video_editor.render_overlay(request, plan) for request, plan in plans]
-        atomic.write_text(folder / video_editor.OVERLAYS,
-                          json.dumps(sorted(rendered, key=lambda item: item["start"]), ensure_ascii=False,
-                                     indent=1, allow_nan=False), encoding="utf-8")
+        reviewed = [video_editor.overlay_plan(request, plan) for request, plan in plans]
+        if not preview:
+            # Every requested item must pass before the first renderer allocates an asset.
+            rendered = [video_editor.render_overlay(request, plan) for request, plan in plans]
+            atomic.write_text(folder / video_editor.OVERLAYS,
+                              json.dumps(sorted(rendered, key=lambda item: item["start"]), ensure_ascii=False,
+                                         indent=1, allow_nan=False), encoding="utf-8")
     if "motion" in ans:
         written.append(video_editor.OVERLAYS)
     out = {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
+    if preview:
+        out.update(project=Path(path).name, motion_plan=reviewed,
+                   motion_action="preserve" if "motion" not in ans else "replace" if motion else "clear",
+                   hook=hook, subtitle_events=[{key: event[key] for key in ("role", "text", "start", "end")}
+                                               for event in subtitle_events])
     return out
 
 

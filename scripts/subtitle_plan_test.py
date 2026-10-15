@@ -164,6 +164,7 @@ class ChannelPreflight(unittest.TestCase):
                 for line in answer["lines"][:2]:
                     line["items"][0].append({"look": "color"})
             with patch.object(api, "prepare_overlay", return_value={"candidate":{"start":0,"duration":1}}), \
+                    patch.object(api, "overlay_plan", return_value={}), \
                     patch.object(api, "render_overlay", return_value={"start":0}) as overlay:
                 self.f.import_answer(answer)
             request = overlay.call_args.args[0]
@@ -171,6 +172,7 @@ class ChannelPreflight(unittest.TestCase):
         answer = self.unmerged()
         answer["motion"] = [{"n": 3, "template": "sentence-pair"}]
         with patch.object(api, "prepare_overlay", return_value={"candidate":{"start":0,"duration":1}}), \
+                patch.object(api, "overlay_plan", return_value={}), \
                 patch.object(api, "render_overlay", return_value={"start":0}) as overlay:
             self.f.import_answer(answer)
         self.assertEqual(overlay.call_args.args[0].end, 4)

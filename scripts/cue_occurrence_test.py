@@ -86,6 +86,7 @@ class OccurrenceTests(unittest.TestCase):
                                          {"n": 2, "cue_id": "1", "items": [["normal", "keyword"]]}],
                   "motion": [{"n": 2, "template": "hook-title"}]}
         with patch.object(video_editor, "prepare_overlay", return_value={"candidate":{"start":0,"duration":1}}), \
+                patch.object(video_editor, "overlay_plan", return_value={}), \
                 patch.object(video_editor, "render_overlay", return_value={"start":0}) as overlay:
             web_ai_json.import_clip(self.path, answer)
         request = overlay.call_args.args[0]

@@ -10,6 +10,7 @@ async function checkEditor(failure = '', empty = false) {
   const nodes = {aiDownload: {}, aiImport: {}, aiAnswer: {value: empty ? '' : '{"cut":[1]}'}, aiMessage: {}}, calls = [], timers = [];
   let loads = 0;
   const context = {
+    aiReview:{clear(){},async check(){return true;}},
     $: id => nodes[id], PATH: 'project', SEL: {type: 'sub'},
     document: {createElement: () => ({click() {}})}, Blob: class {},
     URL: {createObjectURL: () => 'blob:test', revokeObjectURL() {}}, setTimeout: fn => timers.push(fn),
@@ -43,6 +44,7 @@ async function check(via, step = 'clip', fail = false, switched = false, pollFai
   const nodes = {}, calls = [], timers = [];
   let guide = 0, filmstrip = 0;
   const context = {
+    CKAIPlan:{review:()=>({clear(){},async check(){return true;}})},
     document: {getElementById: id => nodes[id] ||= {value: '{}'}, createElement: () => ({click() {}})},
     Blob: class {}, URL: {createObjectURL: () => 'blob:test', revokeObjectURL() {}},
     setTimeout: fn => timers.push(fn),
@@ -65,6 +67,7 @@ async function check(via, step = 'clip', fail = false, switched = false, pollFai
   timers.shift()();
   if (pollFailure) {
     await Object.entries(nodes).find(([id]) => id.endsWith('dl'))[1].onclick();
+    Object.entries(nodes).find(([id]) => id.endsWith('ta'))[1].value = '';
     timers.shift()(); // release the download URL
     await timers.shift()(); // saved answer imported, then timeline refresh rejects
     assert.equal(timers.length, 0, 'an imported cut answer must not be polled again after refresh fails');
@@ -94,9 +97,10 @@ function deferred() {
   return {promise, resolve, reject};
 }
 
-function legacy(overrides = {}) {
+function legacy(overrides = {}, reviewCheck = async()=>true) {
   const nodes = {}, calls = [], timers = [];
   const context = {
+    CKAIPlan:{review:()=>({clear(){},check:reviewCheck})},
     document: {getElementById: id => nodes[id] ||= {value: '{"cut":[1]}'}, createElement: () => ({click() {}})},
     Blob: class {}, URL: {createObjectURL: () => 'blob:test', revokeObjectURL() {}},
     setTimeout: (run, delay = 0) => timers.push({run, delay}),
@@ -140,6 +144,7 @@ async function checkSingleSubmissionLane() {
   for (const first of ['manual', 'poll']) {
     const pending = deferred(), l = legacy({'web-ai/import': () => pending.promise});
     await l.node('dl').onclick();
+    if (first === 'poll') l.node('ta').value = '';
     const active = first === 'poll' ? l.poll() : l.node('in').onclick();
     assert.equal(l.node('in').disabled, true);
     await l.node('in').onclick(); // even a direct/programmatic second click cannot duplicate the request
@@ -147,7 +152,7 @@ async function checkSingleSubmissionLane() {
     assert.equal(l.count('web-ai/import'), 1);
     pending.resolve({lines: 2, cut: 1});
     await active;
-    if (first === 'manual') await l.poll();
+    if (first === 'manual') assert.equal(l.timers.filter(t=>t.delay===3000).length,0,'typed input stops local polling');
     assert.equal(l.count('draft/prepare'), 1);
     assert.equal(l.node('in').disabled, false);
     assert.equal(l.node('ta').value, '');
@@ -160,8 +165,10 @@ async function checkOldGenerationResponses() {
     let imports = 0;
     const l = legacy({'web-ai/import': () => ++imports === 1 ? pending.promise : {lines: 2, cut: 1}});
     await l.node('dl').onclick();
+    l.node('ta').value = '';
     const stale = l.poll();
     await l.node('dl').onclick(); // a newer exported packet owns all further responses
+    l.node('ta').value = '{"cut":[1]}';
     const message = l.node('msg').textContent;
     if (fail) pending.reject(new Error('old poll failed'));
     else pending.resolve({lines: 2, cut: 1});
@@ -170,17 +177,17 @@ async function checkOldGenerationResponses() {
     assert.equal(l.node('msg').textContent, message);
     assert.equal(l.node('ta').value, '{"cut":[1]}');
     assert.equal(l.node('in').disabled, false);
-    await l.poll();
+    l.node('ta').value = ''; await l.poll();
     assert.equal(l.count('web-ai/import'), 2);
     assert.equal(l.count('draft/prepare'), 1);
   }
 
-  const timeline = deferred();
+  const timeline = deferred(), reachedTimeline = deferred();
   let reads = 0;
-  const l = legacy({'draft/timeline?path=project': () => ++reads === 1 ? timeline.promise : {via: 'capcut'}});
+  const l = legacy({'draft/timeline?path=project': () => { reachedTimeline.resolve(); return ++reads === 1 ? timeline.promise : {via: 'capcut'}; }});
   await l.node('dl').onclick();
   const stale = l.node('in').onclick();
-  await Promise.resolve(); await Promise.resolve();
+  await reachedTimeline.promise;
   await l.node('dl').onclick();
   timeline.resolve({via: 'capcut'});
   await stale;
@@ -189,6 +196,17 @@ async function checkOldGenerationResponses() {
   assert.equal(l.count('web-ai/import'), 1);
   await l.poll(); // current export timer
   assert.equal(l.count('draft/prepare'), 1);
+}
+
+async function checkTypedPreviewStopsLocalPoll() {
+  const l=legacy({},async()=>false);
+  await l.node('dl').onclick();
+  await l.node('in').onclick();
+  assert.equal(l.count('web-ai/import'),0);
+  await l.poll();
+  assert.equal(l.count('web-ai/import'),0,'local agent must not bypass a typed answer preview');
+  assert.equal(l.node('ta').value,'{"cut":[1]}');
+  assert.equal(l.timers.filter(t=>t.delay===3000).length,0);
 }
 
 async function checkRetryAndCommittedRefreshFailure() {
@@ -248,6 +266,7 @@ async function checkRetryAndCommittedRefreshFailure() {
   await checkEditor('', true);
   await checkSingleSubmissionLane();
   await checkOldGenerationResponses();
+  await checkTypedPreviewStopsLocalPoll();
   await checkRetryAndCommittedRefreshFailure();
   assert.match(editor, /\$\('aiDownload'\)\.onclick = downloadAi/);
   assert.match(editor, /\$\('aiImport'\)\.onclick = importAi/);

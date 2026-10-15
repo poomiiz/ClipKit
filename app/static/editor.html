@@ -87,6 +87,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   body.simple .media { display: none !important; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
+<link rel="stylesheet" href="/ai-plan.css?v=1"><script src="/ai-plan.js?v=1"></script>
 <script src="/ui.js?v=3"></script></head>
 <body>
 <main>
@@ -269,7 +270,9 @@ function side() {
   if (SEL.type === 'music') return sideMusic(s);
 }
 function back() { return '<button onclick="SEL=null;drawTL();side()">‹ ตั้งค่าทั้งคลิป</button>'; }
+let aiReview;
 async function downloadAi() {
+  aiReview.clear();
   const button = $('aiDownload');
   button.disabled = true;
   try {
@@ -285,15 +288,18 @@ async function downloadAi() {
 async function importAi() {
   const button = $('aiImport'), answer = $('aiAnswer').value;
   if (!answer.trim()) { $('aiMessage').textContent = 'วางคำตอบ JSON ก่อน'; return; }
+  $('aiMessage').textContent = '';
   button.disabled = true;
   try {
+    if (!await aiReview.check(answer)) return;
+    button.textContent = 'กำลังใช้…'; $('aiAnswer').disabled = true;
     await api('web-ai/import', {step: 'clip', target: PATH, answer});
     $('aiAnswer').value = ''; // imported cuts must not be submitted again if refresh fails
     SEL = null;
     await load();
     say('นำเข้าแล้ว · ดูตัวอย่างก่อนส่งออก');
-  } catch (e) { $('aiMessage').textContent = ckErr(e); }
-  finally { button.disabled = false; }
+  } catch (e) { aiReview.clear(); $('aiMessage').textContent = ckErr(e); }
+  finally { button.disabled = false; $('aiAnswer').disabled = false; }
 }
 function insertAiPanel() {
   let folder = '', reviewed = '';
@@ -365,7 +371,7 @@ function sideClip(s) {
     <div class="hint">${T.punch_picked ? 'มีคำเน้นแล้ว · ปรับเพิ่มได้' : 'ดาวน์โหลดไฟล์ให้ AI บนเว็บ'}</div>
     <div class="row"><button id="aiDownload">ไฟล์ให้ AI</button></div>
     <label for="aiAnswer">คำตอบ JSON</label><textarea class="ai-answer" id="aiAnswer" rows="4"></textarea>
-    <div class="row"><button id="aiImport">นำเข้าคำตอบ</button></div><div class="hint" id="aiMessage" role="status" aria-live="polite"></div>
+    <div id="aiPlan"></div><div class="row"><button id="aiImport">ตรวจแผน</button></div><div class="hint" id="aiMessage" role="status" aria-live="polite"></div>
     <details><summary>ใช้ agent ในเครื่อง</summary><div class="agent"><code>${esc(T.agent_command)}</code><button id="cp">คัดลอกคำสั่ง</button></div></details></details>
     <details class="ai-actions insert-panel media"><summary>คัดภาพแทรกด้วย AI</summary>
     <div class="hint">เลือกโฟลเดอร์ภาพ แล้วส่งไฟล์คำสั่งพร้อมภาพรวมให้ AI</div>
@@ -458,6 +464,8 @@ function sideClip(s) {
   $('cp').onclick = () => navigator.clipboard.writeText(T.agent_command).then(() => $('cp').textContent = '✓ คัดลอกแล้ว');
   $('aiDownload').onclick = downloadAi;
   $('aiImport').onclick = importAi;
+  aiReview = CKAIPlan.review($('aiAnswer'), $('aiImport'), $('aiPlan'),
+    answer => api('web-ai/preview', {step:'clip', target:PATH, answer}));
   insertAiPanel();
   $('fx').onchange = e => { PL.sfx.on = e.target.checked; savePL(); };
   $('fxv').onchange = e => { PL.sfx.volume = +e.target.value; savePL(); };

@@ -52,6 +52,77 @@ class TransactionTests(unittest.TestCase):
     def files(self):
         return {n: f.read_bytes() for n, f in transaction._files(self.folder).items()}
 
+    def tree(self):
+        return {file.relative_to(self.folder).as_posix():file.read_bytes()
+                for file in self.folder.rglob('*') if file.is_file()}
+
+    def test_motion_preview_uses_actual_word_time_without_project_or_receipt_writes(self):
+        answer=copy.deepcopy(self.answer)
+        answer['motion']=[{'n':1,'template':'hook-title','params':{'key':'keyword','duration':1},
+                          'anchor':{'kind':'word','cue_id':'0','word':2}}]
+        before=self.tree()
+        metadata={'duration':8,'width':1920,'height':1080,'fps':30}
+        with patch.object(kit_settings,'make_motion') as make, patch.object(render,'probe',return_value=metadata), \
+                patch.object(draft_quality,'probe',return_value=metadata):
+            result=web.preview_clip(self.path,json.dumps(answer))
+            self.assertEqual(web.preview_clip(self.path,json.dumps(answer)),result)
+        make.assert_not_called()
+        self.assertEqual(self.tree(),before)
+        self.assertIsNone(transaction.receipt('clip',self.path,answer))
+        self.assertEqual(result['motion_action'],'replace')
+        self.assertEqual(result['motion_plan'][0]['start'],4)
+        self.assertNotIn(str(self.folder),json.dumps(result))
+
+    def test_motion_preview_resolves_anchor_after_proposed_cut(self):
+        answer=copy.deepcopy(self.answer);answer['cut']=[1];answer['lines'][0]={'n':1,'cue_id':'0'}
+        answer['motion']=[{'n':2,'template':'hook-title','params':{'key':'next','duration':1},
+                          'anchor':{'kind':'word','cue_id':'1','word':1}}]
+        before=self.tree();metadata={'duration':8,'width':1920,'height':1080,'fps':30}
+        with patch.object(kit_settings,'make_motion') as make, patch.object(render,'probe',return_value=metadata), \
+                patch.object(draft_quality,'probe',return_value=metadata):
+            result=web.preview_clip(self.path,json.dumps(answer))
+        make.assert_not_called();self.assertEqual(self.tree(),before)
+        self.assertEqual(result['cut'],1)
+        self.assertEqual(result['motion_plan'][0]['start'],2)
+
+    def test_preview_reports_preserve_and_clear_without_mutating_list(self):
+        before=self.tree()
+        self.assertEqual(web.preview_clip(self.path,json.dumps(self.answer))['motion_action'],'preserve')
+        self.assertEqual(web.preview_clip(self.path,json.dumps({**self.answer,'motion':[]}))['motion_action'],'clear')
+        self.assertEqual(self.tree(),before)
+
+    def test_local_answer_preview_keeps_file_and_packet_unconsumed(self):
+        before=self.tree()
+        self.assertEqual(web.preview_clip(self.path,' '),{'waiting':True})
+        saved=web.answer_file('clip',self.path);payload=json.dumps(self.answer)
+        saved.write_text(payload,encoding='utf-8');before=self.tree()
+        result=web.preview_clip(self.path,'')
+        self.assertEqual(result['answer'],payload)
+        self.assertEqual(result['motion_before'],0)
+        self.assertEqual(self.tree(),before)
+
+    def test_preview_http_route_never_calls_renderer_or_changes_project(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        app=FastAPI();app.include_router(video_editor.router);before=self.tree()
+        with TestClient(app) as client, patch.object(kit_settings,'make_motion') as make:
+            result=client.post('/api/video/web-ai/preview',json={'step':'clip','target':self.path,'answer':json.dumps(self.answer)})
+            self.assertEqual(result.status_code,200)
+            self.assertEqual(result.json()['motion_action'],'preserve')
+            bad=client.post('/api/video/web-ai/preview',json={'step':'stories','target':self.path,'answer':json.dumps(self.answer)})
+            self.assertEqual(bad.status_code,400)
+        make.assert_not_called();self.assertEqual(self.tree(),before)
+
+    def test_preview_rejects_changed_source_and_retains_new_external_edit(self):
+        old=web._prepare_clip
+        def changed(*args,**kwargs):
+            result=old(*args,**kwargs)
+            (self.folder/'clipkit_hook.json').write_text('[{"text":"external edit","color":"red"}]')
+            return result
+        with patch.object(web,'_prepare_clip',side_effect=changed), self.assertRaisesRegex(web.VideoEditError,'เปลี่ยน'):
+            web.preview_clip(self.path,json.dumps(self.answer))
+        self.assertEqual(json.loads((self.folder/'clipkit_hook.json').read_text())[0]['text'],'external edit')
+
     def test_exact_retry_after_cut_and_new_export_returns_receipt_without_cutting_again(self):
         self.answer["cut"] = [1]
         self.answer["lines"][0] = {"n": 1, "cue_id": "0"}

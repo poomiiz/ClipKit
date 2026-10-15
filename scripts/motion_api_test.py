@@ -40,6 +40,18 @@ class MotionApiTests(unittest.TestCase):
         return video_editor.OverlayRequest(path=self.path, template="hook-title", start=1.123456,
                                           end=3.234567, text="literal", **values)
 
+    def test_manual_preview_keeps_metadata_and_does_not_allocate_renderer(self):
+        self.file.write_text('[{"start":6,"duration":1,"file":"original.mov"}]',encoding='utf-8')
+        before=self.file.read_bytes()
+        result=video_editor.draft_overlay_preview(self.req())
+        self.make.assert_not_called();self.assertEqual(self.file.read_bytes(),before)
+        self.assertEqual(result['start'],1.123456)
+        self.assertNotIn(self.path,json.dumps(result))
+        with patch.object(video_editor.project_lock,'writer',side_effect=video_editor.VideoEditError('busy')), \
+                self.assertRaises(video_editor.HTTPException) as error:
+            video_editor.draft_overlay_preview(self.req())
+        self.assertEqual(error.exception.status_code,400)
+
     def test_close_start_never_deletes_old_motion_or_allocates_renderer(self):
         before = [{"placement_id": "old", "start": 1.13, "duration": .5, "file": "old.mov"}]
         self.file.write_text(json.dumps(before), encoding="utf-8")
