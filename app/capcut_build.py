@@ -13,6 +13,7 @@ import atomic
 import host_platform
 import copy
 import json
+import cue_data
 import shutil
 import tempfile
 import threading
@@ -257,11 +258,11 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     en = t.get("caption_en") or {}
     thai = bool(P) and P["caption_lang"] == "th"  # the whole spoken line, going on with the voice
     if thai:
-        en = {p["line"]: render.unbreak(p["line"]) for p in phrases}
+        en = {cue_data.phrase_key(p): render.unbreak(p["line"]) for p in phrases}
     if P and P["caption"] and en:
         spans: dict[str, list[float]] = {}
         for p in t["phrases"]:
-            s = spans.setdefault(p["line"], [p["start"], p["end"]])
+            s = spans.setdefault(cue_data.phrase_key(p), [p["start"], p["end"]])
             s[1] = max(s[1], p["end"])
         captions = [c for line, (a, b) in spans.items() if en.get(line)
                     for c in _texts(draft, "caption", en[line], a, b, P["caption"][1], P["caption"][0], None, None, W, H, st)]

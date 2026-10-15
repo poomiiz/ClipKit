@@ -553,7 +553,7 @@ def web_ai_answers_are_checked():
         proj = Path(t) / "proj"
         proj.mkdir()
         keep = capcut_edit.read_draft
-        capcut_edit.read_draft = lambda p: {"subtitles": [{"start": 0.0, "end": 2.0, "text": "เงินไม่พอใช้"}]}
+        capcut_edit.read_draft = lambda p: {"subtitles": [{"id": "cue-1", "start": 0.0, "end": 2.0, "text": "เงินไม่พอใช้"}]}
         try:
             web_ai.export_clip(str(proj))
             assert "ยาวราว" not in web_ai.export_clip(str(proj)).read_text(encoding="utf-8")
@@ -574,7 +574,7 @@ def web_ai_answers_are_checked():
         finally:
             capcut_edit.read_draft = keep
         punch = json.loads((proj / "clipkit_punch.json").read_text(encoding="utf-8"))
-        assert punch == {"เงินไม่พอใช้": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}, punch
+        assert punch == {"cue:cue-1": [["เงิน", "ไม่พอใช้", "empty wallet", {"look": "red"}]]}, punch
         assert json.loads((proj / "clipkit_hook.json").read_text(encoding="utf-8"))[0]["color"] == "red"
 
 

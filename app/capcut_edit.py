@@ -9,6 +9,7 @@ from __future__ import annotations
 import atomic
 import copy
 import json
+import cue_data
 import math
 import os
 import re
@@ -375,6 +376,22 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
     draft = _load(folder)
     index = _index(draft)
     text = _text_track(draft)
+    old_rows = read_draft(path)["subtitles"]
+    carried_words = (cue_data.load(folder, "clipkit_words.json", old_rows)
+                     if not replace or not all(s.get("id") and s.get("words") is not None for s in subs) else {})
+    supplied_ids = [s["id"] for s in subs if s.get("id")]
+    if any(not isinstance(i, str) for i in supplied_ids) or len(set(supplied_ids)) != len(supplied_ids):
+        raise VideoEditError("cue ID ของซับต้องไม่ซ้ำกัน")
+    if not replace and set(supplied_ids) & {s["id"] for s in (text or {}).get("segments", [])}:
+        raise VideoEditError("cue ID นี้มีอยู่แล้ว · โหลดซับใหม่ก่อนเพิ่ม")
+    for sub in subs:
+        words = sub.get("words")
+        if words is None:
+            continue
+        if not isinstance(words, list) or any(not isinstance(w, list) or len(w) != 3
+                or not isinstance(w[2], str) or any(isinstance(t, bool) or not isinstance(t, (int, float))
+                or not math.isfinite(t) for t in w[:2]) or not 0 <= w[0] <= w[1] for w in words):
+            raise VideoEditError("เวลาระดับคำของซับไม่ถูกต้อง")
     if text is None:
         text = {"type": "text", "attribute": 0, "flag": 0, "segments": [],
                 "id": str(uuid.uuid4()).upper(), "is_default_name": True}
@@ -439,7 +456,8 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
         draft["materials"]["texts"].append(material)
 
         segment = copy.deepcopy(template_seg)
-        segment["id"] = str(uuid.uuid4()).upper()
+        matches = [row for row in old_rows if abs(row["start"] - start) < .01 and abs(row["end"] - end) < .01]
+        segment["id"] = sub.get("id") or (matches[0]["id"] if replace and len(matches) == 1 else str(uuid.uuid4()).upper())
         segment["material_id"] = material["id"]
         segment["target_timerange"] = {"start": int(round(start * US)),
                                        "duration": int(round((end - start) * US))}
@@ -450,7 +468,13 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
         made.append(segment)
 
     text["segments"] = sorted(keep + made, key=lambda s: s["target_timerange"]["start"])
+    if len({s["id"] for s in text["segments"]}) != len(text["segments"]):
+        raise VideoEditError("cue ID ของซับซ้ำกัน · ตรวจช่วงซับก่อนบันทึก")
     _save(folder, draft, "subs")
+    carried_words.update({cue_data.key(s["id"]): s["words"] for s in subs if s.get("id") and s.get("words") is not None})
+    active_ids = {cue_data.key(s["id"]) for s in text["segments"]}
+    if carried_words or (folder / "clipkit_words.json").is_file():
+        cue_data.save(folder, "clipkit_words.json", {k: v for k, v in carried_words.items() if k in active_ids})
     return {"name": folder.name, "subtitles": len(text["segments"]), "added": len(made)}
 
 
@@ -470,8 +494,8 @@ def merge_subtitles(path: str, groups: list[tuple[int, int]], *, dry: bool = Fal
         previous = last
     ends = dict(groups)
     words_file = folder / "clipkit_words.json"
-    said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
-    planned, segments = [], []
+    said = cue_data.load(folder, "clipkit_words.json", rows)
+    planned, segments, associations = [], [], {}
     by_id = {s["id"]: s for s in track["segments"]}
     n = 1
     while n <= len(rows):
@@ -482,16 +506,17 @@ def merge_subtitles(path: str, groups: list[tuple[int, int]], *, dry: bool = Fal
             head.update(text=" ".join(s["text"].replace("\n", " ") for s in members), end=members[-1]["end"])
         clock = []
         for row in members:
-            if not said.get(row["text"]):
+            if not said.get(cue_data.key(row["id"])):
                 clock = []
                 break
             offset = row["start"] - head["start"]
-            clock += [[round(a + offset, 6), round(b + offset, 6), word] for a, b, word in said[row["text"]]]
+            clock += [[round(a + offset, 6), round(b + offset, 6), word] for a, b, word in said[cue_data.key(row["id"])]]
         head["words"] = clock
         planned.append(head)
         if not dry:
             segment = by_id[head["id"]]
             if last > n:
+                associations[head["id"]] = [row["id"] for row in members]
                 material = copy.deepcopy(index[segment["material_id"]][1])
                 material["id"] = segment["material_id"] = str(uuid.uuid4()).upper()
                 draft["materials"]["texts"].append(material)
@@ -501,13 +526,14 @@ def merge_subtitles(path: str, groups: list[tuple[int, int]], *, dry: bool = Fal
                     style["range"] = [0, len(head["text"])]
                 material["content"] = json.dumps(body, ensure_ascii=False)
                 segment["target_timerange"]["duration"] = round((head["end"] - head["start"]) * US)
-                said[head["text"]] = clock
+                said[cue_data.key(head["id"])] = clock
             segments.append(segment)
         n = last + 1
     if not dry and groups:
         track["segments"] = segments
         _save(folder, draft, "merge_subs")
-        atomic.write_text(words_file, json.dumps(said, ensure_ascii=False), encoding="utf-8")
+        cue_data.save(folder, "clipkit_words.json", said)
+        cue_data.record_sources(folder, associations)
         atomic.write_text(folder / "clipkit_lines.json", json.dumps([s["text"] for s in planned], ensure_ascii=False), encoding="utf-8")
     return planned
 
@@ -605,7 +631,7 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
     W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
     said_file, style_file = folder / "clipkit_words.json", folder / "clipkit_style.json"
-    said = json.loads(said_file.read_text(encoding="utf-8")) if said_file.is_file() else {}
+    said = cue_data.load(folder, "clipkit_words.json", read_draft(path)["subtitles"])
     box_w = render.safe_box(json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {})["w"]
     rows = []
     for seg in sorted(track["segments"], key=lambda s: s["target_timerange"]["start"]):
@@ -614,10 +640,11 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
             continue
         text = json.loads(material["content"]).get("text", "")
         start = seg["target_timerange"]["start"] / US
-        rows.append({"seg": seg, "material": material, "start": start, "spoken": said.get(text),
+        rows.append({"seg": seg, "material": material, "start": start, "spoken": said.get(cue_data.key(seg["id"])),
                      "end": start + seg["target_timerange"]["duration"] / US, "text": text})
     moved = render.carry_joiners(rows)
     segments, words, two, split, shrunk = [], dict(said), 0, 0, 0
+    associations = {}
     for row in rows:
         fdir, px = render.text_px(row["material"], row["seg"], W, H)
         pieces = render.split_sub(row["text"], row["spoken"], row["start"], row["end"], fdir, px, W * box_w, mode)
@@ -629,6 +656,8 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
                 seg["id"], material["id"] = str(uuid.uuid4()).upper(), str(uuid.uuid4()).upper()
                 seg["material_id"] = material["id"]
                 draft["materials"]["texts"].append(material)
+            if len(pieces) > 1:
+                associations[seg["id"]] = [row["seg"]["id"]]
             body = json.loads(material["content"])
             body["text"] = text
             for style in body["styles"]:
@@ -642,11 +671,12 @@ def tidy_subtitles(path: str, mode: str = "lines") -> dict[str, Any]:
             seg["target_timerange"] = {"start": int(round(a * US)), "duration": int(round((b - a) * US))}
             two += "\n" in text
             if spoken:
-                words[text] = spoken
+                words[cue_data.key(seg["id"])] = spoken
             segments.append(seg)
     track["segments"] = segments
     _save(folder, draft, "tidy")
-    atomic.write_text(said_file, json.dumps(words, ensure_ascii=False), encoding="utf-8")
+    cue_data.save(folder, "clipkit_words.json", words)
+    cue_data.record_sources(folder, associations)
     return {"name": folder.name, "mode": mode, "subtitles": len(segments), "two_lines": two, "split": split,
             "shrunk": shrunk, "moved_words": moved}
 
@@ -677,10 +707,10 @@ def subtitles_language(path: str, lang: str) -> dict[str, Any]:
         if not isinstance(texts, list) or len(texts) != len(thai):
             raise VideoEditError(f"clipkit_subs_en.json has {len(texts) if isinstance(texts, list) else '?'} lines "
                                  f"for {len(thai)} Thai lines - ask the agent to translate again")
-        subs = [{"start": s["start"], "end": s["end"], "text": str(t)} for s, t in zip(thai, texts)]
+        subs = [{**s, "text": str(t)} for s, t in zip(thai, texts)]
     elif lang == "th":
         src = json.loads(keep.read_text(encoding="utf-8")) if keep.is_file() else current
-        subs = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in src]
+        subs = [dict(s) for s in src]
     else:
         raise VideoEditError(f"unknown language: {lang}")
     out = set_subtitles(path, subs, replace=True, **SUBS_PRESET)
@@ -736,7 +766,7 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     cuts: list[dict[str, float]] = []
     total = sum(s["source_timerange"]["duration"] for s in video["segments"]) / US
     words_file = folder / "clipkit_words.json"
-    said = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
+    said = cue_data.load(folder, "clipkit_words.json", read_draft(path)["subtitles"])
     # breaths and pauses against the clip's own noise floor (a fixed silence gate finds nothing under café
     # noise), ~0.1 s left each side. Tuned on café footage: 41 cuts / 20 s out of 118 s with every word
     # still there on re-transcription - a hand edit of the same talk has 40.
@@ -757,7 +787,7 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
         cursor += length
     if ranges is None and said:
         protected = sorted((sub["start"] + a - WORD_PAD, sub["start"] + b + WORD_PAD)
-                           for sub in read_draft(path)["subtitles"] for a, b, _ in said.get(sub["text"], []))
+                           for sub in read_draft(path)["subtitles"] for a, b, _ in said.get(cue_data.key(sub["id"]), []))
         safe = []
         for cut in cuts:
             parts = [(cut["start"], cut["end"])]
@@ -888,11 +918,11 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
 
     if words_file.is_file():  # word times are relative to their line, and cuts inside a line move them too
         for sub in original_subs:
-            if sub["text"] in said:
+            if cue_data.key(sub["id"]) in said:
                 s0 = shifted(sub["start"])
-                said[sub["text"]] = [[round(shifted(sub["start"] + a) - s0, 6), round(shifted(sub["start"] + b) - s0, 6), w]
-                                     for a, b, w in said[sub["text"]]]
-        atomic.write_text(words_file, json.dumps(said, ensure_ascii=False), encoding="utf-8")
+                said[cue_data.key(sub["id"])] = [[round(shifted(sub["start"] + a) - s0, 6), round(shifted(sub["start"] + b) - s0, 6), w]
+                                     for a, b, w in said[cue_data.key(sub["id"])]]
+        cue_data.save(folder, "clipkit_words.json", said)
     draft["duration"] = timeline
     _save(folder, draft, "trim")
     for file, data in sidecars.items():
@@ -984,21 +1014,18 @@ def transcribe_draft(path: str) -> dict[str, Any]:
         raise VideoEditError(f"source video not found: {source}")
 
     lines: list[dict[str, Any]] = []
-    words: dict[str, list[list[Any]]] = {}
     cursor = 0.0
     for segment in _video_track(draft)["segments"]:
         start = segment["source_timerange"]["start"] / US
         length = segment["source_timerange"]["duration"] / US
         for phrase in _from_transcript(source, start, start + length) or transcribe(source, start, start + length):
-            lines.append({"start": round(cursor + phrase["start"], 2),
+            cue_id = str(uuid.uuid4()).upper()
+            spoken = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
+                      for a, b, w in phrase.get("words", [])]
+            lines.append({"id": cue_id, "words": spoken, "start": round(cursor + phrase["start"], 2),
                           "end": round(cursor + phrase["end"], 2),
                           "text": phrase["text"]})
-            # word times relative to the line start, keyed by the line: they stay right after trims move the line
-            words[phrase["text"]] = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
-                                     for a, b, w in phrase.get("words", [])]
         cursor += length
-    # spoken word times per subtitle line, for the word-by-word highlight in the MP4 export
-    atomic.write_text((folder / "clipkit_words.json"), json.dumps(words, ensure_ascii=False), encoding="utf-8")
 
     lines.sort(key=lambda p: p["start"])
     for first, second in zip(lines, lines[1:]):
@@ -1483,8 +1510,9 @@ def fill_subtitle_gaps(path: str, min_gap: float = 1.0, preview: bool = False,
                 end = min(lo + phrase["end"], hi)
                 if end - start < 0.3:
                     continue
-                lines.append({"start": round(start, 2), "end": round(end, 2),
-                              "text": phrase["text"]})
+                lines.append({"id": str(uuid.uuid4()).upper(), "start": round(start, 2), "end": round(end, 2),
+                              "text": phrase["text"], "words": [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
+                                  for a, b, w in phrase.get("words", [])]})
 
     lines.sort(key=lambda p: p["start"])
     for first, second in zip(lines, lines[1:]):
@@ -1502,7 +1530,7 @@ def fill_subtitle_gaps(path: str, min_gap: float = 1.0, preview: bool = False,
     return result
 
 
-def relisten(path: str, text: str, pad: float = 0.4) -> str:
+def relisten(path: str, text: str, pad: float = 0.4, cue_id: str | None = None) -> str:
     """What the speech model hears again over one subtitle line's time (a little wider), for a line that reads
     cut short or missing words. Nothing on the timeline changes."""
     from video_edit import transcribe
@@ -1511,9 +1539,7 @@ def relisten(path: str, text: str, pad: float = 0.4) -> str:
     source = next((m.get("path") for m in draft["materials"].get("videos", []) if m.get("path")), None)
     if not source or not Path(source).is_file():
         raise VideoEditError(f"source video not found: {source}")
-    line = next((s for s in read_draft(path)["subtitles"] if s["text"] == text), None)
-    if line is None:
-        raise VideoEditError(f"subtitle line not found: {text}")
+    line = cue_data.select(read_draft(path)["subtitles"], text, cue_id)
     heard = []
     for tl_start, tl_end, src_start in timeline_to_source(draft):
         lo, hi = max(line["start"] - pad, tl_start), min(line["end"] + pad, tl_end)
@@ -1523,16 +1549,17 @@ def relisten(path: str, text: str, pad: float = 0.4) -> str:
     return " ".join(heard)
 
 
-def set_line_time(path: str, text: str, start: float, end: float) -> dict[str, Any]:
+def set_line_time(path: str, text: str, start: float, end: float, cue_id: str | None = None) -> dict[str, Any]:
     """Move / stretch one subtitle line on the timeline (the timeline editor)."""
     if end - start < 0.3:
         raise VideoEditError("a subtitle line must last at least 0.3 s")
     folder = Path(path)
+    selected = cue_data.select(read_draft(path)["subtitles"], text, cue_id)
     draft = _load(folder)
     index = _index(draft)
     for seg in (_text_track(draft) or {}).get("segments", []):
         m = index.get(seg["material_id"], (None, None))[1]
-        if m and json.loads(m["content"]).get("text") == text:
+        if m and seg["id"] == selected["id"]:
             seg["target_timerange"] = {"start": int(round(start * US)), "duration": int(round((end - start) * US))}
             _save(folder, draft, "linetime")
             return {"start": start, "end": end}
@@ -1571,10 +1598,17 @@ def _repick(picked: list, old: str, new: str) -> list:
     return out
 
 
-def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
+def set_line_text(path: str, old: str, new: str, cue_id: str | None = None) -> dict[str, Any]:
     """Change one subtitle line's words (the timeline editor). The ClipKit side files keyed by the line text
     (word times, punch picks) are moved to the new text so they stay attached."""
     folder = Path(path)
+    rows = read_draft(path)["subtitles"]
+    selected = cue_data.select(rows, old, cue_id)
+    sidecars = {name: cue_data.load(folder, name, rows) for name in
+                ("clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json")}
+    selected_key = cue_data.key(selected["id"])
+    if selected_key in sidecars["clipkit_punch.json"]:
+        sidecars["clipkit_punch.json"][selected_key] = _repick(sidecars["clipkit_punch.json"][selected_key], old, new)
     draft = _load(folder)
     index = _index(draft)
     text = _text_track(draft)
@@ -1584,8 +1618,12 @@ def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
         if not m:
             continue
         body = json.loads(m["content"])
-        if body.get("text") != old:
+        if seg["id"] != selected["id"]:
             continue
+        if sum(s["material_id"] == seg["material_id"] for s in text["segments"]) > 1:
+            m = copy.deepcopy(m)
+            m["id"] = seg["material_id"] = str(uuid.uuid4()).upper()
+            draft["materials"]["texts"].append(m)
         body["text"] = new
         for st in body.get("styles", []):
             st["range"] = [0, len(new)]
@@ -1596,13 +1634,8 @@ def set_line_text(path: str, old: str, new: str) -> dict[str, Any]:
     _save(folder, draft, "linetext")
     import spelling
     spelling.learn(old, new)  # the words fixed by hand are fixed in the next transcripts too
-    for name in ("clipkit_words.json", "clipkit_punch.json"):
+    for name, data in sidecars.items():
         f = folder / name
         if f.is_file():
-            data = json.loads(f.read_text(encoding="utf-8"))
-            if old in data:
-                data[new] = data.pop(old)
-                if name == "clipkit_punch.json":
-                    data[new] = _repick(data[new], old, new)
-                atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+            cue_data.save(folder, name, data)
     return {"changed": hit}

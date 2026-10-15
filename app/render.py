@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import atomic
 import json
+import cue_data
 import math
 import re
 import subprocess
@@ -634,7 +635,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         if a < held.get("until", 0):  # the clip title owns the screen for its first seconds
             white = colour = ""
         if marks is not None:  # moments for sound effects, b-roll, and the editor's timeline
-            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts, round(hit if white else a, 2)))
+            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts, round(hit if white else a, 2), held.get("cue_id")))
             if colour:
                 marks.append(("pop", hit if white else a))
             if query:
@@ -655,7 +656,7 @@ def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, 
         if look["caption"] and not held.get("en") and not thai:
             out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
     # the preset's small bottom caption, one translated line per spoken line (clipkit_caption.json, by the agent)
-    en = (held.get("en") or {}).get(text)
+    en = (held.get("en") or {}).get(cue_data.key(held["cue_id"]) if held.get("cue_id") else text)
     if look["caption"] and phrases and (thai or en):  # shown under the title too
         out.append(line(unbreak(text) if thai else en, look["caption"], phrases[0][2], t1))
     return out
@@ -838,13 +839,14 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     anim, highlight = style.get("anim", "none"), style.get("highlight", [1, 0.83, 0])
     if anim.startswith("pair-"):  # projects made before presets: that look is now the with-caption preset
         anim, style["preset"] = "pair", style.get("preset") or "with-caption"
-    said = _json(folder / "clipkit_words.json", {})
-    punches = _json(folder / "clipkit_punch.json", {})  # punch words picked by the agent (ClipKit: เลือกคำเน้น)
+    cue_rows = capcut_edit.read_draft(path)["subtitles"]
+    said = cue_data.load(folder, "clipkit_words.json", cue_rows)
+    punches = cue_data.load(folder, "clipkit_punch.json", cue_rows)
     marks: list = []  # ("pop", t) at each punch, ("broll", a, b, query) where the agent asked for b-roll
     shown = 0
     estimated = 0  # lines with no word times (typed by hand, or English): highlight paced by letters instead
     hook = _hook(folder)
-    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": _json(folder / "clipkit_caption.json", {}),
+    held = {"white": "", "until": HOOK_DUR if hook else 0, "en": cue_data.load(folder, "clipkit_caption.json", cue_rows),
             "box": safe_box(style), "motions": overlays}
     text_segments = sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"])
     for line_number, s in enumerate(text_segments):
@@ -872,20 +874,21 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                 font_files.add(fdir)
             t1 = (text_segments[line_number + 1]["target_timerange"]["start"] / US
                   if line_number + 1 < len(text_segments) else sum(seg["target_timerange"]["duration"] for seg in segs) / US)
-            spoken = said.get(body.get("text", ""))
+            held["cue_id"] = s["id"]
+            spoken = said.get(cue_data.key(s["id"]))
             estimated += not bool(spoken)
             events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            pair, punches.get(body.get("text", "")), marks=marks, held=held)
+                            pair, punches.get(cue_data.key(s["id"])), marks=marks, held=held)
             shown += 1
             continue
-        marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, ""))
+        marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, "", None, t0, s["id"]))
         lines, fitted = _fit(body.get("text", ""), fdir, size, W * held["box"]["w"])
         if fitted < size:
             held.setdefault("shrunk", []).append({"at": round(t0, 2), "text": body.get("text", "")})
         size = fitted
         y = _safe_y(y, len(lines) * size, H, held)
         if anim == "karaoke":
-            spoken = said.get(body.get("text", ""))
+            spoken = said.get(cue_data.key(s["id"]))
             estimated += not bool(spoken)
             pieces = [(t0 + a, t0 + b, w) for a, b, w in
                       _karaoke(lines, spoken, t1 - t0, _ass_color(fill), _ass_color(highlight))]
@@ -1015,7 +1018,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                     "progress": bool(style.get("progress")), "emoji": emoji,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None,
-                                 "hit": m[9] if len(m) > 9 else m[1]} for m in marks if m[0] == "phrase"],
+                                 "hit": m[9] if len(m) > 9 else m[1], "cue_id": m[10] if len(m) > 10 else None} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "quality": quality, "music": {"file": music_file or "", "volume": music_vol},
                     "sfx": fx, "edited": placed is not None, "shrunk": held.get("shrunk", []), "source": src, "src_w": info["width"], "src_h": info["height"],
                     "fit": {"w": vw, "h": vh, "x": ox, "y": oy},

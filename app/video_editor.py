@@ -7,6 +7,7 @@ import jobstore
 import subprocess
 import sys
 import json
+import cue_data
 import re
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,8 @@ class SubtitleStyle(BaseModel):
 
 
 class SubtitleIn(BaseModel):
+    id: str | None = None
+    words: list[list[Any]] | None = None
     start: float
     end: float
     text: str
@@ -933,6 +936,7 @@ class OverlayRequest(BaseModel):
     end: float
     text: str
     params: dict[str, Any] | None = None   # the template's fields; None = made from text (QUICK_MOTION only)
+    cue_id: str | None = None
 
 
 @router.post("/draft/overlay")
@@ -953,6 +957,7 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
                 timeline = render.render_draft(req.path, "", dry=True)
                 tight = lambda text: "".join(render.unbreak(text).split())
                 phrases = [p for p in timeline["phrases"] if p["end"] > req.start and p["start"] < req.end
+                           and (req.cue_id is None or p.get("cue_id") == req.cue_id)
                            and (tight(p["line"]) == tight(req.text) or tight(p["lead"] + p["punch"]) == tight(req.text))]
                 if not phrases:
                     raise VideoEditError("หาประโยคและเวลาคำเน้นไม่พบ · เลือกบรรทัดจาก Timeline อีกครั้ง")
@@ -1297,7 +1302,7 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     d = capcut_edit.read_draft(path)
-    t["subs"] = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in d["subtitles"]]
+    t["subs"] = [{"id": s["id"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in d["subtitles"]]
     t["name"], t["source"] = d["name"], d["source"]
     import kit_settings
     cfg = kit_settings._read_config()
@@ -1314,6 +1319,7 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
 class PhraseEdit(BaseModel):
     path: str
     line: str                  # the subtitle line this phrase belongs to (current text)
+    cue_id: str | None = None
     pairs: list[list[str | dict[str, Any]]]  # every phrase of that line: [lead, punch, query?, options?]
 
 
@@ -1321,17 +1327,18 @@ class PhraseEdit(BaseModel):
 def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
     """Save the editor's split / words / b-roll search for one subtitle line. New words also change the line."""
     folder = Path(req.path)
+    rows = capcut_edit.read_draft(req.path)["subtitles"]
+    selected = cue_data.select(rows, req.line, req.cue_id)
+    data = cue_data.load(folder, "clipkit_punch.json", rows)
     new = "".join(p[0] + p[1] for p in req.pairs)
     if "".join(new.split()) != "".join(req.line.split()):
-        capcut_edit.set_line_text(req.path, req.line, " ".join((p[0] + " " + p[1]).strip() for p in req.pairs))
+        capcut_edit.set_line_text(req.path, req.line, " ".join((p[0] + " " + p[1]).strip() for p in req.pairs), selected["id"])
         line = " ".join((p[0] + " " + p[1]).strip() for p in req.pairs)
     else:
         line = req.line
-    f = folder / "clipkit_punch.json"
-    data = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
-    data[line] = req.pairs
-    atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"line": line}
+    data[cue_data.key(selected["id"])] = req.pairs
+    cue_data.save(folder, "clipkit_punch.json", data)
+    return {"line": line, "cue_id": selected["id"]}
 
 
 class LookRequest(BaseModel):
@@ -1397,6 +1404,7 @@ def draft_auto_color(req: DraftPath) -> dict[str, Any]:
 class LineTime(BaseModel):
     path: str
     line: str
+    cue_id: str | None = None
     start: float = Field(ge=0)
     end: float
 
@@ -1404,7 +1412,7 @@ class LineTime(BaseModel):
 @router.post("/draft/line-time")
 def draft_line_time(req: LineTime) -> dict[str, Any]:
     try:
-        return capcut_edit.set_line_time(req.path, req.line, req.start, req.end)
+        return capcut_edit.set_line_time(req.path, req.line, req.start, req.end, req.cue_id)
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -1443,19 +1451,21 @@ def draft_hook(req: HookEdit) -> dict[str, Any]:
 class CaptionEdit(BaseModel):
     path: str
     line: str
+    cue_id: str | None = None
     text: str
 
 
 @router.post("/draft/caption")
 def draft_caption(req: CaptionEdit) -> dict[str, Any]:
     """The small translated caption of one spoken line (empty = none for that line)."""
-    f = Path(req.path) / "clipkit_caption.json"
-    data = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    rows = capcut_edit.read_draft(req.path)["subtitles"]
+    selected = cue_data.select(rows, req.line, req.cue_id)
+    data = cue_data.load(req.path, "clipkit_caption.json", rows)
     if req.text.strip():
-        data[req.line] = req.text.strip()
+        data[cue_data.key(selected["id"])] = req.text.strip()
     else:
-        data.pop(req.line, None)
-    atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        data.pop(cue_data.key(selected["id"]), None)
+    cue_data.save(req.path, "clipkit_caption.json", data)
     return {"lines": len(data)}
 
 
@@ -1465,7 +1475,7 @@ class CutRange(BaseModel):
     end: float
 
 
-UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_placed.json", "clipkit_overlays.json")
+UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json", "clipkit_cues.json", "clipkit_placed.json", "clipkit_overlays.json")
 
 
 @router.post("/draft/cut")

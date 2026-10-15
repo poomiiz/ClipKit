@@ -55,7 +55,7 @@ class StoryTarget(unittest.TestCase):
             project = Path(folder) / "project"
             project.mkdir()
             (project / "clipkit.json").write_text(json.dumps({"raw": raw}), encoding="utf-8")
-            with patch.object(web.capcut_edit, "read_draft", return_value={"subtitles": [{"start": 0, "end": 200, "text": "spoken"}]}), \
+            with patch.object(web.capcut_edit, "read_draft", return_value={"subtitles": [{"id": "spoken-1", "start": 0, "end": 200, "text": "spoken"}]}), \
                  patch.object(web, "_motion_menu", return_value=[]):
                 packet = web.export_clip(str(project)).read_text(encoding="utf-8")
                 self.assertIn("ราว 3 นาที", packet)

@@ -56,7 +56,7 @@ class MergeTests(unittest.TestCase):
         self.assertIn("merge_subs", result["written"])
         rows = capcut_edit.read_draft(str(self.folder))["subtitles"]
         self.assertEqual([(s["text"], s["start"], s["end"], s["size"]) for s in rows], [("in the office", 0, 3.8, 20)])
-        clock = json.loads((self.folder / "clipkit_words.json").read_text())["in the office"]
+        clock = json.loads((self.folder / "clipkit_words.json").read_text())["cue:s1"]
         self.assertEqual(clock, [[0, .5, "in"], [.7, 1.2, "the"], [1.8, 3.8, "office"]])
         marks = []
         render._pair(rows[0]["text"], clock, 0, 3.8, 1920, 1080, "Kanit", render.DEFAULT_FONT,
@@ -120,14 +120,14 @@ class MergeTests(unittest.TestCase):
         web_ai.import_clip(str(self.folder), answer)
         row = capcut_edit.read_draft(str(self.folder))["subtitles"][0]
         self.assertEqual((row["text"], row["start"], row["end"]), ("the office", 0, 3.1))
-        self.assertEqual(json.loads((self.folder / "clipkit_words.json").read_text())["the office"],
+        self.assertEqual(json.loads((self.folder / "clipkit_words.json").read_text())["cue:s2"],
                          [[0, .5, "the"], [1.1, 3.1, "office"]])
 
     def test_plain_group_without_clock_does_not_invent_word_times(self):
         (self.folder / "clipkit_words.json").unlink()
         self.answer["lines"][0]["items"] = [["in the office", ""]]
         web_ai.import_clip(str(self.folder), self.answer)
-        self.assertEqual(json.loads((self.folder / "clipkit_words.json").read_text())["in the office"], [])
+        self.assertEqual(json.loads((self.folder / "clipkit_words.json").read_text())["cue:s1"], [])
 
 
 if __name__ == "__main__":

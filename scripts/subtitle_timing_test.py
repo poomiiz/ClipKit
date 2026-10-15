@@ -127,7 +127,7 @@ class SubtitleTimingTests(unittest.TestCase):
                 "texts": [{"id": "t", "font_size": 15, "content": json.dumps({"text": "normal keyword", "styles": []})}]},
                 "tracks": [{"type": "video", "segments": [{"material_id": "v", "clip": clip,
                     "target_timerange": timing, "source_timerange": timing}]},
-                    {"type": "text", "segments": [{"material_id": "t", "clip": clip, "target_timerange": timing}]}]}
+                    {"type": "text", "segments": [{"id": "subtitle", "material_id": "t", "clip": clip, "target_timerange": timing}]}]}
             (project / "draft_content.json").write_text(json.dumps(draft))
             (project / "clipkit_words.json").write_text(json.dumps({"normal keyword": [[0, 1.8, "normal "], [1.8, 2.5, "keyword"]]}))
             (project / "clipkit_punch.json").write_text(json.dumps({"normal keyword": [["normal", "keyword"]]}))
@@ -182,7 +182,8 @@ class SubtitleTimingTests(unittest.TestCase):
                 result = video_edit.create_capcut_draft(str(source), "new project", 10, 12.5,
                     subs=[{"start": 0, "end": 2.5, "text": "normal keyword"}], drafts_root=str(root))
             clock = json.loads((Path(result["draft_path"]) / "clipkit_words.json").read_text())
-            self.assertEqual(clock, {"normal keyword": [[0, 1.8, "normal "], [1.8, 2.5, "keyword"]]})
+            rows = capcut_font_test.build.capcut_edit.read_draft(result["draft_path"])["subtitles"]
+            self.assertEqual(clock, {"cue:" + rows[0]["id"]: [[0, 1.8, "normal "], [1.8, 2.5, "keyword"]]})
 
 
 if __name__ == "__main__":

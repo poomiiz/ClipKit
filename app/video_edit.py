@@ -941,16 +941,20 @@ def create_capcut_draft(video_path: str, project_name: str,
     import capcut_edit  # here: capcut_edit imports this module
     capcut_edit.fresh_ids(target)  # own timeline id + the Timelines/<id> copy CapCut 9.x opens
     # Supplied subtitles still need the existing transcript's word clock for emphasis.
+    import cue_data
     heard = {}
+    cue_rows = capcut_edit.read_draft(str(target))["subtitles"]
     for segment in segments:
         start = segment["source_timerange"]["start"] / US
         length = segment["source_timerange"]["duration"] / US
         for phrase in capcut_edit._from_transcript(video_path, start, start + length) or []:
-            if phrase["text"] in {s["text"] for s in subs}:
-                heard[phrase["text"]] = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
-                                         for a, b, w in phrase["words"]]
+            at = segment["target_timerange"]["start"] / US + phrase["start"]
+            matches = [row for row in cue_rows if row["text"] == phrase["text"] and abs(row["start"] - at) <= .04]
+            if len(matches) == 1:
+                heard[cue_data.key(matches[0]["id"])] = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
+                                                       for a, b, w in phrase["words"]]
     if heard:
-        atomic.write_text(target / "clipkit_words.json", json.dumps(heard, ensure_ascii=False), encoding="utf-8")
+        cue_data.save(target, "clipkit_words.json", heard)
 
     return {
         "draft_path": str(target),

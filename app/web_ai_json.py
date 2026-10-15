@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import atomic
 import json
+import cue_data
 import math
 import re
 import time
@@ -141,12 +142,12 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
         raise VideoEditError("ยังไม่มีซับ — ถอดเสียงก่อน")
     lines = [s["text"] for s in subs]
     words_file = Path(path) / "clipkit_words.json"
-    word_times = json.loads(words_file.read_text(encoding="utf-8")) if words_file.is_file() else {}
+    word_times = cue_data.load(path, "clipkit_words.json", subs)
     atomic.write_text((Path(path) / "clipkit_lines.json"), json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
     data = {"clipkit_web_ai": VERSION, "step": "clip", "project": Path(path).name, "max_minutes": max_minutes, "caption_language": _caption_lang(path),
-            "lines": [{"n": n, "start": s["start"], "end": s["end"], "text": s["text"],
+            "lines": [{"n": n, "cue_id": s["id"], "start": s["start"], "end": s["end"], "text": s["text"],
                        "words": [{"start": round(s["start"] + a, 3), "end": round(s["start"] + b, 3), "text": w}
-                                 for a, b, w in word_times.get(s["text"], [])]} for n, s in enumerate(subs, 1)],
+                                 for a, b, w in word_times.get(cue_data.key(s["id"]), [])]} for n, s in enumerate(subs, 1)],
             "motion_templates": _motion_menu()}
     style = render._json(Path(path) / "clipkit_style.json", {})
     look = render.pair_look(style)
@@ -224,14 +225,16 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     lines = ans.get("lines")
     if not isinstance(lines, list) or [x.get("n") if isinstance(x, dict) else None for x in lines] != list(range(1, len(subs) + 1)):
         raise VideoEditError(f"lines ต้องมีครบ {len(subs)} บรรทัด เรียง n = 1..{len(subs)} ตามไฟล์ที่ส่งไป")
+    if any(x.get("cue_id", s["id"]) != s["id"] for x, s in zip(lines, subs)):
+        raise VideoEditError("cue ID ไม่ตรงกับซับล่าสุด · ส่งออกคำสั่ง AI ใหม่")
     cut = ans.get("cut") or []
     if not isinstance(cut, list) or any(n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
         raise VideoEditError(f"cut ต้องเป็นรายการเลขบรรทัด 1..{len(subs)} ที่จะตัดทิ้ง และต้องเหลืออย่างน้อย 1 บรรทัด")
     groups, continuation = [], set()
     for x in lines:
         if x["n"] in continuation:
-            if set(x) != {"n"}:
-                raise VideoEditError("บรรทัดต่อของกลุ่มต้องมีแค่ n")
+            if set(x) - {"n", "cue_id"}:
+                raise VideoEditError("บรรทัดต่อของกลุ่มต้องมีแค่ n และ cue_id")
             continue
         last = x.get("through", x["n"])
         if isinstance(last, bool) or not isinstance(last, int) or not x["n"] <= last <= len(subs):
@@ -243,7 +246,7 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
             continuation.update(range(x["n"] + 1, last + 1))
     merged = capcut_edit.merge_subtitles(path, groups, dry=True) if groups else [
         {**s, "n": n} for n, s in enumerate(subs, 1)]
-    punch, same = {}, []
+    punch = {}
     for s in merged:
         x = lines[s["n"] - 1]
         if x["n"] in cut:
@@ -259,10 +262,9 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         if groups:
             render._pair(s["text"], s["words"], s["start"], s["end"], 1080, 1920, "Kanit",
                          render.DEFAULT_FONT, render.pair_look({}), picked=items)
-        if s["text"] in punch and punch[s["text"]] != items:
-            same.append(x["n"])  # clipkit_punch.json holds one choice per line text: the first one stays
-            continue
-        punch[s["text"]] = items
+        if x.get("cue_id") is not None and x["cue_id"] != s["id"]:
+            raise VideoEditError("cue ID ไม่ตรงกับซับล่าสุด · ส่งออกคำสั่ง AI ใหม่")
+        punch[cue_data.key(s["id"])] = items
     hook = ans.get("hook", [])
     if not isinstance(hook, list) or len(hook) > 2 or any(
             not isinstance(h, dict) or not str(h.get("text", "")).strip() or h.get("color") not in render.HOOK_COLORS for h in hook):
@@ -274,7 +276,7 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(cap, dict) or any(not isinstance(cap.get(str(n)), str) or not cap[str(n)].strip()
                                             for n in range(1, len(subs) + 1) if n not in cut and n not in continuation):
             raise VideoEditError(f'preset นี้มีซับแปล ({lang}): caption ต้องเป็น {{"1": "...", ...}} ครบทุกบรรทัด')
-        caption = {s["text"]: cap[str(s["n"])].strip() for s in merged if s["n"] not in cut}
+        caption = {cue_data.key(s["id"]): cap[str(s["n"])].strip() for s in merged if s["n"] not in cut}
     motion = ans.get("motion") or []
     import video_editor
     quick = video_editor.QUICK_MOTION
@@ -298,27 +300,25 @@ def import_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     written = ["clipkit_punch.json", "clipkit_hook.json"]
     if groups:
         written.append("merge_subs")
-    atomic.write_text((folder / "clipkit_punch.json"), json.dumps(punch, ensure_ascii=False, indent=1), encoding="utf-8")
+    cue_data.save(folder, "clipkit_punch.json", punch)
     atomic.write_text((folder / "clipkit_hook.json"), json.dumps([{"text": h["text"].strip(), "color": h["color"]} for h in hook],
                                                          ensure_ascii=False, indent=1), encoding="utf-8")
     if caption is not None:
-        atomic.write_text((folder / "clipkit_caption.json"), json.dumps(caption, ensure_ascii=False, indent=1), encoding="utf-8")
+        cue_data.save(folder, "clipkit_caption.json", caption)
         written.append("clipkit_caption.json")
     if cut and not groups:  # the footage of each dropped line (up to the next line) goes, its subtitle with it
         ends = [max(s["end"], nxt["start"]) for s, nxt in zip(subs, subs[1:])] + [subs[-1]["end"]]
         capcut_edit.trim_pauses(path, ranges=[(subs[n - 1]["start"], ends[n - 1]) for n in sorted(set(cut))])
         written.append(f"ตัด {len(set(cut))} บรรทัด")
-        kept = {s["text"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
-        subs = [kept.get(s["text"], s) for s in subs]  # motion goes at the lines' new times
+        kept = {s["id"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
+        subs = [kept.get(s["id"], s) for s in subs]
     if motion:  # renders each motion here, the same as the editor's Motion button
         for m in motion:
             s = current[m["n"]] if groups else subs[m["n"] - 1]
             video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"], params=m.get("params"),
-                                                                       start=s["start"], end=s["end"], text=s["text"]))
+                                                                       start=s["start"], end=s["end"], text=s["text"], cue_id=s["id"]))
         written.append(video_editor.OVERLAYS)
     out = {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
-    if same:
-        out["same_text"] = f"บรรทัด {same} พูดซ้ำคำเดิมกับบรรทัดก่อนหน้า: ใช้คำเน้นของบรรทัดแรกแทน"
     return out
 
 

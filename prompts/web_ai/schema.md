@@ -51,6 +51,17 @@ a complete thought. With a saved target, imported selections are retained rather
 
 ## `clip`
 
+Each exported line includes `cue_id`, the subtitle occurrence ID. Copy it into the matching answer entry,
+including continuation entries when grouping. Two identical spoken lines can have different word clocks,
+emphasis and captions. `n` still refers to the original numbered input; never combine repeated wording
+unless it is an explicit consecutive semantic group.
+
+Local `clipkit_words.json`, `clipkit_punch.json`, and `clipkit_caption.json` use `cue:<segment-id>` keys.
+Browser/local AI answers still use the packet's numbered contract and importer; do not write sidecars directly.
+Unique legacy text keys are read and backed up on first migration. Ambiguous repeated legacy text is refused:
+re-transcribe or reselect the affected content rather than inheriting another occurrence's timings.
+Merge/split provenance is kept locally in `clipkit_cues.json`; cut undo includes the occurrence sidecars.
+
 Consecutive ASR transport lines can form one semantic group: put optional `through: <last n>` on its head,
 whose items cover all original text in that group in source order (whitespace may differ). Keep every original
 `n`; continuation entries contain only `{"n": ...}`. Groups cannot overlap or include `cut` lines. Caption and

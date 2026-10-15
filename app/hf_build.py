@@ -9,6 +9,7 @@ from __future__ import annotations
 import atomic
 import html
 import json
+import cue_data
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -213,13 +214,13 @@ def _build(path: str) -> Path:
         en = t.get("caption_en") or {}
         thai = P["caption_lang"] == "th"  # the whole spoken line, going on with the voice
         if thai:
-            en = {p["line"]: render.unbreak(p["line"]) for p in t["phrases"]}
+            en = {cue_data.phrase_key(p): render.unbreak(p["line"]) for p in t["phrases"]}
         below: dict[int, float] = {}
         pairs = render.stacks([(p.get("opts") or {}).get("look") for p in t["phrases"]])  # emphasis: two beats, one row each
         if P["caption"] and en:  # the preset's small translated caption: one per spoken line, also under the title
             lines_at: dict[str, list[float]] = {}
             for p in t["phrases"]:
-                s = lines_at.setdefault(p["line"], [p["start"], p["end"]])
+                s = lines_at.setdefault(cue_data.phrase_key(p), [p["start"], p["end"]])
                 s[1] = max(s[1], p["end"])
             for line, (a, b) in lines_at.items():
                 if en.get(line):

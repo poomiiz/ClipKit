@@ -166,7 +166,7 @@ function drawTL() {
     return d;
   };
   T.phrases.forEach((p, i) => {
-    const last = !T.phrases[i + 1] || T.phrases[i + 1].line !== p.line;
+    const last = !T.phrases[i + 1] || T.phrases[i + 1].cue_id !== p.cue_id;
     const d = blk(lSub, 'sub', p.start, p.end, `${esc(p.lead)} <b>${esc(p.punch)}</b>${last ? '<div class="rz"></div>' : ''}`, {type: 'phrase', key: 'p' + i, i});
     dragLine(d, p);
   });
@@ -201,10 +201,10 @@ function dragBlock(d, b) {
 // a subtitle line moves as one piece (all its phrases); its last phrase's right edge sets where it ends
 function dragLine(d, p) {
   d.addEventListener('pointerdown', e => {
-    const sub = T.subs.find(s => s.text === p.line);
+    const sub = T.subs.find(s => s.id === p.cue_id);
     if (!sub) return;
     const resize = e.target.classList.contains('rz'), x0 = e.clientX;
-    const mates = [...document.querySelectorAll('.blk.sub')].filter((_, k) => T.phrases[k].line === p.line);
+    const mates = [...document.querySelectorAll('.blk.sub')].filter((_, k) => T.phrases[k].cue_id === p.cue_id);
     const lefts = mates.map(m => parseFloat(m.style.left)), w0 = parseFloat(d.style.width);
     d.setPointerCapture(e.pointerId); d._moved = false;
     let dt = 0;
@@ -219,7 +219,7 @@ function dragLine(d, p) {
       if (!d._moved) return;
       const start = resize ? sub.start : Math.max(0, +(sub.start + dt).toFixed(2));
       const end = resize ? Math.max(sub.start + 0.3, +(sub.end + dt).toFixed(2)) : +(sub.end + (start - sub.start)).toFixed(2);
-      try { await api('draft/line-time', {path: PATH, line: p.line, start, end}); await reload(); say(''); }
+      try { await api('draft/line-time', {path: PATH, line: p.line, cue_id: p.cue_id, start, end}); await reload(); say(''); }
       catch (err) { say('❌ ' + ckErr(err)); drawTL(); }
       setTimeout(() => d._moved = false, 0);
     };
@@ -365,7 +365,7 @@ function sideClip(s) {
   $('fxv').onchange = e => { PL.sfx.volume = +e.target.value; savePL(); };
 }
 function sidePhrase(s, p) {
-  const line = T.phrases.filter(x => x.line === p.line);
+  const line = T.phrases.filter(x => x.cue_id === p.cue_id);
   s.innerHTML = `${back()}<h3>💬 ข้อความ ${mm(p.start)}</h3>
     <div class="hint">ประโยค: ${esc(p.line)}</div>
     <div class="row"><label for="pl">ตัวขาว</label><input id="pl" style="flex:1"></div>
@@ -378,18 +378,18 @@ function sidePhrase(s, p) {
     <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">⚡ ทำเป็นข้อความใหญ่กลางจอ</button></div>
     <div class="row"><button id="pcut" style="color:#fca5a5">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
     <div class="hint">แก้คำได้เลย (แก้ในซับด้วย) · ย้ายคำระหว่างตัวขาวกับคำเน้นได้ · ใส่คำค้นแล้วบันทึก ระบบหาภาพประกอบให้ตอน "ทำให้ครบ" หรือกดหาเองในแถบภาพประกอบ</div>`;
-  $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || ''; $('po').value = (p.opts || {}).look || 'pair'; $('pc').value = (T.caption_en || {})[p.line] || '';
+  $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || ''; $('po').value = (p.opts || {}).look || 'pair'; $('pc').value = (T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '';
   $('ps').onclick = async () => {
     const opts = {...(p.opts || {}), look: $('po').value};
     const pairs = line.map(x => x === p ? [$('pl').value.trim(), $('pp').value.trim(), $('pq').value.trim(), opts] : [x.lead, x.punch, x.query || '', x.opts])
       .map(([l, k, q, o]) => [l, k, ...(q ? [q] : []), ...(o && (o.show || (o.look && o.look !== 'pair')) ? [o] : [])]);
     try {
-      if ($('pc').value.trim() !== ((T.caption_en || {})[p.line] || '')) await api('draft/caption', {path: PATH, line: p.line, text: $('pc').value});
-      await api('draft/phrases', {path: PATH, line: p.line, pairs}); await reload(); say('บันทึกแล้ว');
+      if ($('pc').value.trim() !== ((T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '')) await api('draft/caption', {path: PATH, line: p.line, cue_id: p.cue_id, text: $('pc').value});
+      await api('draft/phrases', {path: PATH, line: p.line, cue_id: p.cue_id, pairs}); await reload(); say('บันทึกแล้ว');
     } catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('pcut').onclick = async () => {
-    const sub = (T.subs || []).find(x => x.text === p.line);
+    const sub = (T.subs || []).find(x => x.id === p.cue_id);
     if (!sub) return say('❌ หาประโยคนี้ในซับไม่เจอ');
     if (!await ckConfirm('ตัดประโยคนี้ออกจากคลิป?\n' + p.line)) return;
     say('<span class="spin"></span> กำลังตัด…');
@@ -398,7 +398,7 @@ function sidePhrase(s, p) {
   };
   $('pm').onclick = async () => {
     say('<span class="spin"></span> กำลังทำข้อความใหญ่… (ราว 30 วิ)');
-    try { await api('draft/overlay', {path: PATH, template: 'sentence-pair', start: p.start, end: p.end, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว'); }
+    try { await api('draft/overlay', {path: PATH, template: 'sentence-pair', start: p.start, end: p.end, cue_id: p.cue_id, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว'); }
     catch (e) { say('❌ ' + ckErr(e)); }
   };
 }

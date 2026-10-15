@@ -20,6 +20,30 @@ import video_editor
 
 
 class TrimTiming(unittest.TestCase):
+    def test_same_words_twice_keep_independent_keyword_clock_after_cut_and_undo(self):
+        self.draft["duration"] = 9_000_000
+        for key in ("source_timerange", "target_timerange"):
+            self.draft["tracks"][0]["segments"][0][key]["duration"] = 9_000_000
+        self.draft["tracks"][1]["segments"][1]["target_timerange"]["duration"] = 3_000_000
+        self.draft["materials"]["texts"][1]["content"] = json.dumps({"text": "normal keyword", "styles": []})
+        self.write("draft_content.json", self.draft)
+        clocks = {"cue:0": [[0, 1, "normal "], [2, 3, "keyword"]],
+                  "cue:1": [[0, 1, "normal "], [2, 3, "keyword"]]}
+        self.write("clipkit_words.json", clocks)
+        self.write("clipkit_punch.json", {"cue:0": [["normal", "keyword"]], "cue:1": [["normal keyword", ""]]})
+        video_editor.draft_cut(video_editor.CutRange(path=str(self.folder), start=3, end=3.5))
+        actual = self.read("clipkit_words.json")
+        self.assertEqual(actual["cue:0"][1][0], 1.5)
+        self.assertEqual(actual["cue:1"][1][0], 2)
+        metadata = {"width": 1920, "height": 1080, "duration": 9, "fps": 30}
+        with patch.object(render, "probe", return_value=metadata), patch.object(draft_quality, "probe", return_value=metadata):
+            timeline = render.render_draft(str(self.folder), "", dry=True)
+        self.assertEqual([p["cue_id"] for p in timeline["phrases"]], ["0", "1"])
+        self.assertEqual([p["punch"] for p in timeline["phrases"]], ["keyword", ""])
+        self.assertEqual(timeline["phrases"][0]["hit"], 3.5)
+        video_editor.draft_uncut(video_editor.DraftPath(path=str(self.folder)))
+        self.assertEqual(self.read("clipkit_words.json"), clocks)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -58,7 +82,7 @@ class TrimTiming(unittest.TestCase):
     def test_cut_moves_word_onset_and_holds_until_next_normal(self):
         result = self.trim([(3, 3.5), (0, 1)])
         self.assertEqual(result["result_length"], 6.5)
-        self.assertEqual(self.read("clipkit_words.json")["normal keyword"], [[0, 1, "normal "], [1.5, 2.5, "keyword"]])
+        self.assertEqual(self.read("clipkit_words.json")["cue:0"], [[0, 1, "normal "], [1.5, 2.5, "keyword"]])
         metadata = {"width": 1920, "height": 1080, "duration": 8, "fps": 30}
         with patch.object(render, "probe", return_value=metadata), patch.object(draft_quality, "probe", return_value=metadata):
             timeline = render.render_draft(str(self.folder), "", dry=True)
