@@ -57,7 +57,11 @@ def check(path: str) -> dict[str, Any]:
                 raise VideoEditError("unsupported draft: main video must be contiguous from zero, without gaps or overlaps")
             duration = end
         if "duration" in draft:
-            _number(draft["duration"], "duration", positive=True)
+            declared = _number(draft["duration"], "duration", positive=True)
+            end_us = max(s["target_timerange"]["start"] + s["target_timerange"]["duration"]
+                         for s in video["segments"])
+            if abs(declared - end_us) > 1:
+                raise VideoEditError("invalid draft: declared duration does not match the main video timeline")
         media, segments = {}, 0
         for n, track in enumerate(draft["tracks"]):
             if not isinstance(track, dict) or not isinstance(track.get("segments"), list):

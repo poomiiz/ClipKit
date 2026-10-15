@@ -37,9 +37,11 @@ class QualityTests(unittest.TestCase):
         content = self.folder / "draft_content.json"
         content.write_text(json.dumps(self.draft, ensure_ascii=False), encoding="utf-8")
         before = content.read_bytes()
-        with patch.object(quality, "probe", return_value={"duration": 12}) as probe:
-            result = quality.check(str(self.folder))
-        self.assertEqual(content.read_bytes(), before)
+        try:
+            with patch.object(quality, "probe", return_value={"duration": 12}) as probe:
+                result = quality.check(str(self.folder))
+        finally:
+            self.assertEqual(content.read_bytes(), before)
         return result, probe
 
     def test_valid_draft_leaves_human_and_native_checks_pending(self):
@@ -67,6 +69,51 @@ class QualityTests(unittest.TestCase):
         self.draft["duration"] = float("nan")
         with self.assertRaises(VideoEditError):
             self.check()
+
+    def test_declared_duration_matches_timeline_with_microsecond_tolerance(self):
+        for duration in (1, 9_000_000, 9_999_998, 10_000_002, 11_000_000):
+            with self.subTest(duration=duration):
+                self.draft["duration"] = duration
+                with self.assertRaisesRegex(VideoEditError, "declared duration"):
+                    self.check()
+        for duration in (9_999_999, 10_000_000, 10_000_001):
+            with self.subTest(duration=duration):
+                self.draft["duration"] = duration
+                self.assertTrue(self.check()[0]["structural_pass"])
+        del self.draft["duration"]
+        self.assertTrue(self.check()[0]["structural_pass"])
+
+    def test_mismatched_duration_stops_all_renderers_without_changing_outputs(self):
+        import render
+        import hf_build
+        import capcut_build
+        self.draft["duration"] = 11_000_000
+        content = self.folder / "draft_content.json"
+        content.write_text(json.dumps(self.draft), encoding="utf-8")
+        output = self.folder / "exports"
+        output.mkdir()
+        (output / (self.folder.name + ".mp4")).write_bytes(b"previous accepted export")
+        page = self.folder / "clipkit_hf" / "index.html"
+        page.parent.mkdir()
+        page.write_text("previous preview", encoding="utf-8")
+        before = {p.relative_to(self.folder): p.read_bytes() for p in self.folder.rglob("*") if p.is_file()}
+        actions = {
+            "cpu": lambda: render.render_draft(str(self.folder), str(output)),
+            "dry": lambda: render.render_draft(str(self.folder), "", dry=True),
+            "hyperframes": lambda: hf_build.build(str(self.folder)),
+            "native": lambda: capcut_build.build(str(self.folder)),
+        }
+        with patch.object(render.subprocess, "run") as process, \
+                patch.object(capcut_build.host_platform, "capcut_running", return_value=False), \
+                patch.object(render, "_video_encoder", return_value=["-c:v", "libx264"]):
+            for name, action in actions.items():
+                with self.subTest(renderer=name):
+                    with self.assertRaisesRegex(VideoEditError, "declared duration"):
+                        action()
+                    self.assertEqual(before, {p.relative_to(self.folder): p.read_bytes()
+                                             for p in self.folder.rglob("*") if p.is_file()})
+                    self.assertFalse(list(self.folder.parent.glob(self.folder.name + " \u00b7 CapCut*")))
+            process.assert_not_called()
 
     def test_missing_segment_and_extra_material_references_fail(self):
         segment = self.draft["tracks"][1]["segments"][0]
