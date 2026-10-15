@@ -3,8 +3,8 @@ window.CKAIPlan = (() => {
   function render(box, plan) {
     box.setAttribute('aria-busy','false');
     box.classList.add('ai-plan'); box.replaceChildren();
-    const action = {preserve:'คง motion เดิม',clear:'ล้าง motion เดิม',replace:'แทนที่ motion'}[plan.motion_action];
-    box.append(node('strong', plan.motion_plan.some(item=>item.subject_review_pending) ? 'รอตรวจภาพ' : 'พร้อมตรวจ'), node('p', `ซับ ${plan.lines} · ตัด ${plan.cut} · ${action} (${plan.motion_before || 0} → ${plan.motion_action === 'preserve' ? plan.motion_before || 0 : plan.motion})`));
+    const action = {preserve:'คง motion ที่เหลือ',clear:'ล้าง motion เดิม',replace:'แทนที่ motion',regenerate:'สร้าง motion ใหม่'}[plan.motion_action];
+    box.append(node('strong', plan.motion_plan.some(item=>item.subject_review_pending) ? 'รอตรวจภาพ' : 'พร้อมตรวจ'), node('p', `ซับ ${plan.lines} · ตัด ${plan.cut} · ${action} (${plan.motion_before || 0} → ${plan.motion_after ?? (plan.motion_action === 'preserve' ? plan.motion_before || 0 : plan.motion)})`));
     function rows(title, items, describe) {
       const details = node('details'), summary = node('summary', `${title} (${items.length})`);
       details.append(summary); box.append(details);
@@ -30,7 +30,7 @@ window.CKAIPlan = (() => {
         + (item.canvas ? `\nภาพ ${item.canvas.width}×${item.canvas.height} · กรอบ ${item.bounds.map(value=>value.toFixed(1)).join(', ')}` : '')
         + (item.subject_review_pending ? '\nยังไม่ได้ระบุเขตตัวแบบ · ต้องดูภาพจริง' : '');
     });
-    else box.append(node('p', plan.motion_action === 'preserve' ? 'ไม่มีการเปลี่ยน motion' : 'ไม่มี motion ในแผน'));
+    else box.append(node('p', plan.motion_action === 'preserve' ? 'ไม่ได้สร้าง motion เพิ่ม' : 'ไม่มี motion ในแผน'));
     rows('ข้อความตามเวลา', plan.subtitle_events, item => `${item.role} · ${item.text}`);
     if (plan.hook.length) {
       const details = node('details'); details.append(node('summary','หัวคลิป'),node('p',plan.hook.map(item=>item.text).join(' / '))); box.append(details);

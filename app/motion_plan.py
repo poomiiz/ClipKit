@@ -2,12 +2,134 @@
 import hashlib
 import json
 import math
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from video_edit import VideoEditError
 
 
 ROLES = {"normal", "emphasis", "caption", "second", "title"}
+_cut_preview = ContextVar("motion_cut_preview", default=None)
+
+
+@contextmanager
+def preview_cut(folder):
+    review = {"folder": Path(folder).resolve(), "plans": []}
+    token = _cut_preview.set(review)
+    try:
+        yield review["plans"]
+    finally:
+        _cut_preview.reset(token)
+
+
+@contextmanager
+def regenerate_cut(folder, draft, sidecars, pending, cuts, original_rows):
+    """Prepare every affected recipe, render privately, then retain assets only if metadata commits."""
+    if not pending:
+        yield sidecars
+        return
+    import shutil
+    import tempfile
+    import uuid
+    import atomic
+    import cue_data
+    import host_platform
+    import insert_plan
+    import kit_settings
+    import video_editor
+    import web_ai_identity as identity
+    import web_ai_transaction as transaction
+
+    review = _cut_preview.get()
+    planning = review is not None and review["folder"] == folder.resolve()
+    if not planning and host_platform.capcut_running():
+        raise VideoEditError("ปิด CapCut ก่อนสร้าง motion ใหม่หลังตัด")
+    original = transaction._files(folder)
+    before = {name: transaction._hash(file) for name, file in original.items()}
+    binding, source_cache = identity._snapshot("clip", folder, None, {})
+    words = cue_data.load(folder, "clipkit_words.json", original_rows)
+    items = sidecars["clipkit_overlays.json"]
+    ids = {old.get("placement_id") for old, _ in pending}
+    if (None in ids or any(not isinstance(value, str) or not value for value in ids)
+            or len(ids) != len(pending) or any(sum(item.get("placement_id") == value for item in items) != 1 for value in ids)):
+        raise VideoEditError("motion ไม่มี placement ID ที่ชัดเจน · ตรวจ recipe ก่อนตัด")
+    for old, _ in pending:
+        try:
+            recipe = old["recipe"]
+            if (old.get("template") != recipe.get("template") or old.get("params") != recipe.get("params")
+                    or not isinstance(old.get("anchor"), dict) or not isinstance(old.get("text"), str)
+                    or not isinstance(old.get("reason"), str)):
+                raise VideoEditError("motion recipe ไม่ตรงกับรายการเดิม · ตรวจใหม่ก่อนตัด")
+            source = Path(old["file"])
+            source = source if source.is_absolute() else folder / source
+            if recipe["version"] != 1 or insert_plan.file_digest(source) != recipe["media"]["sha256"]:
+                raise VideoEditError("motion เดิมเปลี่ยนหรือไม่มี recipe ที่ตรวจแล้ว · ตรวจใหม่ก่อนตัด")
+            verify_inputs(recipe)
+        except (KeyError, TypeError, OSError) as exc:
+            raise VideoEditError("motion recipe หรือไฟล์เดิมไม่ครบ · ตรวจใหม่ก่อนตัด") from exc
+        # A timed word must survive intact; deleting spoken content needs a new source/subtitle decision.
+        cue_ids = {target["cue_id"] for target in ownership(old)["targets"]}
+        cue_ids.add(old.get("anchor", {}).get("cue_id"))
+        if any(cut["start"] < row["start"] + b and row["start"] + a < cut["end"]
+               for row in original_rows if row["id"] in cue_ids
+               for a,b,_ in words.get(cue_data.key(row["id"]), []) for cut in cuts):
+            raise VideoEditError("ช่วงตัดโดนคำพูดที่ motion อ้าง · แก้เนื้อหาและเวลาคำก่อนสร้างใหม่")
+
+    assets = (kit_settings._motion_destination.get() or folder / "clipkit_motion") / uuid.uuid4().hex
+    committed = False
+    try:
+        with tempfile.TemporaryDirectory(prefix="clipkit_motion_cut_", ignore_cleanup_errors=True) as temporary:
+            work = Path(temporary) / folder.name
+            work.mkdir()
+            for name, source in original.items():
+                transaction._copy(source, work / name)
+                if transaction._hash(work / name) != before[name]:
+                    raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียม motion · ตรวจใหม่")
+            atomic.write_text(work / "draft_content.json", json.dumps(draft, ensure_ascii=False))
+            for name, data in sidecars.items():
+                atomic.write_text(work / name, json.dumps(data, ensure_ascii=False))
+            unchanged = [item for item in items if item.get("placement_id") not in ids]
+            atomic.write_text(work / "clipkit_overlays.json", json.dumps(unchanged, ensure_ascii=False))
+            plans, candidates = [], list(unchanged)
+            for old, mapped in pending:
+                params = None if old["template"] == "sentence-pair" else {**old["recipe"]["params"], "duration": mapped["duration"]}
+                request = video_editor.OverlayRequest(path=str(work), template=old["template"],
+                    start=mapped["start"], end=mapped["start"] + mapped["duration"], text=old["text"], params=params,
+                    cue_id=old.get("cue_id"), anchor=mapped["anchor"], ownership=old["ownership"],
+                    placement=old["recipe"]["placement"], reason=old["reason"])
+                plan = video_editor.prepare_overlay(request, previous=candidates)
+                plans.append((old, request, plan)); candidates.append(plan["candidate"])
+            if planning:
+                review["plans"].extend(video_editor.overlay_plan(request, plan) for _, request, plan in plans)
+                replacements = {old["placement_id"]: {**mapped, "params": plan["prepared"]["source_params"]}
+                                for (old, mapped), (_, request, plan) in zip(pending, plans)}
+            else:
+                with kit_settings.motion_destination(assets):
+                    replacements = {old["placement_id"]: {**video_editor.render_overlay(request, plan),
+                                    "placement_id": old["placement_id"]} for old, request, plan in plans}
+            if (not planning and host_platform.capcut_running()) or {name: transaction._hash(file) for name, file in transaction._files(folder).items()} != before:
+                raise VideoEditError("โปรเจกต์เปลี่ยนหรือ CapCut เปิดระหว่างสร้าง motion · ตรวจใหม่")
+            current, _ = identity._snapshot("clip", folder, None, source_cache)
+            if identity._hash(current) != identity._hash(binding):
+                raise VideoEditError("ฟุตหรือข้อมูลอ้างอิงเปลี่ยนระหว่างสร้าง motion · ตรวจใหม่")
+            for old, _ in pending:
+                verify_inputs(old["recipe"])
+                source = Path(old["file"])
+                source = source if source.is_absolute() else folder / source
+                if insert_plan.file_digest(source) != old["recipe"]["media"]["sha256"]:
+                    raise VideoEditError("ไฟล์ motion เดิมเปลี่ยนระหว่างสร้าง · ตรวจใหม่")
+            sidecars["clipkit_overlays.json"] = [replacements.get(item.get("placement_id"), item) for item in items]
+            yield sidecars
+            committed = True
+    except BaseException:
+        try:
+            restored = {name: transaction._hash(file) for name, file in transaction._files(folder).items()} == before
+        except (OSError, VideoEditError):
+            restored = False  # Keep recovery assets when the metadata rollback cannot be proven.
+        if not committed and restored and assets.is_dir():
+            shutil.rmtree(assets)
+        raise
 
 
 def _hash(value):

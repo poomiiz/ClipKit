@@ -266,7 +266,7 @@ def _save(folder: Path, draft: dict[str, Any], op: str, *, corrections: dict | N
           sidecars: dict[str, Any] | None = None) -> None:
     _check(draft)
     cue_sidecars = {"clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json", "clipkit_cues.json"}
-    if set(sidecars or {}) - cue_sidecars - {"clipkit_placed.json", "clipkit_overlays.json"}:
+    if set(sidecars or {}) - cue_sidecars - {"clipkit_placed.json", "clipkit_overlays.json", "clipkit_style.json"}:
         raise VideoEditError("Unsupported project sidecar")
     import spelling
     rules_file = spelling._file(folder)
@@ -898,7 +898,7 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     def shifted(t: float) -> float:
         return t - sum(max(0.0, min(t, c["end"]) - c["start"]) for c in cuts)
 
-    sidecars = {}
+    sidecars, regenerate = {}, []
     for name, key, duration_key in (("clipkit_overlays.json", None, "duration"), ("clipkit_placed.json", "broll", "dur")):
         file = folder / name
         if not file.is_file():
@@ -918,10 +918,13 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
             if any(c["start"] <= a and b <= c["end"] for c in cuts):
                 continue
             if any(c["start"] < b and a < c["end"] for c in cuts):
-                raise VideoEditError(f"ช่วงตัดทับ {name} · ลบ motion หรือภาพประกอบช่วงนี้ก่อนตัด แล้วสร้างใหม่หลังตัดเพื่อให้ตรงเสียง")
+                if key is None and isinstance(item.get("recipe"), dict):
+                    regenerate.append((copy.deepcopy(item), item))
+                else:
+                    raise VideoEditError(f"ช่วงตัดทับ {name} · ลบ motion หรือภาพประกอบช่วงนี้ก่อนตัด แล้วสร้างใหม่หลังตัดเพื่อให้ตรงเสียง")
             item["start"] = round(shifted(a), 6)
             item[duration_key] = round(shifted(b) - shifted(a), 6)
-            if key and isinstance(item.get("anchor"), dict) and item["anchor"].get("kind") == "timeline":
+            if isinstance(item.get("anchor"), dict) and item["anchor"].get("kind") == "timeline":
                 item["anchor"] = {**item["anchor"], "start": item["start"]}
             kept.append(item)
         if key:
@@ -1001,7 +1004,21 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                                      for a, b, w in said[cue_data.key(sub["id"])]]
         sidecars = {"clipkit_words.json": said, **sidecars}
     draft["duration"] = timeline
-    _save(folder, draft, "trim", sidecars=sidecars)
+    style_file = folder / "clipkit_style.json"
+    if style_file.is_file():
+        style = json.loads(style_file.read_text(encoding="utf-8"))
+        if "motion_subject_zones" in style:
+            zones = style["motion_subject_zones"]
+            if not isinstance(zones, list) or any(not isinstance(zone, dict) or
+                    any(isinstance(zone.get(key), bool) or not isinstance(zone.get(key), (int, float)) or not math.isfinite(zone[key])
+                        for key in ("start", "end")) or not 0 <= zone["start"] < zone["end"] <= total for zone in zones):
+                raise VideoEditError("เขตตัวแบบมีเวลาไม่ถูกต้อง · ตรวจพื้นที่ motion ก่อนตัด")
+            style["motion_subject_zones"] = [{**zone, "start": shifted(zone["start"]), "end": shifted(zone["end"])}
+                                             for zone in zones if shifted(zone["end"]) > shifted(zone["start"])]
+            sidecars["clipkit_style.json"] = style
+    import motion_plan
+    with motion_plan.regenerate_cut(folder, draft, sidecars, regenerate, cuts, original_subs) as updated:
+        _save(folder, draft, "trim", sidecars=updated)
     preview.update(applied=True, segments=len(segments),
                    result_length=round(timeline / US, 2))
     return preview

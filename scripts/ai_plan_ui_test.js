@@ -24,6 +24,10 @@ async function main() {
   assert.equal(await checking,false);assert.equal(box.children.length,0);assert.equal(button.textContent,'ตรวจแผน');
   input.value='answer';input.isConnected=false;
   assert.equal(await ui.review(input,button,box,async()=>plan).check('answer'),false);
+  ui.render(box,{...plan,motion_action:'regenerate',motion_after:1});
+  assert.match(box.children[1].textContent,/สร้าง motion ใหม่.*1 → 1/);
+  ui.render(box,{...plan,motion_action:'preserve',motion_after:0,motion_plan:[]});
+  assert.match(box.children[1].textContent,/1 → 0/,'zero retained motions must not fall back to previous count');
   console.log('PASS AI plan: first-click preview, explicit confirmation, input invalidation, stale response, detached input and literal markup');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

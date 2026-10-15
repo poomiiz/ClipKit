@@ -1817,7 +1817,7 @@ class CutRange(BaseModel):
     end: float
 
 
-UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json", "clipkit_cues.json", "clipkit_placed.json", "clipkit_overlays.json")
+UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json", "clipkit_cues.json", "clipkit_placed.json", "clipkit_overlays.json", "clipkit_style.json")
 
 
 @router.post("/draft/cut")
@@ -1829,17 +1829,26 @@ def draft_cut(req: CutRange) -> dict[str, Any]:
     if req.end - req.start < 0.1:
         raise HTTPException(400, "ช่วงที่จะตัดสั้นเกินไป")
     folder = Path(req.path)
+    import web_ai_transaction
+    before = {name: web_ai_transaction._hash(file) for name, file in web_ai_transaction._files(folder).items()}
     undo = folder / "clipkit_undo" / (time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}")
     undo.mkdir(parents=True)
     for name in UNDO_FILES:
         if (folder / name).is_file():
             shutil.copy2(folder / name, undo / name)
-    atomic.write_text(undo / "files.json", json.dumps([name for name in UNDO_FILES if (undo / name).is_file()]))
+    atomic.write_text(undo / "files.json", json.dumps({"version":2,"files":[name for name in UNDO_FILES if (undo / name).is_file()]}))
     try:
         r = capcut_edit.trim_pauses(req.path, ranges=[(req.start, req.end)])
-    except VideoEditError as exc:
-        shutil.rmtree(undo)
-        raise HTTPException(400, str(exc)) from exc
+    except BaseException as exc:
+        try:
+            restored = {name: web_ai_transaction._hash(file) for name, file in web_ai_transaction._files(folder).items()} == before
+        except (OSError, VideoEditError):
+            restored = False
+        if restored:
+            shutil.rmtree(undo)
+        if isinstance(exc, VideoEditError):
+            raise HTTPException(400, str(exc)) from exc
+        raise
     return {"length": r.get("result_length"), "undo": len(list((folder / "clipkit_undo").iterdir()))}
 
 
@@ -1857,10 +1866,15 @@ def draft_uncut(req: DraftPath) -> dict[str, Any]:
     saved = {name: file.read_bytes() for name, file in web_ai_transaction._files(folder).items()}
     manifest = steps[-1] / "files.json"
     present = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else None
+    tracked = tuple(name for name in UNDO_FILES if name != "clipkit_style.json")
+    if isinstance(present, dict):
+        if set(present) != {"version", "files"} or present["version"] != 2:
+            raise HTTPException(400, "ข้อมูลย้อนการตัดเป็นรุ่นที่ไม่รองรับ")
+        present, tracked = present["files"], UNDO_FILES
     if present is not None and (not isinstance(present, list) or any(name not in UNDO_FILES for name in present)):
         raise HTTPException(400, "ข้อมูลย้อนการตัดเสียหาย — เก็บไฟล์เดิมไว้เพื่อตรวจสอบ")
     try:
-        for name in UNDO_FILES:
+        for name in tracked:
             source = steps[-1] / name
             if source.is_file():
                 atomic.write_bytes(folder / name, source.read_bytes())

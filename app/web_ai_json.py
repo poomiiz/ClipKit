@@ -257,9 +257,16 @@ def preview_clip(path: str, text: str) -> dict[str, Any]:
         _head(answer, "clip", "project", Path(path).name)
         if answer.get("operation") is not None:
             raise VideoEditError("เลือกช่องตรวจภาพแทรกสำหรับคำตอบภาพแทรก")
-        result = transaction.preview_clip(path, answer,
-            lambda work: _prepare_clip(str(work), answer, preview=True))
         import video_editor
+        import motion_plan
+        def prepare(work):
+            with motion_plan.preview_cut(work) as regenerated:
+                result = _prepare_clip(str(work), answer, preview=True)
+            result["motion_after"] = (len(video_editor._overlays(str(work))) if "motion" not in answer else result["motion"])
+            if regenerated:
+                result.update(motion_action="regenerate", motion_plan=regenerated)
+            return result
+        result = transaction.preview_clip(path, answer, prepare)
         result["motion_before"] = len(video_editor._overlays(path))
         if local_answer is not None:
             result["answer"] = local_answer
