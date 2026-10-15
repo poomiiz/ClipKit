@@ -121,7 +121,30 @@ class ExportSafety(unittest.TestCase):
                 self.build.reset_mock()
                 self.request.preview = preview
                 editor.draft_hf_export(self.request)
-                self.build.assert_called_once_with(str(self.project), final=not preview)
+                self.build.assert_called_once()
+                args, kwargs = self.build.call_args
+                self.assertEqual(args, (str(self.project),))
+                self.assertEqual(kwargs["final"], not preview)
+                self.assertTrue(callable(kwargs["audio_check"]))
+
+    def test_resolved_audio_changed_during_render_preserves_previous_output(self):
+        audio = self.root / "chosen-audio.wav"
+        audio.write_bytes(b"original chosen audio")
+        def built(path, *, final, audio_check):
+            audio_check({str(audio.resolve()): audio})
+            return self.page
+        normalize = self.normalize_file
+        def changed(path):
+            normalize(path)
+            audio.write_bytes(b"replaced chosen audio")
+        with patch.object(hf_build, "_build", side_effect=built), \
+                patch.object(render, "normalize_loudness", side_effect=changed):
+            with self.assertRaises(editor.HTTPException) as error:
+                editor.draft_hf_export(self.request)
+        self.assertEqual(error.exception.status_code, 500)
+        self.assertIn("เปลี่ยนระหว่างส่งออก", error.exception.detail)
+        self.assertEqual(self.target.read_bytes(), b"previous approved video")
+        self.assertTrue((self.stages[-1] / "error.log").is_file())
 
     def test_manifest_failure_preserves_previous_output_and_diagnostics(self):
         with patch.object(delivery_manifest, "prepare", side_effect=OSError("manifest disk full")):

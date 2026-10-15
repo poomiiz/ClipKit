@@ -168,7 +168,7 @@ def subtitle_animation(event: dict, identifier: str) -> str:
     return base
 
 
-def _build(path: str, *, final: bool = False) -> Path:
+def _build(path: str, *, final: bool = False, audio_check=None) -> Path:
     import web_ai_transaction
     web_ai_transaction.recover("clip", path)
     t = render.render_draft(path, "", dry=True, final=final)
@@ -289,19 +289,22 @@ def _build(path: str, *, final: bool = False) -> Path:
                    f'data-start="{motion["start"]:.3f}" data-duration="{motion["duration"]:.3f}" data-media-start="0" '
                    f'data-track-index="{8 + index}" style="position:absolute;top:0;left:50%;height:100%;width:auto;transform:translateX(-50%)"></video>')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
-    mu = t["music"]
+    mu, fx = t["music"], t["sfx"]
+    sounds = {kind: render._sfx(kind) for kind in ("pop", "whoosh")} if fx.get("on") else {}
+    audio_files = ([mu["file"]] if mu.get("file") else []) + list(sounds.values())
+    if audio_check is not None:
+        audio_check({str(Path(file).resolve()): file for file in audio_files})
     if mu.get("file"):
         els.append(f'<audio id="{nid("m")}" src="{_local(out, mu["file"])}" data-start="0" data-duration="{D:.3f}" '
                    f'data-media-start="0" data-track-index="4" data-volume="{mu["volume"]}"></audio>')
-    fx = t["sfx"]
     if fx.get("on"):
-        pop_s, whoosh_s = render.sfx_len("pop"), render.sfx_len("whoosh")
+        pop_s, whoosh_s = render.sfx_len("pop", sounds["pop"]), render.sfx_len("whoosh", sounds["whoosh"])
         for tp in t["pops"]:
-            els.append(f'<audio id="{nid("s")}" src="{_local(out, render._sfx("pop"))}" data-start="{tp:.3f}" data-duration="{pop_s:.2f}" '
+            els.append(f'<audio id="{nid("s")}" src="{_local(out, sounds["pop"])}" data-start="{tp:.3f}" data-duration="{pop_s:.2f}" '
                        f'data-track-index="5" data-volume="{0.5 * fx["volume"]:.2f}"></audio>')
         for b in t["broll"]:
             if b.get("file"):
-                els.append(f'<audio id="{nid("s")}" src="{_local(out, render._sfx("whoosh"))}" data-start="{max(0, b["start"] - 0.15):.3f}" '
+                els.append(f'<audio id="{nid("s")}" src="{_local(out, sounds["whoosh"])}" data-start="{max(0, b["start"] - 0.15):.3f}" '
                            f'data-duration="{whoosh_s:.2f}" data-track-index="5" data-volume="{0.35 * fx["volume"]:.2f}"></audio>')
     font = _local(out, subtitle_font)
     # the HyperFrames runtime (clip windows, media sync, seeking) for the live player; the renderer brings its own

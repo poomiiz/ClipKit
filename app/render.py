@@ -1037,9 +1037,9 @@ def _own_sfx(kind: str) -> Path | None:
     return (named or inside or [None])[0]
 
 
-def sfx_len(kind: str) -> float:
+def sfx_len(kind: str, file: Path | None = None) -> float:
     """Seconds the sound for kind plays, at most 2."""
-    return min(2.0, capcut_edit._music_meta(_sfx(kind))["duration"] + 0.05)  # its 0.1 s rounding never cuts the tail
+    return min(2.0, capcut_edit._music_meta(file if file is not None else _sfx(kind))["duration"] + 0.05)  # its 0.1 s rounding never cuts the tail
 
 
 def _sfx(kind: str) -> Path:
@@ -1342,6 +1342,10 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                     "pops": [m[1] for m in marks if m[0] == "pop"],
                     "segments": [{"media_start": s["source_timerange"]["start"] / US, "dur": s["source_timerange"]["duration"] / US,
                                   "start": s["target_timerange"]["start"] / US} for s in segs]}
+        sfx = [("pop", m[1]) for m in marks if m[0] == "pop"] + [("whoosh", float(it["start"]) - 0.15) for it in plan]
+        sounds = {kind: _sfx(kind) for kind in sorted({kind for kind, _ in sfx})} if fx["on"] else {}
+        audio_files = ([music_file] if music_file else []) + list(sounds.values())
+        check_export.bind_media({str(Path(file).resolve()): file for file in audio_files})
         graph += ";[ac]asplit=2[voice][key]"
         if music_file:
             n = add("-stream_loop", "-1", "-i", music_file)
@@ -1350,10 +1354,9 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                       f"afade=t=out:st={max(0, length - 1.5):.3f}:d=1.5[mus]")
             mix.append("[mus]")
         graph += ";[key]anullsink"
-        sfx = [("pop", m[1]) for m in marks if m[0] == "pop"] + [("whoosh", float(it["start"]) - 0.15) for it in plan]
         if fx["on"]:
             for k, (kind, t) in enumerate(sfx):
-                n = add("-i", str(_sfx(kind)))
+                n = add("-i", str(sounds[kind]))
                 ms = max(0, round(t * 1000))
                 graph += f";[{n}:a]adelay={ms}|{ms},volume={(0.5 if kind == 'pop' else 0.35) * fx['volume']:.3f}[s{k}]"
                 mix.append(f"[s{k}]")

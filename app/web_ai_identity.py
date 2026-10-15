@@ -240,15 +240,34 @@ def export_check(target: str | Path, output: str | Path | None = None):
                     raise VideoEditError("motion input ต้องเป็นพาธไฟล์")
                 file = _referenced(value, _canonical(target))
                 motion_inputs[file] = _file(file, required=True)
+    resolved_media, media_reads = {}, {}
+    media_bound = False
+    def bind_media(files: dict[str, str | Path]):
+        nonlocal media_bound
+        for published, file in files.items():
+            if not Path(published).is_absolute():
+                raise VideoEditError("Resolved media needs an absolute published path")
+            source, destination = _canonical(file), str(_canonical(published))
+            digest = _file(source, required=True)
+            if (source in media_reads and media_reads[source] != digest
+                    or destination in resolved_media and resolved_media[destination] != digest):
+                raise VideoEditError("Resolved media changed while preparing export")
+            media_reads[source], resolved_media[destination] = digest, digest
+        media_bound = True
     def check():
         after, _ = _snapshot("clip", target, None, sources)
         if (_hash(after) != _hash(before) or
                 {name: transaction._hash(file) for name, file in transaction._files(Path(target)).items()} != metadata or
                 output is not None and transaction._hash(Path(output)) != old_output or
-                any(_file(file, required=True) != digest for file, digest in motion_inputs.items())):
+                any(_file(file, required=True) != digest for file, digest in motion_inputs.items()) or
+                any(_file(file, required=True) != digest for file, digest in media_reads.items())):
             raise VideoEditError("ข้อมูลโปรเจกต์หรือไฟล์อ้างอิงเปลี่ยนระหว่างส่งออก · เก็บไฟล์เดิมไว้และส่งออกใหม่")
-        return {"snapshot": before, "metadata": metadata,
-                "motion_inputs": {_path_id(file): digest for file, digest in motion_inputs.items()}}
+        evidence = {"snapshot": before, "metadata": metadata,
+                    "motion_inputs": {_path_id(file): digest for file, digest in motion_inputs.items()}}
+        if media_bound:
+            evidence["resolved_media"] = dict(resolved_media)
+        return evidence
+    check.bind_media = bind_media  # Backend registers chosen files after first-use generation, before consumption.
     return check
 
 

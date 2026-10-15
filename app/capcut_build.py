@@ -183,6 +183,13 @@ def build(path: str) -> tuple[Path, list[str]]:
             dst = Path(staging) / "draft"
             warnings = _build(str(src), dst, final)
             draft_quality.check(str(dst))
+            audio_files = {}
+            for material in capcut_edit._load(dst)["materials"].get("audios", []):
+                file = Path(material["path"])
+                file = file.resolve() if file.is_absolute() else (dst / file).resolve()
+                published = final / file.relative_to(dst) if file.is_relative_to(dst) else file
+                audio_files[str(published.resolve())] = file
+            check_export.bind_media(audio_files)
             if host_platform.capcut_running():
                 raise VideoEditError("Close CapCut before publishing the native project")
             if final.exists() or final.is_symlink():

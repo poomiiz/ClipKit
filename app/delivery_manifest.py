@@ -75,6 +75,8 @@ def status(project: str | Path, manifest: str | Path, output: str | Path) -> dic
                 or record.get("output_id") != identity._path_id(output)):
             raise ValueError("record is changed or belongs to another delivery")
         current = identity.export_check(project)()
+        if "resolved_media" in record["inputs"]:
+            current["resolved_media"] = {file: identity._file(Path(file)) for file in record["inputs"]["resolved_media"]}
         inputs_match = current == record["inputs"]
         artifact_matches = artifact(Path(output), record["kind"]) == record["artifact"]
         pending_checks = not record.get("commit") or any(value != "passed" for key, value in record["checks"].items() if key != "probe")
