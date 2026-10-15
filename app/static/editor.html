@@ -586,7 +586,7 @@ function sideMusic(s) {
 async function del() {
   if (!SEL) return;
   if (SEL.type === 'broll') { PL.broll.splice(SEL.i, 1); savePL(); }
-  else if (SEL.type === 'motion') { await api('draft/overlay-remove', {path: PATH, start: T.motions[SEL.i].start}); await reload(); }
+  else if (SEL.type === 'motion') { await api('draft/overlay-remove', {path: PATH, placement_id: T.motions[SEL.i].placement_id, start: T.motions[SEL.i].start}); await reload(); }
   else return;
   SEL = null; drawTL(); side();
 }

@@ -2897,7 +2897,7 @@ async function ovLoad() {
       if (on) {
         const b = document.createElement('button');
         b.className = 'small'; b.textContent = '✓ ' + r.templates[on.template] + ' · เอาออก';
-        b.onclick = async () => { await api('draft/overlay-remove', {path: state.draft.path, start: s.start}); ovLoad(); };
+        b.onclick = async () => { await api('draft/overlay-remove', {path: state.draft.path, placement_id: on.placement_id, start: on.start}); ovLoad(); };
         row.appendChild(b);
       } else Object.entries(r.quick).forEach(([k, label]) => {  // number / infographic motion comes from the web AI or an agent
         const b = document.createElement('button');
