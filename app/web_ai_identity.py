@@ -117,7 +117,7 @@ def _referenced(path: str | Path, folder: Path) -> Path:
 
 def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: dict,
               *, require_transcript: bool = True, operation: str | None = None) -> tuple[dict, dict]:
-    if operation is not None and (step != "clip" or operation != "inserts"):
+    if operation is not None and (step != "clip" or operation not in {"inserts", "manual"}):
         raise VideoEditError("operation ของคำสั่ง AI ไม่ถูกต้อง")
     target = _canonical(target)
     if step == "stories" and require_transcript and Path(str(target) + ".transcript.part.json").exists():
@@ -264,7 +264,8 @@ def issue(step: str, target: str | Path, preferences: dict | None = None, *, ope
     record = {"step": step, "target_id": _path_id(target), "identity": identity, "sources": updated}
     atomic.write_text(packets / (identity["packet_id"] + ".json"), json.dumps(record, ensure_ascii=False))
     atomic.write_text(folder / "source-cache.json", json.dumps(updated))
-    atomic.write_text(folder / "active.json", json.dumps({"packet_id": identity["packet_id"]}))
+    active = "active-manual.json" if operation == "manual" else "active.json"
+    atomic.write_text(folder / active, json.dumps({"packet_id": identity["packet_id"]}))
     return identity
 
 
@@ -276,12 +277,12 @@ def verify(step: str, target: str | Path, answer: dict) -> dict[str, Any]:
     if not isinstance(packet, str) or not re.fullmatch(r"[0-9a-f]{32}", packet):
         raise VideoEditError("คำตอบไม่มี packet_id ที่ถูกต้อง · ส่งออกคำสั่ง AI ใหม่")
     record = _json(folder / "packets" / (packet + ".json"))
-    active = _json(folder / "active.json", {})
-    if not isinstance(record, dict) or not isinstance(active, dict) or active.get("packet_id") != packet:
-        raise VideoEditError("คำตอบนี้ไม่ตรงกับคำสั่ง AI ล่าสุดของงานนี้ · ส่งออกคำสั่ง AI ใหม่")
-    identity = record.get("identity", {})
+    identity = record.get("identity", {}) if isinstance(record, dict) else None
     if not isinstance(identity, dict) or not isinstance(record.get("sources", {}), dict):
         raise VideoEditError("ข้อมูลอ้างอิงคำสั่ง AI ไม่ถูกต้อง · ส่งออกคำสั่ง AI ใหม่")
+    active = _json(folder / ("active-manual.json" if identity.get("operation") == "manual" else "active.json"), {})
+    if not isinstance(active, dict) or active.get("packet_id") != packet:
+        raise VideoEditError("คำตอบนี้ไม่ตรงกับคำสั่ง AI ล่าสุดของงานนี้ · ส่งออกคำสั่ง AI ใหม่")
     if record.get("step") != step or record.get("target_id") != _path_id(target) or answer.get("step") != step:
         raise VideoEditError("คำตอบ AI เป็นของคนละงานหรือคนละขั้น · ส่งออกคำสั่ง AI ใหม่")
     if answer.get("revision") != identity.get("revision") or answer.get("source_id") != identity.get("source_id"):

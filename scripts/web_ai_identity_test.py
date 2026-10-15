@@ -269,6 +269,22 @@ class PacketIdentity(unittest.TestCase):
                 self.answer("stories", preferences={"max_minutes": value})
         self.assertFalse(identity.state_dir("stories", self.source).exists())
 
+    def test_manual_packet_lane_preserves_browser_latest_and_rejects_old_manual_or_tampered_operation(self):
+        browser = self.answer()
+        active = identity.state_dir('clip', self.project)/'active.json'
+        before = active.read_bytes()
+        manual = {'clipkit_web_ai':2, 'step':'clip', **identity.issue('clip',self.project,operation='manual')}
+        identity.verify('clip',self.project,browser)
+        identity.verify('clip',self.project,manual)
+        newer = {'clipkit_web_ai':2, 'step':'clip', **identity.issue('clip',self.project,operation='manual')}
+        self.assertEqual(active.read_bytes(),before)
+        with self.assertRaises(VideoEditError):identity.verify('clip',self.project,manual)
+        identity.verify('clip',self.project,newer)
+        for answer in (browser,newer):
+            changed = dict(answer)
+            changed['operation'] = None if answer.get('operation') else 'manual'
+            with self.assertRaises(VideoEditError):identity.verify('clip',self.project,changed)
+
 
 if __name__ == "__main__":
     unittest.main()

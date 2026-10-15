@@ -1227,33 +1227,29 @@ def render_overlay(req: OverlayRequest, plan: dict) -> dict[str, Any]:
 @router.post("/draft/overlay")
 @project_lock.edit
 def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
-    if req.review_revision is not None:
-        import kit_settings
-        import web_ai_identity as identity
-        import web_ai_transaction as transaction
-        try:
-            if _overlay_revision(req) != req.review_revision:
-                raise VideoEditError("โปรเจกต์หรือคำสั่ง motion เปลี่ยน · ตรวจแผนใหม่")
-            answer = {"clipkit_web_ai": 2, **identity.issue("clip", req.path), "step": "clip",
-                      "manual": "motion", "request": req.model_dump(exclude={"review_revision"})}
-            if _overlay_revision(req) != req.review_revision:
-                raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียม motion · ตรวจแผนใหม่")
-            def prepare(work, assets):
-                staged = req.model_copy(update={"path": str(work)})
-                plan = prepare_overlay(staged)
-                with kit_settings.motion_destination(assets):
-                    items = plan["items"] + [render_overlay(staged, plan)]
-                items.sort(key=lambda item: item["start"])
-                atomic.write_text(work / OVERLAYS, json.dumps(items, ensure_ascii=False, indent=1))
-                return {"overlays": items}
-            return transaction.apply("clip", req.path, answer, prepare)
-        except VideoEditError as exc:
-            raise HTTPException(409, str(exc)) from exc
-    plan = prepare_overlay(req)
-    items = plan["items"] + [render_overlay(req, plan)]
-    atomic.write_text((Path(req.path) / OVERLAYS), json.dumps(sorted(items, key=lambda o: o["start"]), ensure_ascii=False,
-                                                      indent=1), encoding="utf-8")
-    return {"overlays": _overlays(req.path)}
+    prepare_overlay(req)
+    import kit_settings
+    import web_ai_identity as identity
+    import web_ai_transaction as transaction
+    try:
+        revision = _overlay_revision(req)
+        if req.review_revision is not None and revision != req.review_revision:
+            raise VideoEditError("โปรเจกต์หรือคำสั่ง motion เปลี่ยน · ตรวจแผนใหม่")
+        answer = {"clipkit_web_ai": 2, **identity.issue("clip", req.path, operation="manual"), "step": "clip",
+                  "manual": "motion", "request": req.model_dump(exclude={"review_revision"})}
+        if _overlay_revision(req) != revision:
+            raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียม motion · ตรวจแผนใหม่")
+        def prepare(work, assets):
+            staged = req.model_copy(update={"path": str(work)})
+            plan = prepare_overlay(staged)
+            with kit_settings.motion_destination(assets):
+                items = plan["items"] + [render_overlay(staged, plan)]
+            items.sort(key=lambda item: item["start"])
+            atomic.write_text(work / OVERLAYS, json.dumps(items, ensure_ascii=False, indent=1))
+            return {"overlays": items}
+        return transaction.apply("clip", req.path, answer, prepare)
+    except VideoEditError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 class OverlayDelete(BaseModel):
@@ -1690,7 +1686,7 @@ def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
         if line != req.line or captions is not None:
             import web_ai_identity
             import web_ai_transaction
-            answer = {"clipkit_web_ai": 2, **web_ai_identity.issue("clip", req.path),
+            answer = {"clipkit_web_ai": 2, **web_ai_identity.issue("clip", req.path, operation="manual"),
                       "step": "clip", "project": folder.name, "manual": "phrases", "cue_id": selected["id"],
                       "line": req.line, "source_text": line, "pairs": items, "caption": req.caption}
 

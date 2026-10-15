@@ -227,15 +227,65 @@ class MotionCutTests(unittest.TestCase):
 
     def test_manual_receipt_failure_rolls_back_published_overlay_and_keeps_original_media(self):
         old=self.install('hook-title',0,1);before=self.files();original=Path(old['file']).read_bytes()
-        request=self.manual_request();request.review_revision=video_editor.draft_overlay_preview(request)['review_revision']
+        assets={p:p.read_bytes() for p in identity.state_dir('clip',self.path).glob('transactions/*/assets/*.mov')}
         write=transaction._write
         def fail_receipt(file,data):
             if file.parent.name=='receipts':raise OSError('receipt unavailable')
             return write(file,data)
-        with patch.object(transaction,'_write',side_effect=fail_receipt),self.assertRaisesRegex(OSError,'receipt unavailable'):
-            video_editor.draft_overlay_add(request)
+        for reviewed in (False,True):
+            with self.subTest(reviewed=reviewed):
+                request=self.manual_request()
+                if reviewed:request.review_revision=video_editor.draft_overlay_preview(request)['review_revision']
+                with patch.object(transaction,'_write',side_effect=fail_receipt),self.assertRaisesRegex(OSError,'receipt unavailable'):
+                    video_editor.draft_overlay_add(request)
+                self.assertEqual(self.files(),before);self.assertEqual(Path(old['file']).read_bytes(),original)
+                self.assertEqual({p:p.read_bytes() for p in identity.state_dir('clip',self.path).glob('transactions/*/assets/*.mov')},assets)
+
+    def test_legacy_api_interruption_recovers_before_next_writer_and_preserves_old_media(self):
+        old=self.install('hook-title',0,1);before=self.files();original=Path(old['file']).read_bytes()
+        browser={'clipkit_web_ai':2,'step':'clip',**identity.issue('clip',self.path)}
+        class Interrupted(BaseException):pass
+        write=transaction._write
+        def interrupted(file,data):
+            if file.parent.name=='receipts':raise Interrupted()
+            return write(file,data)
+        with patch.object(transaction,'_write',side_effect=interrupted),self.assertRaises(Interrupted):
+            video_editor.draft_overlay_add(self.manual_request())
+        self.assertNotEqual(self.files(),before)
+        with video_editor.project_lock.writer(self.path):pass
         self.assertEqual(self.files(),before);self.assertEqual(Path(old['file']).read_bytes(),original)
+        identity.verify('clip',self.path,browser)
+        journals=[json.loads(p.read_text()) for p in identity.state_dir('clip',self.path).glob('transactions/*/journal.json')]
+        self.assertEqual(sorted(item['phase'] for item in journals),['committed','rolled_back'])
+
+    def test_legacy_api_source_edit_during_render_is_preserved_without_publishing_motion(self):
+        before=self.files()
+        def changed(body):
+            result=self.encode(body);self.f.source.write_bytes(b'external source edit');return result
+        with patch.object(kit_settings,'make_motion',side_effect=changed),self.assertRaises(video_editor.HTTPException):
+            video_editor.draft_overlay_add(self.manual_request())
+        self.assertEqual(self.files(),before);self.assertEqual(self.f.source.read_bytes(),b'external source edit')
         self.assertEqual(list(identity.state_dir('clip',self.path).glob('transactions/*/assets/*.mov')),[])
+
+    def test_failed_manual_motion_keeps_downloaded_browser_packet_current(self):
+        answer={'clipkit_web_ai':2, 'step':'clip', **identity.issue('clip',self.path)}
+        active=identity.state_dir('clip',self.path)/'active.json';before=active.read_bytes()
+        with patch.object(kit_settings,'make_motion',side_effect=RuntimeError('encoder failed')),self.assertRaisesRegex(RuntimeError,'encoder failed'):
+            video_editor.draft_overlay_add(self.manual_request())
+        self.assertEqual(active.read_bytes(),before)
+        identity.verify('clip',self.path,answer)
+
+    def test_failed_manual_caption_transaction_keeps_browser_packet_and_original_metadata(self):
+        answer={'clipkit_web_ai':2,'step':'clip',**identity.issue('clip',self.path)}
+        before=self.files();write=transaction._write
+        def fail_receipt(file,data):
+            if file.parent.name=='receipts':raise OSError('caption receipt failed')
+            return write(file,data)
+        with patch.object(transaction,'_write',side_effect=fail_receipt),self.assertRaisesRegex(OSError,'caption receipt failed'):
+            video_editor.draft_phrases(video_editor.PhraseEdit(path=self.path,cue_id='0',line='normal keyword',
+                pairs=[['normal','keyword']],caption='manual caption'))
+        self.assertEqual(self.files(),before)
+        identity.verify('clip',self.path,answer)
 
 
 if __name__=='__main__':unittest.main()

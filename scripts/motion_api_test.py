@@ -18,6 +18,8 @@ import kit_settings
 import kitconfig
 import render
 import motion_plan
+import host_platform
+import jobstore
 
 
 class MotionApiTests(unittest.TestCase):
@@ -27,6 +29,11 @@ class MotionApiTests(unittest.TestCase):
         config.write_text("{}", encoding="utf-8")
         self.enterContext(patch.object(kitconfig, "_CANDIDATES", [config]))
         self.file = Path(self.path) / video_editor.OVERLAYS
+        (Path(self.path)/'draft_content.json').write_text('{"materials":{"videos":[],"texts":[]}}')
+        for name in ('old.mov','other.mov','original.mov','fixture.mov'):
+            (Path(self.path)/name).write_bytes(b'synthetic media; renderer boundary mocked')
+        self.enterContext(patch.object(host_platform,'capcut_running',return_value=False))
+        self.enterContext(patch.object(jobstore,'STATE',Path(self.path)/'state'))
         self.timeline = {"style": {}, "width": 1080, "height": 1920, "duration": 8, "look": "pair",
                          "phrases": [], "hook": [], "motions": []}
         self.enterContext(patch.object(render,"render_draft",side_effect=lambda *args,**kwargs:self.timeline))
@@ -35,7 +42,7 @@ class MotionApiTests(unittest.TestCase):
 
     def render(self, body):
         plan=motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height,placement=body.placement)
-        return {"file":"fixture.mov","recipe":plan}
+        return {"file":str(Path(self.path)/'fixture.mov'),"recipe":plan}
 
     def req(self, **values):
         return video_editor.OverlayRequest(path=self.path, template="hook-title", start=1.123456,

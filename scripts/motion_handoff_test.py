@@ -19,6 +19,8 @@ with tempfile.TemporaryDirectory() as import_folder:
 import hf_build
 import kitconfig
 import motion_plan
+import host_platform
+import jobstore
 from capcut_font_test import CapCutFontTests
 
 
@@ -28,12 +30,16 @@ class MotionHandoffTests(unittest.TestCase):
         config = Path(folder) / "config.json"
         config.write_text("{}", encoding="utf-8")
         self.enterContext(patch.object(kitconfig, "_CANDIDATES", [config]))
+        self.enterContext(patch.object(host_platform,'capcut_running',return_value=False))
+        self.enterContext(patch.object(jobstore,'STATE',Path(folder)/'state'))
 
     def test_cue_motion_uses_real_ratio_geometry_and_rejects_overflow(self):
         import kit_settings
         import video_editor
         for W, H in ((1080, 1920), (1920, 1080), (1080, 1080)):
             with self.subTest(canvas=(W, H)), tempfile.TemporaryDirectory() as folder:
+                (Path(folder)/'draft_content.json').write_text('{"materials":{"videos":[],"texts":[]}}')
+                (Path(folder)/'fixture.mov').write_bytes(b'synthetic renderer fixture')
                 look = render.pair_look({}, W, H)
                 look.update(fixed_size=True, font=str(render.DEFAULT_FONT))
                 phrase = {"start": 0, "end": 2, "hit": 1, "lead": "normal", "punch": "key",
@@ -43,7 +49,7 @@ class MotionHandoffTests(unittest.TestCase):
                     text="normal key", cue_id="cue", params={"pairs": [[0, 2, "normal", "key", 1]]})
                 with patch.object(render, "render_draft", return_value=timeline), \
                         patch.object(render, "pair_look", return_value=look), \
-                        patch.object(kit_settings, "make_motion", side_effect=lambda body:{"file":"fixture.mov", "recipe":
+                        patch.object(kit_settings, "make_motion", side_effect=lambda body:{"file":str(Path(folder)/'fixture.mov'), "recipe":
                             motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height)}) as make:
                     video_editor.draft_overlay_add(req)
                     params = make.call_args.args[0].params

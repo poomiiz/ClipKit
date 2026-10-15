@@ -38,10 +38,12 @@ class MotionFreshnessTests(unittest.TestCase):
             hf_build._build(self.f.path)
         proxy.assert_not_called()
         with patch.object(render, 'render_draft', return_value=timeline), \
+                patch.object(capcut_build, '_machine_paths', side_effect=AssertionError('machine resources touched before preflight')) as machine, \
                 patch.object(capcut_build.shutil, 'copytree') as copytree, \
                 self.assertRaisesRegex(render.VideoEditError, 'motion เก่า'):
             capcut_build._build(self.f.path, self.folder/'native-stage', self.folder/'native-final')
         copytree.assert_not_called()
+        machine.assert_not_called()
 
     def test_current_recipe_is_read_only_and_uses_supplied_timeline_without_recursion(self):
         before = self.f.files()
@@ -126,9 +128,11 @@ class MotionFreshnessTests(unittest.TestCase):
         shutil.copy2(render.DEFAULT_FONT,font)
         fixture.video_editor.draft_overlay_add(fixture.video_editor.OverlayRequest(path=self.f.path,
             template='hook-title',start=0,end=1,text='title',params={'key':'title','duration':1,'font':str(font)}))
+        state = fixture.identity.state_dir('clip',self.folder)
+        before = {p.relative_to(state).as_posix():p.read_bytes() for p in state.rglob('*') if p.is_file()}
         check = fixture.identity.export_check(self.folder)
         check()
-        self.assertFalse(fixture.identity.state_dir('clip',self.folder).exists())
+        self.assertEqual({p.relative_to(state).as_posix():p.read_bytes() for p in state.rglob('*') if p.is_file()},before)
         font.write_bytes(b'new font bytes')
         with self.assertRaisesRegex(render.VideoEditError, 'เปลี่ยนระหว่างส่งออก'):
             check()
