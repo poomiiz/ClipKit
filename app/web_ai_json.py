@@ -190,6 +190,11 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
                                "emphasis_size": look["punch"][0], "normal_y": look["lead"][1],
                                "emphasis_y": look["punch"][1], "canvas": {key: canvas[key] for key in ("width", "height")},
                                "font_family": family, "font_file": font.name, "safe_box": render.safe_box(style)}
+    if style.get("anim", "none") in ("none", "pop"):
+        events = validate_subtitles(path)
+        data["subtitle_layout"] = {"mode":style.get("anim", "none"),"canvas":dict(canvas),"safe_box":render.safe_box(style),
+            "events":[{**{key:event[key] for key in ("role","cue_id","text","start","end","size_px","center_x_px","center_y_px","rotation","bbox")},
+                       "font_file":Path(event["font_file"]).name} for event in events]}
     import motion_plan
     data["motion_subject_zones"] = motion_plan.validate_subject_zones(style.get("motion_subject_zones", []), draft["duration"] / capcut_edit.US)
     prompt = _prompt("clip.md")
@@ -326,9 +331,16 @@ def validate_subtitles(path: str, *, picks: dict | None = None, captions: dict |
     canvas = draft["canvas_config"]
     duration = max((segment["target_timerange"]["start"] + segment["target_timerange"]["duration"]) / video_edit.US
                    for segment in capcut_edit._video_track(draft)["segments"])
-    return render.validate_pair_cues(rows, cue_data.load(folder, "clipkit_words.json", original_rows),
+    active_style = render._json(folder / "clipkit_style.json", {}) if style is None else style
+    words = cue_data.load(folder, "clipkit_words.json", original_rows)
+    if active_style.get("preset"):
+        render.pair_look(active_style, canvas["width"], canvas["height"])
+    if active_style.get("anim", "none") in ("none", "pop"):
+        render._resolved_pair_cues(rows, words, cue_data.load(folder, "clipkit_punch.json", original_rows) if picks is None else picks, duration=duration)
+        return render.plain_events(draft, rows, words, style=active_style, duration=duration)
+    return render.validate_pair_cues(rows, words,
                                     cue_data.load(folder, "clipkit_punch.json", original_rows) if picks is None else picks,
-                                    style=render._json(folder / "clipkit_style.json", {}) if style is None else style,
+                                    style=active_style,
                                     W=canvas["width"], H=canvas["height"],
                                     captions=cue_data.load(folder, "clipkit_caption.json", original_rows) if captions is None else captions,
                                     duration=duration)

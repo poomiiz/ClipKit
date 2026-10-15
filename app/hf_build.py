@@ -147,13 +147,13 @@ def build(path: str) -> Path:
         return _build(path)
 
 
-def subtitle_html(event: dict, identifier: str) -> str:
+def subtitle_html(event: dict, identifier: str, font_face: str = "ClipKit Thai") -> str:
     """Serialize the measured plan; the timed outer clip never receives animation visibility."""
     return (f'<div id="{identifier}" class="clip subtitle-event" data-role="{event["role"]}" '
             f'data-start="{event["start"]:.6f}" data-duration="{event["end"] - event["start"]:.6f}" data-track-index="3" '
             f'style="position:absolute;inset:0">'
             f'<div class="subtitle-glyph" style="left:{event["center_x_px"]:.6f}px;top:{event["center_y_px"]:.6f}px;'
-            f'width:max-content;font-size:{event["size_px"]:.6f}px;line-height:{render.LINE_H};'
+            f'width:max-content;font-family:{font_face};font-size:{event["size_px"]:.6f}px;line-height:{render.LINE_H};'
             f'color:{_css_color(event["fill"])};-webkit-text-stroke:{event["outline_px"] * 2:.6f}px {_css_color(event["stroke"])};'
             f'text-shadow:0 {event["shadow"]}px {event["shadow"] * 2}px rgba(0,0,0,.7)">{html.escape(event["text"])}</div></div>')
 
@@ -249,10 +249,12 @@ def _build(path: str) -> Path:
 
     tops: dict[str, float] = {}
     look = t["look"]
-    if look == "pair":
+    subtitle_fonts = {}
+    if look == "pair" or "plain_events" in t:
         for event in render.pair_events_from_timeline(t):
+            face = subtitle_fonts.setdefault(event["font_file"], f"ClipKitSubtitle{len(subtitle_fonts)}")
             i = nid("t")
-            els.append(subtitle_html(event, i))
+            els.append(subtitle_html(event, i, face))
             anim.append(subtitle_animation(event, i))
     else:
         for p in t["phrases"]:
@@ -310,6 +312,7 @@ def _build(path: str) -> Path:
 <script src="{runtime}"></script>
 <style>
 @font-face{{font-family:"ClipKit Thai";src:url("{font}")}}
+{chr(10).join('@font-face{font-family:"'+face+'";font-weight:700;src:url("'+_local(out,file)+'")}' for file,face in subtitle_fonts.items())}
 *{{margin:0;padding:0;box-sizing:border-box}}
 html,body{{width:{W}px;height:{H}px;overflow:hidden;background:#000}}
 .cam{{transform-origin:{W / 2 - fit["x"]}px {H / 2 - fit["y"]}px}}

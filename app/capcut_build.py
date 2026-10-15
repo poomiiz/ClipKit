@@ -104,7 +104,7 @@ def _event_text(draft: dict, role: str, event: dict, W: int, H: int) -> dict:
     style.setdefault("font", {})["path"] = event["font_file"]
     strokes = style.get("strokes") or [{"content": {"solid": {"color": event["stroke"]}}}]
     strokes[0].setdefault("content", {}).setdefault("solid", {})["color"] = event["stroke"]
-    strokes[0]["width"] = max(0, (event["outline_px"] - 2) / event["size_px"] / .6)
+    strokes[0]["width"] = max(0, (event["outline_px"] - event.get("outline_extra_px", 2)) / event["size_px"] / .6)
     style["strokes"] = strokes[:1]
     material.update(content=json.dumps(body, ensure_ascii=False), font_path=event["font_file"],
                     font_name=event["font_family"], font_title=event["font_family"], line_max_width=1.0,
@@ -272,7 +272,7 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     look = t["look"]
     P = render.pair_look(st, W, H) if look == "pair" else None
     whites, colours, captions, titles, seconds = [], [], [], [], []
-    if look == "pair":
+    if look == "pair" or "plain_events" in t:
         roles = {"normal": ("white", whites), "emphasis": ("orange", colours),
                  "caption": ("caption", captions), "second": ("white", seconds)}
         for event in render.pair_events_from_timeline(t):

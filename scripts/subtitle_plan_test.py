@@ -126,6 +126,8 @@ class ChannelPreflight(unittest.TestCase):
         self.f.setUp()
         self.addCleanup(self.f.doCleanups)
         self.path = str(self.f.folder)
+        # These tests exercise pair roles/stacks explicitly; a missing style means native plain text.
+        (self.f.folder / "clipkit_style.json").write_text('{"anim":"pair"}', encoding="utf-8")
 
     def files(self):
         return {p.name: p.read_bytes() for p in self.f.folder.iterdir() if p.is_file()}

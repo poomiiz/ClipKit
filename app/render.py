@@ -750,8 +750,8 @@ def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = 
         height = event["size_px"] * LINE_H
         angle, peak = abs(math.radians(event["rotation"])), 1.3 if event["effect"] == "pop" else 1
         padding = 2 * (event["outline_px"] + event["shadow"])
-        bw = (width * math.cos(angle) + height * math.sin(angle)) * peak + padding
-        bh = (height * math.cos(angle) + width * math.sin(angle)) * peak + padding
+        bw = (width * abs(math.cos(angle)) + height * abs(math.sin(angle))) * peak + padding
+        bh = (height * abs(math.cos(angle)) + width * abs(math.sin(angle))) * peak + padding
         x, y = event["center_x_px"], event["center_y_px"]
         bounds = [x - bw / 2, y - bh / 2, x + bw / 2, y + bh / 2]
         if (bounds[0] < W * (1 - box["w"]) / 2 - .05 or bounds[2] > W * (1 + box["w"]) / 2 + .05
@@ -802,7 +802,76 @@ def validate_pair_cues(rows: list[dict], words: dict, picks: dict, *, style: dic
     return pair_events(phrases, look, W, H, family, font, captions=captions, held={"white": "", "box": safe_box(style)})
 
 
+def plain_events(draft: dict, rows: list[dict], words: dict, *, style: dict, duration: float) -> list[dict]:
+    """Measure native still/pop text once; preserve its font, rotation, color and real cue clock."""
+    from PIL import ImageFont
+    W, H = draft["canvas_config"]["width"], draft["canvas_config"]["height"]
+    box = safe_box(style)
+    segments = {s["id"]: s for s in (capcut_edit._text_track(draft) or {}).get("segments", [])}
+    index = capcut_edit._index(draft)
+    phrases = _resolved_pair_cues(rows, words, {}, duration=duration)
+    out = []
+    for phrase in phrases:
+        segment = segments[phrase["cue_id"]]
+        material = index[segment["material_id"]][1]
+        styles = json.loads(material["content"]).get("styles") or [{}]
+        if len(styles) != 1:
+            raise VideoEditError("plain subtitle has multiple styled ranges; split or normalize them before export")
+        native = styles[0]
+        requested_font = (native.get("font") or {}).get("path") or material.get("font_path")
+        if requested_font and not Path(requested_font).is_file():
+            raise VideoEditError("plain subtitle font file is missing; select an available font before export")
+        family, file = _font(requested_font)
+        font = ImageFont.truetype(str(file), 100)
+        clip = segment["clip"]
+        scale = clip["scale"]
+        if (any(isinstance(scale.get(k), bool) or not isinstance(scale.get(k), (int,float))
+                or not math.isfinite(scale[k]) or scale[k] <= 0 for k in ("x","y"))
+                or abs(scale["x"] - scale["y"]) > 1e-6):
+            raise VideoEditError("plain subtitle needs equal positive X/Y scale; normalize it before export")
+        size = (material.get("font_size") or native.get("size") or 15) * CAPCUT_PX * min(W,H) / 1080 * clip["scale"]["x"]
+        rotation = clip.get("rotation", 0)
+        if not math.isfinite(size) or size <= 0 or not math.isfinite(rotation):
+            raise VideoEditError("plain subtitle size/rotation must be finite and positive")
+        cx, requested_y = W / 2 + clip["transform"].get("x",0) * W / 2, H / 2 - clip["transform"]["y"] * H / 2
+        available = 2 * min(cx - W * (1-box["w"])/2, W * (1+box["w"])/2 - cx)
+        if not math.isfinite(available) or not math.isfinite(requested_y) or available <= 0:
+            raise VideoEditError("plain subtitle has no safe horizontal placement")
+        peak = 1.3 if style.get("anim") == "pop" else 1
+        strokes = native.get("strokes") or []
+        rate = strokes[0].get("width",0) * .6 if strokes else 0
+        if not math.isfinite(rate) or rate < 0:
+            raise VideoEditError("plain subtitle outline must be finite and nonnegative")
+        lines, px = _fit(phrase["line"], file, size, available / peak)
+        angle = abs(math.radians(rotation))
+        widest = max(font.getlength(line) for line in lines) / 100 * px
+        bw = (widest * abs(math.cos(angle)) + px * LINE_H * abs(math.sin(angle))) * peak + 2 * px * rate
+        # shortcut: rotated rows use conservative box spacing; calibrate native multiline typography before acceptance.
+        pitch = (px * LINE_H * abs(math.cos(angle)) + widest * abs(math.sin(angle))) * peak + 2 * px * rate
+        factor = min(1, available / max(bw,1), H * (box["bottom"] - box["top"]) / max(len(lines) * pitch,1))
+        px, pitch = px * factor, pitch * factor
+        cy = min(max(requested_y, H*box["top"] + len(lines)*pitch/2), H*box["bottom"] - len(lines)*pitch/2)
+        fill = ((native.get("fill") or {}).get("content") or {}).get("solid",{}).get("color",[1,1,1])
+        stroke = strokes[0]["content"]["solid"]["color"] if strokes else [0,0,0]
+        for n, line in enumerate(lines):
+            if not line.strip():
+                continue
+            out.append({"role":"normal","cue_id":phrase["cue_id"],"text":line,"start":phrase["start"],"end":phrase["end"],
+                "size_px":px,"font_family":family,"font_file":str(file),"center_x_px":cx,
+                "center_y_px":cy+(n-(len(lines)-1)/2)*pitch,"rotation":rotation,"fill":list(fill),"stroke":list(stroke),
+                "outline_px":px*rate,"outline_extra_px":0,"shadow":0,"fixed_size":False,
+                "effect":"pop" if peak>1 else "none","effect_start":phrase["start"],"peak_scale":peak})
+    return check_pair_events(out,W,H,box=box)
+
+
 def pair_events_from_timeline(timeline: dict) -> list[dict]:
+    if "plain_events" in timeline:
+        out = []
+        for event in timeline["plain_events"]:
+            for a,b in visible_spans(max(event["start"], HOOK_DUR if timeline.get("hook") else 0), event["end"],
+                                     timeline.get("motions", []), role=event["role"], cue_id=event["cue_id"]):
+                out.append(dict(event,start=a,end=b,effect=event["effect"] if a==event["start"] else "none"))
+        return out
     if "subtitle_events" in timeline:
         return timeline["subtitle_events"]
     # Older timeline callers may already supply resolved phrases. They use the same planner once.
@@ -1059,7 +1128,14 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     held = {"white": "", "until": HOOK_DUR if hook else 0, "en": cue_data.load(folder, "clipkit_caption.json", cue_rows),
             "box": safe_box(style), "motions": overlays}
     text_segments = sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"])
-    subtitle_events = []
+    subtitle_events, plain = [], None
+    if anim in ("none", "pop"):
+        plain = plain_events(draft, cue_rows, said, style=style, duration=sum(seg["target_timerange"]["duration"] for seg in segs) / US)
+        subtitle_events = pair_events_from_timeline({"plain_events":plain,"hook":hook,"motions":overlays})
+        events.extend(subtitle_ass(event) for event in subtitle_events)
+        for phrase in _resolved_pair_cues(cue_rows, said, {}, duration=sum(seg["target_timerange"]["duration"] for seg in segs) / US):
+            marks.append(("phrase",phrase["start"],phrase["end"],phrase["lead"],"",phrase["line"],0,"",None,phrase["hit"],phrase["cue_id"],phrase["clock_status"]))
+        shown, estimated = len(cue_rows), sum(not said.get(cue_data.key(row["id"])) for row in cue_rows)
     if anim == "pair":
         pair = pair_look(style, W, H)
         fam, fdir = _font(pair.get("font"))
@@ -1082,7 +1158,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         marks.extend(("pop", event["start"]) for event in subtitle_events if event["role"] == "emphasis" and event["effect"] == "pop")
         shown, estimated = len(rows), sum(not said.get(cue_data.key(row["id"])) for row in rows)
     for line_number, s in enumerate(text_segments):
-        if anim == "pair":
+        if anim == "pair" or plain is not None:
             continue
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
@@ -1144,7 +1220,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                          "clock_status": m[11] if len(m) > 11 else "cue"} for m in marks if m[0] == "phrase"]
     recipe_errors = motion_plan.verify_timeline(folder, {"duration": sum(s["target_timerange"]["duration"] for s in segs) / US,
         "width": W, "height": H, "look": anim, "style": style, "hook": hook, "caption_en": held["en"],
-        "phrases": resolved_phrases, "motions": overlays}, strict=not dry)
+        "phrases": resolved_phrases, "motions": overlays, **({"plain_events":plain} if plain is not None else {})}, strict=not dry)
 
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out) as tmp:
@@ -1232,7 +1308,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": length, "width": W, "height": H, "look": anim, "style": style,
-                    "hook": hook, "subtitle_events": subtitle_events, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
+                    "hook": hook, "subtitle_events": subtitle_events, **({"plain_events":plain} if plain is not None else {}), "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
                     "progress": bool(style.get("progress")), "emoji": emoji,
                     "phrases": resolved_phrases, "motion_recipe_errors": recipe_errors,
                     "broll": plan, "motions": overlays, "quality": quality, "music": {"file": music_file or "", "volume": music_vol},

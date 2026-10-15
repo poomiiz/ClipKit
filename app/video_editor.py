@@ -1090,7 +1090,7 @@ def prepare_overlay(req: OverlayRequest, *, previous=None, timeline=None) -> dic
             timeline = render.render_draft(req.path, "", dry=True)
         base = {k: v for k, v in timeline.items() if k != "subtitle_events"}
         base["motions"] = []
-        if timeline["look"] != "pair" and timeline["phrases"]:
+        if timeline["look"] != "pair" and "plain_events" not in timeline and timeline["phrases"]:
             raise VideoEditError("เลือกพรีเซ็ตซับแบบวัดตำแหน่งก่อนวาง motion ร่วมกับข้อความ")
         underlying = render.pair_events_from_timeline(base)
         anchor = req.anchor or {"kind": "timeline", "start": req.start}
@@ -1652,7 +1652,7 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
     t["punch_picked"] = (Path(path) / "clipkit_punch.json").is_file()
     base = {key: value for key, value in t.items() if key != "subtitle_events"}
     base["motions"] = []
-    events = render.pair_events_from_timeline(base) if t["look"] == "pair" else []
+    events = render.pair_events_from_timeline(base) if t["look"] == "pair" or "plain_events" in t else []
     t["motion_cues"] = [{"cue_id": sub["id"], "text": sub["text"],
                          "roles": {role: {"start": min(e["start"] for e in events if e.get("cue_id") == sub["id"] and e["role"] == role),
                                           "end": max(e["end"] for e in events if e.get("cue_id") == sub["id"] and e["role"] == role)}
