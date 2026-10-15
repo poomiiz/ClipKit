@@ -29,8 +29,10 @@ def git(*args: str) -> str:
 
 def release() -> str:
     """The newest vX.Y.Z tag on GitHub."""
-    git("fetch", "-q", "--tags", "--force")
-    tags = git("tag", "--list", "v*", "--sort=-v:refname").split()
+    git("fetch", "-q", "--tags", "--force", "origin")
+    advertised = {line.split()[1].removeprefix("refs/tags/")
+                  for line in git("ls-remote", "--tags", "--refs", "origin", "v*").splitlines()}
+    tags = [tag for tag in git("tag", "--list", "v*", "--sort=-v:refname").split() if tag in advertised]
     if not tags:
         raise SystemExit("no release on GitHub yet (a vX.Y.Z tag)")
     return tags[0]

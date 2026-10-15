@@ -15,10 +15,11 @@ for path in (root/'app/static').glob('*.html'):
 assert 'EditorKrab' in (root/'app/static/shell.js').read_text(encoding='utf-8')
 assert '"clip-kit"' in (root/'.claude-plugin/plugin.json').read_text(encoding='utf-8')
 assert '"clipkit"' in (root/'app/static/team.html').read_text(encoding='utf-8')
-import sync_team
-assert not sync_team.names_in(b'https://github.com/poomiiz/EditorKrab')
-assert not sync_team.names_in(b'https://github.com/poomiiz/ClipKit')
-assert sync_team.names_in(b'private client poomi')
+import re, sync_team
+private_names = re.compile(r"ExamplePerson|poomiiz", re.I)
+assert not sync_team.names_in(b'https://github.com/poomiiz/EditorKrab', private_names)
+assert not sync_team.names_in(b'https://github.com/poomiiz/ClipKit', private_names)
+assert sync_team.names_in(b'private client ExamplePerson', private_names)
 print('PASS EditorKrab assets, visible brand and legacy identifier compatibility')
 
 # Windows PowerShell 5 reads non-BOM UTF-8 as an ANSI code page.
