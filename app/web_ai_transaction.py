@@ -19,8 +19,11 @@ def _hash(file: Path) -> str | None:
         raise VideoEditError(f"AI import refuses a linked project file: {file.name}")
     if not file.exists():
         return None
+    digest = hashlib.sha256()
     with file.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _json(file: Path):

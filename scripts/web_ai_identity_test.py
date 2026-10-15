@@ -174,9 +174,10 @@ class PacketIdentity(unittest.TestCase):
 
     def test_cache_only_reuses_media_sha_for_unchanged_canonical_source(self):
         original = identity._file
+        source = identity._canonical(self.source)
         hashed = []
         def digest(path, required=False):
-            if path == self.source:
+            if identity._canonical(path) == source:
                 hashed.append(path)
             return original(path, required)
         with patch.object(identity, "_file", side_effect=digest):
@@ -187,6 +188,25 @@ class PacketIdentity(unittest.TestCase):
             self.source.write_bytes(b"updated media")
             self.answer("stories")
             self.assertEqual(len(hashed), 2)
+
+    def test_full_file_hashing_and_stale_checks_work_without_file_digest(self):
+        import web_ai_transaction as transaction
+        content = bytes(range(256)) * 8193
+        self.source.write_bytes(content)
+        expected = identity.hashlib.sha256(content).hexdigest()
+        with patch.dict(identity.hashlib.__dict__):
+            identity.hashlib.__dict__.pop("file_digest", None)
+            self.assertEqual(identity._file(self.source), expected)
+            self.assertEqual(transaction._hash(self.source), expected)
+            answer = self.answer("stories")
+            identity.verify("stories", str(self.source), answer)
+            self.source.write_bytes(content[:-1] + b"different tail")
+            self.assert_stale(answer, "stories")
+            self.assertNotEqual(transaction._hash(self.source), expected)
+            self.source.write_bytes(b"")
+            empty = identity.hashlib.sha256(b"").hexdigest()
+            self.assertEqual(identity._file(self.source), empty)
+            self.assertEqual(transaction._hash(self.source), empty)
 
     def test_unproven_asr_sha_cannot_hide_changed_media(self):
         metadata = Path(str(self.source) + ".transcript.meta.json")

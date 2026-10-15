@@ -60,8 +60,11 @@ def _file(path: Path, required: bool = False) -> str | None:
         if required:
             raise VideoEditError(f"ไม่พบไฟล์ที่คำสั่ง AI ต้องอ้างอิง: {path.name}")
         return None
+    digest = hashlib.sha256()
     with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _stat(path: Path) -> list[int]:
