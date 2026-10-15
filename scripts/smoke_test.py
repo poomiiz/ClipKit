@@ -613,7 +613,7 @@ def web_ai_answers_are_checked():
                  "tracks": [{"type": "video", "segments": [{"id": "v", "material_id": "v",
                      "source_timerange": span, "target_timerange": span}]},
                      {"type": "text", "segments": [{"id": "cue-1", "material_id": "t",
-                         "target_timerange": span, "clip": {"transform": {"x": 0, "y": 0}}}]}]}
+                         "target_timerange": span, "clip": {"scale": {"x": 1, "y": 1}, "transform": {"x": 0, "y": 0}}}]}]}
         (proj / "draft_content.json").write_text(json.dumps(draft), encoding="utf-8")
         (proj / "clipkit_words.json").write_text(json.dumps({"cue:cue-1": [[0, 1, "เงิน"], [1, 2, "ไม่พอใช้"]]}), encoding="utf-8")
         web_ai.export_clip(str(proj))
