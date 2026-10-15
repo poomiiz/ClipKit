@@ -378,7 +378,12 @@ def stop_owned_preview(proc, expected: ProcessIdentity | None) -> None:
     if expected is None or not same_process(expected, process_identity(proc.pid)):
         raise RuntimeError("Preview process identity changed; refusing to stop it")
     root = psutil.Process(proc.pid)
-    children = [process_identity(child.pid) for child in root.children(recursive=True)]
+    children = []
+    for child in root.children(recursive=True):
+        try:
+            children.append(process_identity(child.pid))
+        except psutil.NoSuchProcess:
+            continue  # Includes a child that became a zombie during enumeration.
     if not same_process(expected, process_identity(proc.pid)):
         raise RuntimeError("Preview process identity changed; refusing to stop it")
     for snapshot in reversed(children):

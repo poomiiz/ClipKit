@@ -199,6 +199,27 @@ class PlatformTests(unittest.TestCase):
             child_process.terminate.assert_not_called()
             root.terminate.assert_called_once()
 
+    def test_preview_child_exits_during_snapshot_without_signalling_unknown_pid(self):
+        import psutil
+        owner = host.ProcessIdentity(4201, 10, 100, "node", ("node", "preview"))
+        for error in (psutil.NoSuchProcess(4202), psutil.ZombieProcess(4202), psutil.AccessDenied(4202)):
+            with self.subTest(error=type(error).__name__):
+                root = Mock();root.children.return_value = [SimpleNamespace(pid=4202)]
+                proc = Mock(pid=4201);proc.poll.return_value = None
+                def identity(pid):
+                    if pid == owner.pid:
+                        return owner
+                    raise error
+                with patch.object(host, "process_identity", side_effect=identity), patch("psutil.Process", return_value=root) as process:
+                    if isinstance(error, psutil.NoSuchProcess):
+                        host.stop_owned_preview(proc, owner)
+                        root.terminate.assert_called_once()
+                    else:
+                        with self.assertRaises(psutil.AccessDenied):
+                            host.stop_owned_preview(proc, owner)
+                        root.terminate.assert_not_called()
+                    self.assertTrue(all(call.args == (owner.pid,) for call in process.call_args_list))
+
     def test_server_worker_check_excludes_only_verified_controller_and_preview_trees(self):
         owner = host.ProcessIdentity(4201, 123.0, 100, str(Path(sys.executable).resolve()),
                                      (sys.executable, str(control.APP)))
