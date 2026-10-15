@@ -260,7 +260,7 @@ class PlainSubtitleTests(unittest.TestCase):
             self.timeline()
 
     def test_cpu_raster_ink_stays_inside_measured_box_at_all_ratios(self):
-        from PIL import Image
+        from PIL import Image, ImageFont, __version__ as pillow_version
         for width, height in ((1080,1920), (1920,1080), (1080,1080)):
             self.draft['canvas_config'].update(width=width, height=height)
             self.draft['tracks'][1]['segments'][0]['clip']['rotation'] = -12
@@ -276,15 +276,26 @@ class PlainSubtitleTests(unittest.TestCase):
                     'Style: S,Kanit,60,&H00FFFFFF,&H00000000,1,0,0,5,1\n\n[Events]\n'
                     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n')
                 (work/'subs.ass').write_text(header+render.subtitle_ass(event)+'\n',encoding='utf-8')
-                subprocess.run([render.FFMPEG,'-v','error','-y','-f','lavfi','-i',f'color=black:s={width}x{height}:d=0.1',
+                encoded = subprocess.run([render.FFMPEG,'-v','info','-y','-f','lavfi','-i',f'color=black:s={width}x{height}:d=0.1',
                     '-vf','ass=subs.ass:fontsdir=fonts','-frames:v','1','-threads','1','-filter_threads','1','frame.png'],
                     cwd=work,capture_output=True,check=True,timeout=30)
                 image=Image.open(work/'frame.png').convert('L')
                 ink=image.point(lambda value:255 if value>100 else 0).getbbox()
                 self.assertIsNotNone(ink)
                 x0,y0,x1,y1=event['bbox']
-                self.assertTrue(x0-2 <= ink[0] < ink[2] <= x1+2 and y0-2 <= ink[1] < ink[3] <= y1+2,
-                                (width,height,event['bbox'],ink))
+                inside = x0-2 <= ink[0] < ink[2] <= x1+2 and y0-2 <= ink[1] < ink[3] <= y1+2
+                if not inside:
+                    # Keep generated raster/provider evidence before the temporary fixture disappears.
+                    proof = Path(__file__).resolve().parents[1] / 'bug_reports/macos-acceptance' / f'plain-raster-{width}x{height}'
+                    proof.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(work/'frame.png', proof/'frame.png')
+                    shutil.copyfile(work/'subs.ass', proof/'subs.ass')
+                    font = ImageFont.truetype(event['font_file'], 100)
+                    diagnostic = {'pillow':pillow_version, 'event':dict(event,font_file=Path(event['font_file']).name),
+                        'ink':ink, 'font_advance_100':font.getlength(event['text']), 'font_bbox_100':font.getbbox(event['text'])}
+                    (proof/'metrics.json').write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2),encoding='utf-8')
+                    (proof/'ffmpeg.log').write_text(encoded.stderr.decode('utf-8',errors='replace').replace(str(work),'[fixture]'),encoding='utf-8')
+                self.assertTrue(inside, (width,height,event['bbox'],ink))
 
 
 if __name__ == '__main__':
