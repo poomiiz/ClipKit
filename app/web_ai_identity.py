@@ -26,7 +26,8 @@ SIDECARS = ("draft_content.json", "clipkit.json", "clipkit_words.json", "clipkit
 DEPENDENCIES = ("web_ai_identity.py", "web_ai_json.py", "web_ai_transaction.py", "video_edit.py",
                 "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py",
                 "story_selection.py", "subtitle_plan.py", "spelling.py", "insert_plan.py", "insert_geometry.py", "motion_plan.py",
-                "motion_runtime.js", "hf_build.py", "capcut_build.py", "capcut_templates.json")
+                "motion_runtime.js", "hf_build.py", "capcut_build.py", "capcut_templates.json",
+                "draft_quality.py", "delivery_manifest.py")
 
 
 def _hash(value: Any) -> str:
@@ -246,6 +247,8 @@ def export_check(target: str | Path, output: str | Path | None = None):
                 output is not None and transaction._hash(Path(output)) != old_output or
                 any(_file(file, required=True) != digest for file, digest in motion_inputs.items())):
             raise VideoEditError("ข้อมูลโปรเจกต์หรือไฟล์อ้างอิงเปลี่ยนระหว่างส่งออก · เก็บไฟล์เดิมไว้และส่งออกใหม่")
+        return {"snapshot": before, "metadata": metadata,
+                "motion_inputs": {_path_id(file): digest for file, digest in motion_inputs.items()}}
     return check
 
 

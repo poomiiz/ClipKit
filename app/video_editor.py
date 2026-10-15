@@ -2121,6 +2121,10 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
                 atomic.write_text(stage / "decode.log", (decoded.stdout or "") + "\n" + (decoded.stderr or ""))
                 if decoded.returncode:
                     raise VideoEditError("ตรวจไฟล์ส่งออกไม่ผ่าน: " + decoded.stderr[-800:])
+                import delivery_manifest
+                evidence = delivery_manifest.prepare(req.path, staged, target, "mp4", check_export(),
+                    options={"backend": "hyperframes", "version": kit_settings.HF_VERSION, "preview": req.preview},
+                    checks={"encode": "passed", "full_av_decode": "passed", "dimensions": "passed", "duration": "passed", "audio": "passed", "probe": info})
                 check_export()
                 staged.replace(target)
             except Exception as exc:
@@ -2140,4 +2144,4 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
         raise HTTPException(409, str(exc)) from exc
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"file": str(target), "seconds": round(_t.time() - t0, 1), **({"warning": cleanup_warning} if cleanup_warning else {})}
+    return {"file": str(target), "delivery_manifest": str(evidence), "seconds": round(_t.time() - t0, 1), **({"warning": cleanup_warning} if cleanup_warning else {})}

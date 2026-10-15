@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory() as import_folder:
     with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
         import render
 import draft_quality
+import delivery_manifest
 import video_edit
 
 
@@ -46,6 +47,10 @@ class EncoderTests(unittest.TestCase):
 
     def test_success_replaces_only_after_encode_and_returns_timing(self):
         self._export(success=True)
+
+    def test_manifest_failure_keeps_previous_mp4(self):
+        with patch.object(delivery_manifest, "prepare", side_effect=OSError("manifest disk full")):
+            self._export(success=True, change="evidence")
 
     def test_input_change_during_encode_preserves_previous_export(self):
         for change in ('source', 'style', 'target'):
@@ -92,8 +97,12 @@ class EncoderTests(unittest.TestCase):
                     patch.object(video_edit.kitconfig, "simple", return_value=False), \
                     patch.object(render, "probe", return_value={"width": 320, "height": 180, "fps": 30, "duration": 2}), \
                     patch.object(draft_quality, "probe", return_value={"width": 320, "height": 180, "fps": 30, "duration": 2}), \
+                    patch.object(delivery_manifest, "commit", return_value="a" * 40), \
                     patch.object(render.subprocess, "run", side_effect=encode) as run:
-                if change:
+                if change == "evidence":
+                    with self.assertRaisesRegex(OSError, "manifest disk full"):
+                        render.render_draft(str(folder), str(out))
+                elif change:
                     with self.assertRaisesRegex(video_edit.VideoEditError, 'เปลี่ยนระหว่างส่งออก'):
                         render.render_draft(str(folder), str(out))
                 elif success:
@@ -106,7 +115,11 @@ class EncoderTests(unittest.TestCase):
                 self.assertEqual(run.call_count, 1)
             self.assertEqual(target.read_bytes(), b'new externally approved export' if change == 'target' else
                              b"new export" if success and not change else b"previous accepted export")
-            self.assertEqual(list(out.iterdir()), [target])
+            self.assertEqual([p for p in out.iterdir() if p.name != ".clipkit-deliveries"], [target])
+            if success and not change:
+                record = json.loads(Path(result["delivery_manifest"]).read_text(encoding="utf-8"))
+                self.assertEqual(record["checks"]["full_av_decode"], "pending")
+                self.assertEqual(record["human_audio_sync"], "pending")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory() as import_folder:
     with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
         import capcut_build as build
         import draft_quality
+        import delivery_manifest
 
 
 def snapshot(folder):
@@ -86,7 +87,7 @@ class NativeBuildSafetyTests(unittest.TestCase):
     def test_success_publishes_valid_revision_with_final_metadata_and_timeline(self):
         build._T["previous_project_only"] = {"private": "do not reuse"}
         output, warnings = build.build(str(self.project))
-        build.render.render_draft.assert_called_once_with(str(self.project), "", dry=True, final=True)
+        build.render.render_draft.assert_called_once_with(str(self.project.resolve()), "", dry=True, final=True)
         self.assertNotEqual(output, self.existing)
         self.assertTrue(output.name.startswith(self.project.name + " · CapCut"))
         self.assertEqual(warnings, [])
@@ -163,6 +164,12 @@ class NativeBuildSafetyTests(unittest.TestCase):
             raise OSError("disk full during copy")
         with patch.object(build.shutil, "copytree", side_effect=fail_copy):
             with self.assertRaisesRegex(OSError, "disk full"):
+                build.build(str(self.project))
+        self.assert_preserved()
+
+    def test_manifest_failure_keeps_original_and_previous_native_delivery(self):
+        with patch.object(delivery_manifest, "prepare", side_effect=OSError("manifest disk full")):
+            with self.assertRaisesRegex(OSError, "manifest disk full"):
                 build.build(str(self.project))
         self.assert_preserved()
 

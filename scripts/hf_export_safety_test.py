@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory() as imports:
     cfg.write_text("{}", encoding="utf-8")
     with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(cfg)}):
         import hf_build
+        import delivery_manifest
         import jobstore
         import kit_settings
         import render
@@ -47,6 +48,7 @@ class ExportSafety(unittest.TestCase):
         self.real_probe = video_edit.probe
         self.real_normalize = render.normalize_loudness
         self.stack = ExitStack()
+        self.stack.enter_context(patch.object(delivery_manifest, "commit", return_value="a" * 40))
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(jobstore, "STATE", self.root / "state"))
         self.stack.enter_context(patch.object(kit_settings, "_read_config", return_value={"output_dir": str(self.root)}))
@@ -120,6 +122,14 @@ class ExportSafety(unittest.TestCase):
                 self.request.preview = preview
                 editor.draft_hf_export(self.request)
                 self.build.assert_called_once_with(str(self.project), final=not preview)
+
+    def test_manifest_failure_preserves_previous_output_and_diagnostics(self):
+        with patch.object(delivery_manifest, "prepare", side_effect=OSError("manifest disk full")):
+            with self.assertRaises(editor.HTTPException) as error:
+                editor.draft_hf_export(self.request)
+        self.assertEqual(error.exception.status_code, 500)
+        self.assertEqual(self.target.read_bytes(), b"previous approved video")
+        self.assertTrue((self.stages[-1] / "error.log").is_file())
 
     def test_publish_failure_preserves_final_and_retains_staging(self):
         original = Path.replace

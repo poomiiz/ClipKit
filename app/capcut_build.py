@@ -187,6 +187,9 @@ def build(path: str) -> tuple[Path, list[str]]:
                 raise VideoEditError("Close CapCut before publishing the native project")
             if final.exists() or final.is_symlink():
                 raise VideoEditError(f"native project already exists: {final}")
+            import delivery_manifest
+            delivery_manifest.prepare(path, dst, final, "capcut", check_export(),
+                options={"backend": "capcut", "warnings": warnings}, checks={"structure": "passed", "native_playback": "pending"})
             check_export()
             dst.rename(final)
         return final, warnings

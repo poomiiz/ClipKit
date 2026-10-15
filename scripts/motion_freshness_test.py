@@ -81,11 +81,11 @@ class MotionFreshnessTests(unittest.TestCase):
 
     def test_changed_caption_refuses_old_pixels(self):
         self.f.f.write('clipkit_style.json',{'anim':'pair','preset':'with-caption','music':'','sfx':False})
-        self.f.f.write('clipkit_caption.json',{'cue:0':'original caption'})
+        self.f.f.write('clipkit_caption.json',{'cue:0':'original caption','cue:1':'next caption'})
         self.f.f.write('clipkit_overlays.json',[])
         self.f.install()
         self.assertEqual(self.timeline()['motion_recipe_errors'],[])
-        self.f.f.write('clipkit_caption.json',{'cue:0':'changed caption'})
+        self.f.f.write('clipkit_caption.json',{'cue:0':'changed caption','cue:1':'next caption'})
         self.reject_export()
 
     def test_changed_media_or_missing_alpha_attestation_refuses_export(self):

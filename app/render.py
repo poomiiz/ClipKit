@@ -1366,9 +1366,13 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         encode_seconds = round(time.monotonic() - started, 3)
         if r.returncode != 0 or not encoded.is_file() or not encoded.stat().st_size:
             raise VideoEditError(f"export failed ({encoder[1]}): " + r.stderr.strip()[-800:])
+        import delivery_manifest
+        evidence = delivery_manifest.prepare(path, encoded, target, "mp4", check_export(),
+            options={"backend": "ffmpeg", "encoder": encoder, "preview": preview},
+            checks={"encode": "passed", "full_av_decode": "pending"})
         check_export()
         encoded.replace(target)
-    return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
+    return {"file": str(target), "delivery_manifest": str(evidence), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
             "encoder": encoder[1], "encode_seconds": encode_seconds,
             "broll": [it["query"] for it in plan], "broll_items": plan, "music": Path(music_file).name if music_file else None,
             "music_file": music_file or "", "music_volume": music_vol, "sfx_on": fx["on"], "sfx_volume": fx["volume"],
