@@ -64,7 +64,16 @@ class InsertExportTests(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(jobstore, "STATE", self.base / "state"))
-        self.stack.enter_context(patch.object(render.video_edit.kitconfig, "_load", return_value={"render_encoder": "libx264"}))
+        resources, fonts, user_data = (self.base / name for name in ("resources", "fonts", "user data"))
+        for folder in (resources, fonts, user_data):
+            folder.mkdir()
+        fixture_config = {"render_encoder": "libx264", "capcut_resources": str(resources),
+                          "fonts_dir": str(fonts), "capcut_user_data": str(user_data)}
+        config = self.base / "config.json"
+        config.write_text(json.dumps(fixture_config), encoding="utf-8")
+        self.stack.enter_context(patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}))
+        self.stack.enter_context(patch.object(render.video_edit.kitconfig, "_CANDIDATES", [config]))
+        self.fixture_fonts = fonts
         self.stack.enter_context(patch.object(render.video_edit.kitconfig, "simple", return_value=False))
         self.stack.enter_context(patch.object(capcut_edit, "_log_change"))
         self.stack.enter_context(patch.object(capcut_build.host_platform, "capcut_running", return_value=False))
@@ -93,8 +102,17 @@ class InsertExportTests(unittest.TestCase):
         return rows
 
     def native(self, project, timeline):
-        with patch.object(render, "render_draft", return_value=timeline):
+        # Exercise the actual Mac template serializer without an installed CapCut or host font scan.
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(render, "render_draft", return_value=timeline))
+            stack.enter_context(patch.object(capcut_build.host_platform, "is_macos", return_value=True))
+            stack.enter_context(patch.object(capcut_build.host_platform, "find_font", side_effect=lambda name, cfg:
+                                self.fixture_fonts / name if (self.fixture_fonts / name).is_file() else None))
+            serialize = stack.enter_context(patch.object(capcut_build.host_platform, "mac_template_paths",
+                                            wraps=capcut_build.host_platform.mac_template_paths))
             folder, _ = capcut_build.build(str(project))
+        serialize.assert_called_once()
+        self.assertEqual(serialize.call_args.args[1]["capcut_resources"], str(self.base / "resources"))
         draft = json.loads((folder / "draft_content.json").read_text(encoding="utf-8"))
         main = capcut_edit._video_track(draft)
         inserts = [segment for track in draft["tracks"] if track["type"] == "video" and track is not main for segment in track["segments"]]
@@ -189,7 +207,7 @@ class InsertExportTests(unittest.TestCase):
         self.assertIn('data-media-start="0.000000000"',page)
         draft,segments=self.native(project,timeline)
         material=next(m for m in draft["materials"]["videos"] if m["id"]==segments[0]["material_id"])
-        self.assertEqual(material["path"],Path(actual[0]["play"]).as_posix())
+        self.assertTrue(Path(material["path"]).samefile(actual[0]["play"]))
         self.assertEqual(segments[0]["source_timerange"],{"start":0,"duration":300_000})
 
     def test_ramp_rejects_insufficient_source_without_encoding(self):

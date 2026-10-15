@@ -164,8 +164,10 @@
   {
     "program": "insert_export_test.py",
     "exit_code": 0,
-    "elapsed_s": 13.047,
-    "reported_cases": 16
+    "elapsed_s": 12.141,
+    "reported_cases": 16,
+    "private_config_attempts": 0,
+    "fixture_followup": "Temporary config/resources; real Mac serializer; derivative filesystem identity"
   },
   {
     "program": "free_stock_test.py",
