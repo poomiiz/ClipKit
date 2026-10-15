@@ -114,6 +114,20 @@ Unique legacy text keys are read and backed up on first migration. Ambiguous rep
 re-transcribe or reselect the affected content rather than inheriting another occurrence's timings.
 Merge/split provenance is kept locally in `clipkit_cues.json`; cut undo includes the occurrence sidecars.
 
+Every v2 input entry requires its exact `cue_id`, including cut and continuation entries. The same shared
+validator checks merged and unmerged imports, local-agent answers, manual choices and rendering. It preserves
+whitespace-only source equivalence, checks option types/keys and real whole-word clock boundaries, and preflights
+against the project's actual canvas, font, safe box and preset. A missing clock permits one complete plain cue;
+multiple timed phrases or emphasis require actual word clocks. A lead/punch boundary inside a timing token or
+Thai syllable is rejected even for a single phrase. Display `show` wording never replaces source words/clocks.
+
+The exported `subtitle_layout` reports real canvas dimensions, resolved font basename/family, safe box and
+scaled preset positions/sizes without exposing local font paths. Fixed presets reject overflow with the cue
+that needs shorter display wording or a valid semantic split; they never shrink individual phrases silently.
+Translated captions remain separate from lead/punch and never fall back to invented source-language translations.
+Manual spelling edits explicitly provide `source_text` through the manual editor; an AI answer cannot authorize
+that mutation. Corrections default to the project; machine-wide learning requires an explicit opt-in.
+
 Consecutive ASR transport lines can form one semantic group: put optional `through: <last n>` on its head,
 whose items cover all original text in that group in source order (whitespace may differ). Keep every original
 `n` and its `cue_id`; continuation entries contain only `{"n": ..., "cue_id": "..."}`. Groups cannot overlap or include `cut` lines. Caption and

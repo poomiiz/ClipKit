@@ -57,7 +57,8 @@ def _files(folder: Path) -> dict[str, Path]:
             if not file.is_file() or file.is_symlink():
                 raise VideoEditError(f"Invalid project metadata: {name}")
             files[name] = file
-    for pattern in ("Timelines/project.json", "Timelines/*/draft_content.json", "clipkit_history/*.json.gz"):
+    for pattern in ("Timelines/project.json", "Timelines/*/draft_content.json", "clipkit_history/*.json.gz",
+                    "clipkit_history/*.json.gz.corrections.json"):
         for file in folder.glob(pattern):
             parents = file.relative_to(folder).parents
             if file.is_symlink() or any((folder / p).is_symlink() for p in parents):

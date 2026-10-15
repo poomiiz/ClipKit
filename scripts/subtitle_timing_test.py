@@ -1,4 +1,5 @@
 """Emphasis must follow the spoken word, without re-timing a fitted phrase by letter count."""
+import hashlib
 import json
 import os
 import re
@@ -140,7 +141,7 @@ class SubtitleTimingTests(unittest.TestCase):
                     patch.object(hf_build, "_proxy", return_value="synthetic.mp4"):
                 html = hf_build.build(str(project)).read_text(encoding="utf-8")
             windows = {text: (float(start), float(start) + float(length)) for start, length, text in re.findall(
-                r'<div[^>]*class="clip txt"[^>]*data-start="([\d.]+)" data-duration="([\d.]+)"[^>]*>(normal|keyword)</div>', html)}
+                r'<div[^>]*class="clip subtitle-event"[^>]*data-start="([\d.]+)" data-duration="([\d.]+)"[^>]*><div[^>]*>(normal|keyword)</div>', html)}
             self.assertEqual(windows["normal"][0], 0)
             self.assertEqual(windows["keyword"][0], 1.8)
             self.assertAlmostEqual(windows["normal"][1], windows["keyword"][1], places=3)
@@ -170,6 +171,8 @@ class SubtitleTimingTests(unittest.TestCase):
             words = [[10, 11.8, "normal "], [11.8, 12.5, "keyword"]]
             video_edit.transcript_file(str(source)).write_text(json.dumps([
                 {"start": 10, "end": 12.5, "text": "normal keyword", "words": words}]))
+            video_edit.transcript_file(str(source)).with_suffix(".meta.json").write_text(json.dumps({
+                "schema_version": 2, "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}))
             template = root / "template"
             template.mkdir()
             clip = {"scale": {"x": 1, "y": 1}, "transform": {"x": 0, "y": 0}}

@@ -21,10 +21,10 @@ PROMPTS = KIT / "prompts"
 DEFAULT_FONT = KIT / "fonts" / "Kanit-Bold.ttf"
 SIDECARS = ("draft_content.json", "clipkit.json", "clipkit_words.json", "clipkit_cues.json",
             "clipkit_punch.json", "clipkit_caption.json", "clipkit_hook.json", "clipkit_style.json",
-            "clipkit_overlays.json", "clipkit_placed.json", "clipkit_broll.json", "clipkit_seal.json")
+            "clipkit_overlays.json", "clipkit_placed.json", "clipkit_broll.json", "clipkit_seal.json", "clipkit_corrections.json")
 DEPENDENCIES = ("web_ai_identity.py", "web_ai_json.py", "web_ai_transaction.py", "video_edit.py",
                 "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py",
-                "story_selection.py")
+                "story_selection.py", "subtitle_plan.py", "spelling.py")
 
 
 def _hash(value: Any) -> str:

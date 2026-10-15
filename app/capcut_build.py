@@ -91,6 +91,40 @@ def _text(draft: dict, role: str, words: str, a: float, b: float, y: float, size
 
 
 
+def _event_text(draft: dict, role: str, event: dict, W: int, H: int) -> dict:
+    """Write measured pixels back to native units without a second fit, clamp or stack pass."""
+    k = render.CAPCUT_PX * min(W, H) / 1080
+    segment = _text(draft, role, event["text"], event["start"], event["end"],
+                    1 - 2 * event["center_y_px"] / H, event["size_px"] / k, event["fill"], event["stroke"])
+    segment["clip"].update(transform={"x": 2 * event["center_x_px"] / W - 1, "y": 1 - 2 * event["center_y_px"] / H},
+                           rotation=event["rotation"])
+    material = next(m for m in draft["materials"]["texts"] if m["id"] == segment["material_id"])
+    body = json.loads(material["content"])
+    style = body["styles"][0]
+    style.setdefault("font", {})["path"] = event["font_file"]
+    strokes = style.get("strokes") or [{"content": {"solid": {"color": event["stroke"]}}}]
+    strokes[0].setdefault("content", {}).setdefault("solid", {})["color"] = event["stroke"]
+    strokes[0]["width"] = max(0, (event["outline_px"] - 2) / event["size_px"] / .6)
+    style["strokes"] = strokes[:1]
+    material.update(content=json.dumps(body, ensure_ascii=False), font_path=event["font_file"],
+                    font_name=event["font_family"], font_title=event["font_family"], line_max_width=1.0,
+                    has_shadow=bool(event["shadow"]), shadow_color="#000000")
+    # Provider animations can move/scale the measured text outside this plan. Native keyframes
+    # express the same seekable fade/pop as ASS and HyperFrames without a provider cache dependency.
+    segment["extra_material_refs"] = []
+    segment["keyframe_refs"], segment["common_keyframes"] = [], []
+    channels = ({"KFTypeScaleX": (1.3, 1), "KFTypeScaleY": (1.3, 1)} if event["effect"] == "pop"
+                else {"KFTypeAlpha": (0, 1)} if event["effect"] == "fade" else {})
+    span = min(event["end"] - event["start"], .14 if event["effect"] == "pop" else .08)
+    for property_name, values in channels.items():
+        segment["common_keyframes"].append({"id": _id(), "material_id": "", "property_type": property_name,
+            "keyframe_list": [{"id": _id(), "curveType": "Line", "time_offset": _us(offset),
+                               "left_control": {"x": 0, "y": 0}, "right_control": {"x": 0, "y": 0},
+                               "values": [value], "string_value": "", "graphID": ""}
+                              for offset, value in ((0, values[0]), (span, values[1]))]})
+    return segment
+
+
 def _texts(draft: dict, role: str, words: str, a: float, b: float, y: float, size: float, fill: list | None,
            stroke: list | None, W: int, H: int, style: dict, x: float = 0, rot: float = 0) -> list[dict]:
     """One text per piece: one line only and never off screen, a long subtitle goes on as the next piece in time
@@ -233,45 +267,16 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     look = t["look"]
     P = render.pair_look(st, W, H) if look == "pair" else None
     whites, colours, captions, titles, seconds = [], [], [], [], []
-    held = ""
-    phrases = t["phrases"]
-    pairs = render.stacks([(p.get("opts") or {}).get("look") for p in phrases])  # emphasis in two beats, one row each
-    for n, p in enumerate(phrases):
-        a, b = p["start"], p["end"]
-        white, colour, rgb = render._shown(p["lead"], p["punch"], p.get("opts"), held)
-        held = white or held
-        if t["hook"] and a < render.HOOK_DUR:
-            continue
-        if look != "pair":
-            whites.append(_text(draft, "white", p["lead"], a, b, -0.6, 16))
-            continue
-        if white:
-            whites += _texts(draft, "white", white, a, b, P["lead"][1], P["lead"][0], P["lead"][2], P["lead"][3], W, H, st)
-        if colour:
-            hit = p["hit"] if white else a
-            y, end = (render.upper_row(P, W, H), phrases[pairs[n]]["end"]) if n in pairs else (P["punch"][1], b)  # upper row waits
-            colours += _texts(draft, "orange", colour, hit, end, y, P["punch"][0], rgb or P["punch"][2], P["punch"][3], W, H, st)
-        second = (p.get("opts") or {}).get("second")
-        if second and P["second"]:
-            x, rot = P["second_at"]
-            s2 = P["second"]
-            seconds += _texts(draft, "white", second, a, b, s2[1], s2[0], s2[2], s2[3], W, H, st, x, rot)
-    en = t.get("caption_en") or {}
-    thai = bool(P) and P["caption_lang"] == "th"  # the whole spoken line, going on with the voice
-    if thai:
-        en = {cue_data.phrase_key(p): render.unbreak(p["line"]) for p in phrases}
-    if P and P["caption"] and en:
-        spans: dict[str, list[float]] = {}
-        for p in t["phrases"]:
-            s = spans.setdefault(cue_data.phrase_key(p), [p["start"], p["end"]])
-            s[1] = max(s[1], p["end"])
-        captions = [c for line, (a, b) in spans.items() if en.get(line)
-                    for c in _texts(draft, "caption", en[line], a, b, P["caption"][1], P["caption"][0], None, None, W, H, st)]
-        if P["caption_shadow"]:  # the reading subtitle's dark shadow, as in the hand-made project
-            ids = {c["material_id"] for c in captions}
-            for m in draft["materials"]["texts"]:
-                if m["id"] in ids:
-                    m.update(has_shadow=True, shadow_color="#000000")
+    if look == "pair":
+        roles = {"normal": ("white", whites), "emphasis": ("orange", colours),
+                 "caption": ("caption", captions), "second": ("white", seconds)}
+        for event in render.pair_events_from_timeline(t):
+            role, target = roles[event["role"]]
+            target.append(_event_text(draft, role, event, W, H))
+    else:
+        for phrase in t["phrases"]:
+            if not t["hook"] or phrase["start"] >= render.HOOK_DUR:
+                whites.append(_text(draft, "white", phrase["lead"], phrase["start"], phrase["end"], -.6, 16))
     for h in t["hook"]:
         y = h["y"] + {"up": 0.04, "down": -0.05}.get(h["grow"], 0)  # CapCut places a text by its centre
         titles.append(_text(draft, "title", h["text"], h["start"], h["end"], y, h["size"], h["fill"], h["stroke"]))

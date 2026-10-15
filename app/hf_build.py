@@ -134,6 +134,26 @@ def build(path: str) -> Path:
         return _build(path)
 
 
+def subtitle_html(event: dict, identifier: str) -> str:
+    """Serialize the measured plan; the timed outer clip never receives animation visibility."""
+    return (f'<div id="{identifier}" class="clip subtitle-event" data-role="{event["role"]}" '
+            f'data-start="{event["start"]:.6f}" data-duration="{event["end"] - event["start"]:.6f}" data-track-index="3" '
+            f'style="position:absolute;left:{event["center_x_px"]:.6f}px;top:{event["center_y_px"]:.6f}px">'
+            f'<div class="txt" style="left:0;width:max-content;font-size:{event["size_px"]:.6f}px;line-height:{render.LINE_H};'
+            f'color:{_css_color(event["fill"])};-webkit-text-stroke:{event["outline_px"] * 2:.6f}px {_css_color(event["stroke"])};'
+            f'text-shadow:0 {event["shadow"]}px {event["shadow"] * 2}px rgba(0,0,0,.7)">{html.escape(event["text"])}</div></div>')
+
+
+def subtitle_animation(event: dict, identifier: str) -> str:
+    selector = f'#{identifier} > .txt'
+    base = f'tl.set("{selector}",{{xPercent:-50,yPercent:-50,rotation:{event["rotation"]:g}}},0);'
+    if event["effect"] == "pop":
+        return base + f'tl.fromTo("{selector}",{{scale:1.3}},{{scale:1,duration:0.14,ease:"none"}},{event["start"]:.6f});'
+    if event["effect"] == "fade":
+        return base + f'tl.fromTo("{selector}",{{opacity:0}},{{opacity:1,duration:0.08,ease:"none"}},{event["start"]:.6f});'
+    return base
+
+
 def _build(path: str) -> Path:
     import web_ai_transaction
     web_ai_transaction.recover("clip", path)
@@ -211,50 +231,10 @@ def _build(path: str) -> Path:
     tops: dict[str, float] = {}
     look = t["look"]
     if look == "pair":
-        P = render.pair_look(st, W, H)
-        held = ""
-        en = t.get("caption_en") or {}
-        thai = P["caption_lang"] == "th"  # the whole spoken line, going on with the voice
-        if thai:
-            en = {cue_data.phrase_key(p): render.unbreak(p["line"]) for p in t["phrases"]}
-        below: dict[int, float] = {}
-        pairs = render.stacks([(p.get("opts") or {}).get("look") for p in t["phrases"]])  # emphasis: two beats, one row each
-        if P["caption"] and en:  # the preset's small translated caption: one per spoken line, also under the title
-            lines_at: dict[str, list[float]] = {}
-            for p in t["phrases"]:
-                s = lines_at.setdefault(cue_data.phrase_key(p), [p["start"], p["end"]])
-                s[1] = max(s[1], p["end"])
-            for line, (a, b) in lines_at.items():
-                if en.get(line):
-                    text(en[line], *P["caption"], a, b, shadow=P["caption_shadow"])
-        for j, p in enumerate(t["phrases"]):
-            a, b = p["start"], p["end"]
-            white, colour, rgb = render._shown(p["lead"], p["punch"], p.get("opts"), held)
-            held = white or held
-            if t["hook"] and a < render.HOOK_DUR:  # the clip title owns the first seconds
-                continue
-            lead_id = ""
-            if white:
-                i = lead_id = text(white, *P["lead"], a, b, one=bool(colour), fixed=P["fixed_size"])
-                if i and (p.get("opts") or {}).get("look") != "hold":
-                      anim.append(f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:0.08}},{a:.3f});')
-            if colour:
-                hit = p["hit"] if white else a
-                part = P["punch"] if rgb is None else P["punch"][:2] + (rgb,) + P["punch"][3:]
-                if j in pairs:  # first beat: the upper row, on until the second beat is done
-                    part, b2 = part[:1] + (render.upper_row(P, W, H),) + part[2:], t["phrases"][pairs[j]]["end"]
-                    i = text(colour, *part, hit, b2)
-                    below[pairs[j]] = tops.get(i, 0) + part[0] * k * lh / 2  # the second beat starts under it
-                else:
-                    i = text(colour, *part, hit, b, one=bool(white), fixed=P["fixed_size"])
-                if i:
-                    anim.append(f'tl.fromTo("#{i}",{{scale:1.3}},{{scale:1,duration:0.14}},{hit:.3f});')
-            second = (p.get("opts") or {}).get("second")
-            if second and P["second"]:  # the second person's short reaction, off centre and tilted
-                x, rot = P["second_at"]
-                text(second, *P["second"], a, b, x=x, rot=rot)
-            if P["caption"] and not en:
-                text((p["lead"] + " " + p["punch"]).strip(), *P["caption"], a, b, shadow=P["caption_shadow"])
+        for event in render.pair_events_from_timeline(t):
+            i = nid("t")
+            els.append(subtitle_html(event, i))
+            anim.append(subtitle_animation(event, i))
     else:
         for p in t["phrases"]:
             if t["hook"] and p["start"] < render.HOOK_DUR:
@@ -324,8 +304,10 @@ html,body{{width:{W}px;height:{H}px;overflow:hidden;background:#000}}
 <script>
 const tl = gsap.timeline({{paused: true}});
 {chr(10).join(anim)}
+document.fonts.ready.then(() => {{
 window.__timelines = window.__timelines || {{}};
 window.__timelines["main"] = tl;
+}});
 </script>
 </body></html>
 """

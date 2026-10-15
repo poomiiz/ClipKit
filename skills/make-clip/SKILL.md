@@ -104,7 +104,8 @@ a clip done. Obtain approval of one pilot before building a batch.
 4. Tell the person to press "ซับขาว ภาษาอังกฤษ" again.
 
 ### `ClipKit: ตรวจคำผิด "<CapCut project folder>"`
-1. Read `<folder>/clipkit_lines.json` (subtitle lines in order) and `corrections.json` beside ClipKit if it is there
+1. Read `<folder>/clipkit_lines.json` (subtitle lines in order), project `clipkit_corrections.json`, and retained
+   machine `corrections.json` beside ClipKit if present. Project rules override machine rules.
    (`{wrong: {"right": ..., "n": times}}`, this person's earlier fixes).
 2. Find words the speech model misheard: wrong spellings, sound-alikes that make no sense in the sentence
    ("คัป" -> "ครับ", "กอ" -> "ก็"), names and brands spelled two ways in one clip. Keep the speaker's own words
@@ -123,7 +124,8 @@ a clip done. Obtain approval of one pilot before building a batch.
    them either, leave the line and list it for the person.
 3. Close-CapCut check: ask the person to close CapCut if it is open. Then for each line to change run
    `python scripts/fix_text.py "<folder>" "<line as it is>" "<fixed line>"` (the old version is kept and the
-   fix is learned for the next transcripts).
+   fix is learned only in this project for its next transcription). Use `--cue-id` for repeated lines.
+   Only an explicit request to share a correction across projects permits `--learn-global`.
 4. Reply with a short table: line number, line, wrong -> right, level (ร้ายแรง = meaning, name or number changes;
    ปานกลาง = spelling or grammar; เล็กน้อย = spacing, punctuation, consistency), then the suggestions and
    "ไม่แน่ใจ" lines, and incomplete lines the re-listen could not fill. Say "ไม่พบคำผิด" when there is nothing to

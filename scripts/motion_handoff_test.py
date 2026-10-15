@@ -1,5 +1,6 @@
 """Motion owns its interval in FFmpeg, browser composition and editable CapCut output."""
 import json
+import os
 import re
 import subprocess
 import sys
@@ -10,33 +11,55 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
-import render
+with tempfile.TemporaryDirectory() as import_folder:
+    config = Path(import_folder) / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    with patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}):
+        import render
 import hf_build
+import kitconfig
 from capcut_font_test import CapCutFontTests
 
 
 class MotionHandoffTests(unittest.TestCase):
-    def test_explicit_motion_uses_fixed_preset_geometry_and_rejects_overflow(self):
+    def setUp(self):
+        folder = self.enterContext(tempfile.TemporaryDirectory())
+        config = Path(folder) / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        self.enterContext(patch.object(kitconfig, "_CANDIDATES", [config]))
+
+    def test_cue_motion_uses_real_ratio_geometry_and_rejects_overflow(self):
         import kit_settings
         import video_editor
-        look = render.pair_look({}, 1080, 1920)
-        look.update(fixed_size=True, font=str(render.DEFAULT_FONT))
-        with tempfile.TemporaryDirectory() as folder:
-            req = video_editor.OverlayRequest(path=folder, template="sentence-pair", start=0, end=2,
-                text="normal keyword", params={"pairs": [[0, 2, "normal", "keyword", 1]]})
-            with patch.object(render, "pair_look", return_value=look), \
-                    patch.object(kit_settings, "make_motion", return_value={"file": "fixture.mov"}) as make:
-                video_editor.draft_overlay_add(req)
-                params = make.call_args.args[0].params
-                self.assertEqual(params["sizing"], "fixed")
-                self.assertEqual(params["normal_size"], look["lead"][0] * render.CAPCUT_PX)
-                self.assertEqual(params["punch_top"], 960 * (1 - look["punch"][1]))
-                before = (Path(folder) / "clipkit_overlays.json").read_bytes()
-                req.params["pairs"][0][2] = "overflow " * 100
-                with self.assertRaisesRegex(video_editor.HTTPException, "show"):
+        for W, H in ((1080, 1920), (1920, 1080), (1080, 1080)):
+            with self.subTest(canvas=(W, H)), tempfile.TemporaryDirectory() as folder:
+                look = render.pair_look({}, W, H)
+                look.update(fixed_size=True, font=str(render.DEFAULT_FONT))
+                phrase = {"start": 0, "end": 2, "hit": 1, "lead": "normal", "punch": "key",
+                          "line": "normal key", "cue_id": "cue", "opts": {}, "k": 0}
+                timeline = {"style": {}, "width": W, "height": H, "phrases": [phrase], "hook": [], "motions": []}
+                req = video_editor.OverlayRequest(path=folder, template="sentence-pair", start=0, end=2,
+                    text="normal key", cue_id="cue", params={"pairs": [[0, 2, "normal", "key", 1]]})
+                with patch.object(render, "render_draft", return_value=timeline), \
+                        patch.object(render, "pair_look", return_value=look), \
+                        patch.object(kit_settings, "make_motion", return_value={"file": "fixture.mov"}) as make:
                     video_editor.draft_overlay_add(req)
-                self.assertEqual(make.call_count, 1)
-                self.assertEqual((Path(folder) / "clipkit_overlays.json").read_bytes(), before)
+                    params = make.call_args.args[0].params
+                    expected = render.pair_events_from_timeline(timeline)
+                    self.assertEqual((params["width"], params["height"]), (W, H))
+                    self.assertEqual(params["subtitle_events"], expected)
+                    self.assertEqual(next(e["start"] for e in expected if e["role"] == "emphasis"), 1)
+                    before = (Path(folder) / "clipkit_overlays.json").read_bytes()
+                    req.params["pairs"][0][4] = .2
+                    with self.assertRaisesRegex(video_editor.HTTPException, "Timeline"):
+                        video_editor.draft_overlay_add(req)
+                    req.params = None
+                    phrase["lead"] = "overflow " * 100
+                    phrase["line"] = req.text = phrase["lead"] + phrase["punch"]
+                    with self.assertRaisesRegex(video_editor.HTTPException, "show"):
+                        video_editor.draft_overlay_add(req)
+                    self.assertEqual(make.call_count, 1)
+                    self.assertEqual((Path(folder) / "clipkit_overlays.json").read_bytes(), before)
 
     def test_text_is_preserved_on_both_sides_and_boundaries(self):
         motion = [{"start": 3, "duration": 3}]

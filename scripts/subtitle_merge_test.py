@@ -47,7 +47,8 @@ class MergeTests(unittest.TestCase):
         self.words = {"in": [[0, .5, "in"]], "the": [[0, .5, "the"]], "office": [[0, 2, "office"]]}
         (self.folder / "clipkit_words.json").write_text(json.dumps(self.words))
         self.answer = {"clipkit_web_ai": 2, "step": "clip", "project": "project", "hook": [], "motion": [], "caption": None,
-                       "lines": [{"n": 1, "through": 3, "items": [["in the", "office"]]}, {"n": 2}, {"n": 3}]}
+                       "lines": [{"n": 1, "cue_id": "s1", "through": 3, "items": [["in the", "office"]]},
+                                 {"n": 2, "cue_id": "s2"}, {"n": 3, "cue_id": "s3"}]}
         self.patch = patch.object(capcut_edit, "_log_change")
         self.patch.start()
         self.addCleanup(self.patch.stop)
@@ -121,7 +122,8 @@ class MergeTests(unittest.TestCase):
 
     def test_cut_before_group_preserves_original_line_numbers_and_shifts_clock(self):
         answer = {**self.answer, "cut": [1], "lines": [
-            {"n": 1}, {"n": 2, "through": 3, "items": [["the", "office"]]}, {"n": 3}]}
+            {"n": 1, "cue_id": "s1"}, {"n": 2, "cue_id": "s2", "through": 3, "items": [["the", "office"]]},
+            {"n": 3, "cue_id": "s3"}]}
         self.import_answer(answer)
         row = capcut_edit.read_draft(str(self.folder))["subtitles"][0]
         self.assertEqual((row["text"], row["start"], row["end"]), ("the office", 0, 3.1))

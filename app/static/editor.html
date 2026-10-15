@@ -26,6 +26,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 .row label{min-width:86px;color:var(--sub)}
 .row input[type=range]{flex:1}
+#pl,#pp,#po,#pq,#pc,#ps,#pm,#pcut{min-height:44px}
 .looks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .look{border:2px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;background:#000;padding:0;text-align:center}
 .look img{width:100%;display:block;aspect-ratio:9/16;object-fit:cover}
@@ -384,8 +385,10 @@ function sidePhrase(s, p) {
     const pairs = line.map(x => x === p ? [$('pl').value.trim(), $('pp').value.trim(), $('pq').value.trim(), opts] : [x.lead, x.punch, x.query || '', x.opts])
       .map(([l, k, q, o]) => [l, k, ...(q ? [q] : []), ...(o && (o.show || (o.look && o.look !== 'pair')) ? [o] : [])]);
     try {
-      if ($('pc').value.trim() !== ((T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '')) await api('draft/caption', {path: PATH, line: p.line, cue_id: p.cue_id, text: $('pc').value});
-      await api('draft/phrases', {path: PATH, line: p.line, cue_id: p.cue_id, pairs}); await reload(); say('บันทึกแล้ว');
+      const caption = $('pc').value.trim() === ((T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '') ? {} : {caption: $('pc').value};
+      const sourceText = pairs.map(([lead, punch]) => [lead, punch].filter(Boolean).join(' ')).join(' ');
+      const correction = sourceText.replace(/\s/g, '') === p.line.replace(/\s/g, '') ? {} : {source_text: sourceText};
+      await api('draft/phrases', {path: PATH, line: p.line, cue_id: p.cue_id, pairs, ...correction, ...caption}); await reload(); say('บันทึกแล้ว');
     } catch (e) { say('❌ ' + ckErr(e)); }
   };
   $('pcut').onclick = async () => {
@@ -398,7 +401,9 @@ function sidePhrase(s, p) {
   };
   $('pm').onclick = async () => {
     say('<span class="spin"></span> กำลังทำข้อความใหญ่… (ราว 30 วิ)');
-    try { await api('draft/overlay', {path: PATH, template: 'sentence-pair', start: p.start, end: p.end, cue_id: p.cue_id, text: (p.lead + ' ' + p.punch).trim()}); await reload(); say('ใส่แล้ว'); }
+    const roles = (T.subtitle_events || []).filter(e => e.cue_id === p.cue_id);
+    const start = Math.min(...line.map(x => x.start)), end = Math.max(...line.map(x => x.end), ...roles.map(e => e.end));
+    try { await api('draft/overlay', {path: PATH, template: 'sentence-pair', start, end, cue_id: p.cue_id, text: p.line}); await reload(); say('ใส่แล้ว'); }
     catch (e) { say('❌ ' + ckErr(e)); }
   };
 }

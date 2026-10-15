@@ -1426,6 +1426,7 @@ function openSubs() {
 function subRow(sub, emphasis) {
   const div = document.createElement('div');
   div.className = 'sub';
+  div.dataset.cueId = sub.id || '';
   div.dataset.start = sub.start;
   div.dataset.end = sub.end;
 
@@ -1505,6 +1506,7 @@ async function saveSubs() {
   const subs = [...document.querySelectorAll('#subsList .sub')].map(row => {
     const on = !!row.querySelector('button').dataset.on;
     const item = {
+      id: row.dataset.cueId || undefined,
       start: parseFloat(row.dataset.start),
       end: parseFloat(row.dataset.end),
       text: row.querySelector('.t').value.trim()

@@ -1074,44 +1074,37 @@ def draft_overlay_add(req: OverlayRequest) -> dict[str, Any]:
     try:
         if not math.isfinite(dur) or dur <= 0:
             raise VideoEditError("motion ต้องมีเวลาเริ่มก่อนเวลาจบ")
-        if req.params is not None:
+        if req.template == "sentence-pair":
+            timeline = render.render_draft(req.path, "", dry=True)
+            tight = lambda text: "".join(render.unbreak(text).split())
+            phrases = [p for p in timeline["phrases"] if p["end"] > req.start and p["start"] < req.end
+                       and (req.cue_id is None or p.get("cue_id") == req.cue_id)
+                       and (tight(p["line"]) == tight(req.text) or tight(p["lead"] + p["punch"]) == tight(req.text))]
+            if not phrases:
+                raise VideoEditError("หาประโยคและเวลาคำเน้นไม่พบ · เลือกบรรทัดจาก Timeline อีกครั้ง")
+            if any(p["start"] < req.start - .001 or p["end"] > req.end + .001 for p in phrases):
+                raise VideoEditError("motion ตัดกลางท่อนซับ · เลือกช่วงเต็มตาม Timeline")
+            if req.params:
+                expected = [[p["start"] - req.start, p["end"] - req.start, p["lead"], p["punch"],
+                             p["hit"] - p["start"]] for p in phrases]
+                if set(req.params) != {"pairs"} or req.params["pairs"] != expected:
+                    raise VideoEditError("sentence-pair ใช้ข้อความและเวลาจริงจาก Timeline · เอา params ที่กำหนดเองออก")
+            # Replacing an existing overlay needs the underlying roles before that overlay hides them.
+            base = {k: v for k, v in timeline.items() if k != "subtitle_events"}
+            base["motions"] = []
+            events = [e for e in render.pair_events_from_timeline(base) if e["end"] > req.start and e["start"] < req.end]
+            if any(e["start"] < req.start - .001 or e["end"] > req.end + .001 for e in events):
+                raise VideoEditError("motion ตัดช่วงข้อความค้างหรือ caption · ขยายช่วงให้ครบก่อนสร้าง")
+            events = [{**e, "start": max(0, e["start"] - req.start), "end": e["end"] - req.start,
+                       "effect_start": e.get("effect_start", e["start"]) - req.start} for e in events]
+            params = kit_settings.sentence_pair_params({"subtitle_events": events,
+                "width": timeline["width"], "height": timeline["height"]})
+        elif req.params is not None:
             params, dur = motion_params(req.template, req.params, dur)
-        elif req.template in QUICK_MOTION:
-            if req.template == "hook-title":
-                params = {"key": req.text, "sub": "", "style": "straight", "duration": dur}
-            else:
-                timeline = render.render_draft(req.path, "", dry=True)
-                tight = lambda text: "".join(render.unbreak(text).split())
-                phrases = [p for p in timeline["phrases"] if p["end"] > req.start and p["start"] < req.end
-                           and (req.cue_id is None or p.get("cue_id") == req.cue_id)
-                           and (tight(p["line"]) == tight(req.text) or tight(p["lead"] + p["punch"]) == tight(req.text))]
-                if not phrases:
-                    raise VideoEditError("หาประโยคและเวลาคำเน้นไม่พบ · เลือกบรรทัดจาก Timeline อีกครั้ง")
-                params = {"pairs": [[max(0, p["start"] - req.start), min(dur, p["end"] - req.start),
-                                     p["lead"], p["punch"], max(0, p["hit"] - max(req.start, p["start"]))] for p in phrases]}
-                look = render.pair_look(timeline["style"], timeline["width"], timeline["height"])
-                if look["fixed_size"]:
-                    shown_pairs, held_white = [], ""
-                    for phrase in phrases:
-                        white, colour, _ = render._shown(phrase["lead"], phrase["punch"], phrase.get("opts"), held_white)
-                        held_white = white or held_white
-                        shown_pairs.append([max(0, phrase["start"] - req.start), min(dur, phrase["end"] - req.start),
-                                            white, colour, max(0, phrase["hit"] - max(req.start, phrase["start"]))])
-                    params["pairs"] = shown_pairs
+        elif req.template == "hook-title":
+            params = {"key": req.text, "sub": "", "style": "straight", "duration": dur}
         else:
             raise VideoEditError(f"{req.template} ต้องกรอกช่องของมันเอง (params)")
-        if req.template == "sentence-pair":
-            look = render.pair_look(render._json(Path(req.path) / "clipkit_style.json", {}), 1080, 1920)
-            if look["fixed_size"]:
-                font_file = render._font(look.get("font"))[1]
-                room = 1080 * render.safe_box(render._json(Path(req.path) / "clipkit_style.json", {}))["w"] - 40
-                for a, b, white, colour, _ in params["pairs"]:
-                    for role, text in (("lead", white), ("punch", colour)):
-                        render.one_line(text, font_file, look[role][0] * render.CAPCUT_PX, room, a, b, fixed=True)
-                params.update(sizing="fixed", normal_size=look["lead"][0] * render.CAPCUT_PX,
-                              punch_size=look["punch"][0] * render.CAPCUT_PX,
-                              normal_top=960 * (1 - look["lead"][1]), punch_top=960 * (1 - look["punch"][1]),
-                              font=render._font(look.get("font"))[0])
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     name = f"{Path(req.path).name[:40]} {req.template} {int(req.start * 1000)}ms"
@@ -1457,25 +1450,54 @@ class PhraseEdit(BaseModel):
     line: str                  # the subtitle line this phrase belongs to (current text)
     cue_id: str | None = None
     pairs: list[list[str | dict[str, Any]]]  # every phrase of that line: [lead, punch, query?, options?]
+    source_text: str | None = None  # explicit manual spelling change; never inferred from pair coverage
+    caption: str | None = None  # None keeps this cue's caption; empty text explicitly clears it
 
 
 @router.post("/draft/phrases")
 @project_lock.edit
 def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
-    """Save the editor's split / words / b-roll search for one subtitle line. New words also change the line."""
-    folder = Path(req.path)
-    rows = capcut_edit.read_draft(req.path)["subtitles"]
-    selected = cue_data.select(rows, req.line, req.cue_id)
-    data = cue_data.load(folder, "clipkit_punch.json", rows)
-    new = "".join(p[0] + p[1] for p in req.pairs)
-    if "".join(new.split()) != "".join(req.line.split()):
-        capcut_edit.set_line_text(req.path, req.line, " ".join((p[0] + " " + p[1]).strip() for p in req.pairs), selected["id"])
-        line = " ".join((p[0] + " " + p[1]).strip() for p in req.pairs)
-    else:
-        line = req.line
-    data[cue_data.key(selected["id"])] = req.pairs
-    cue_data.save(folder, "clipkit_punch.json", data)
-    return {"line": line, "cue_id": selected["id"]}
+    """Validate source coverage, clocks and actual layout before saving one cue's choices."""
+    import subtitle_plan
+    import web_ai_json
+    try:
+        folder = Path(req.path)
+        rows = capcut_edit.read_draft(req.path)["subtitles"]
+        selected = cue_data.select(rows, req.line, req.cue_id)
+        line = req.line if req.source_text is None else req.source_text.strip()
+        items = subtitle_plan.validate_items(line, req.pairs, cue_id=selected["id"])
+        data = cue_data.load(folder, "clipkit_punch.json", rows)
+        data[cue_data.key(selected["id"])] = items
+        captions = None
+        if req.caption is not None:
+            captions = cue_data.load(folder, "clipkit_caption.json", rows)
+            if req.caption.strip():
+                captions[cue_data.key(selected["id"])] = req.caption.strip()
+            else:
+                captions.pop(cue_data.key(selected["id"]), None)
+        candidate = [{**row, "text": line} if row["id"] == selected["id"] else row for row in rows]
+        web_ai_json.validate_subtitles(req.path, picks=data, captions=captions, rows=candidate)
+        if line != req.line or captions is not None:
+            import web_ai_identity
+            import web_ai_transaction
+            answer = {"clipkit_web_ai": 2, **web_ai_identity.issue("clip", req.path),
+                      "step": "clip", "project": folder.name, "manual": "phrases", "cue_id": selected["id"],
+                      "line": req.line, "source_text": line, "pairs": items, "caption": req.caption}
+
+            def prepare(work, assets):
+                if captions is not None:
+                    cue_data.save(work, "clipkit_caption.json", captions)
+                if line != req.line:
+                    capcut_edit.set_line_text(str(work), req.line, line, selected["id"], picks_override=items)
+                cue_data.save(work, "clipkit_punch.json", data)
+                web_ai_json.validate_subtitles(str(work))
+                return {"line": line, "cue_id": selected["id"]}
+
+            return web_ai_transaction.apply("clip", req.path, answer, prepare)
+        cue_data.save(folder, "clipkit_punch.json", data)
+        return {"line": line, "cue_id": selected["id"]}
+    except VideoEditError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 class LookRequest(BaseModel):
@@ -1486,11 +1508,16 @@ class LookRequest(BaseModel):
 @router.post("/draft/look")
 @project_lock.edit
 def draft_look(req: LookRequest) -> dict[str, Any]:
-    f = Path(req.path) / "clipkit_style.json"
-    style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
-    style.update(req.style)
-    atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
-    return {"style": style}
+    import web_ai_json
+    try:
+        f = Path(req.path) / "clipkit_style.json"
+        style = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        style.update(req.style)
+        web_ai_json.validate_subtitles(req.path, style=style)
+        atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
+        return {"style": style}
+    except VideoEditError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @project_lock.edit
@@ -1601,15 +1628,20 @@ class CaptionEdit(BaseModel):
 @project_lock.edit
 def draft_caption(req: CaptionEdit) -> dict[str, Any]:
     """The small translated caption of one spoken line (empty = none for that line)."""
-    rows = capcut_edit.read_draft(req.path)["subtitles"]
-    selected = cue_data.select(rows, req.line, req.cue_id)
-    data = cue_data.load(req.path, "clipkit_caption.json", rows)
-    if req.text.strip():
-        data[cue_data.key(selected["id"])] = req.text.strip()
-    else:
-        data.pop(cue_data.key(selected["id"]), None)
-    cue_data.save(req.path, "clipkit_caption.json", data)
-    return {"lines": len(data)}
+    import web_ai_json
+    try:
+        rows = capcut_edit.read_draft(req.path)["subtitles"]
+        selected = cue_data.select(rows, req.line, req.cue_id)
+        data = cue_data.load(req.path, "clipkit_caption.json", rows)
+        if req.text.strip():
+            data[cue_data.key(selected["id"])] = req.text.strip()
+        else:
+            data.pop(cue_data.key(selected["id"]), None)
+        web_ai_json.validate_subtitles(req.path, captions=data)
+        cue_data.save(req.path, "clipkit_caption.json", data)
+        return {"lines": len(data)}
+    except VideoEditError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 class CutRange(BaseModel):

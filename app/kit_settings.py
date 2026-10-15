@@ -414,6 +414,68 @@ def motion_destination(directory: Path):
         _motion_destination.reset(token)
 
 
+def sentence_pair_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Reject invented clocks before starting a renderer; measured project events are the preferred input."""
+    import math
+    import render
+    import subtitle_plan
+    from video_edit import VideoEditError
+    out = dict(params)
+    try:
+        W, H = out.get("width", 1080), out.get("height", 1920)
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 < v <= 8192 or int(v) != v for v in (W, H)):
+            raise VideoEditError("sentence-pair: canvas width/height ไม่ถูกต้อง")
+        events = out.get("subtitle_events")
+        if events is None:
+            pairs, clocks = out.get("pairs"), out.get("word_times")
+            if not isinstance(pairs, list) or not pairs:
+                raise VideoEditError("sentence-pair: เลือกช่วงซับจริงจาก Timeline ก่อนสร้าง motion")
+            if not isinstance(clocks, (list, dict)):
+                raise VideoEditError("sentence-pair: ไม่มีเวลาระดับคำจริง · เลือกซับจาก Timeline หรือแนบ word_times ก่อนสร้าง")
+            family, font = render._font(out.get("font"))
+            look = render.pair_look({}, int(W), int(H))
+            scale = render.CAPCUT_PX * min(W, H) / 1080
+            for role, size, top in (("lead", "normal_size", "normal_top"), ("punch", "punch_size", "punch_top")):
+                part = look[role]
+                look[role] = ((float(out[size]) * H / 1920 / scale) if size in out else part[0],
+                              (1 - 2 * float(out[top]) / 1920) if top in out else part[1], *part[2:])
+            look["fixed_size"] = out.get("sizing") == "fixed"
+            phrases = []
+            for n, pair in enumerate(pairs):
+                if not isinstance(pair, list) or len(pair) != 5:
+                    raise VideoEditError(f"sentence-pair {n}: pairs ไม่ถูกต้อง")
+                a, b, lead, punch, _ = pair
+                words = clocks[n] if isinstance(clocks, list) and n < len(clocks) else clocks.get(str(n)) if isinstance(clocks, dict) else None
+                phrases.extend(subtitle_plan.resolve(lead + " " + punch, [[lead, punch]], words,
+                                                     cue_id=f"pair-{n}", start=a, end=b))
+            events = render.pair_events(phrases, look, int(W), int(H), family, font)
+        if not isinstance(events, list) or not events:
+            raise VideoEditError("sentence-pair: ไม่มีข้อความที่แสดงในช่วงนี้")
+        for event in events:
+            if not isinstance(event, dict) or event.get("role") not in {"normal", "emphasis", "caption", "second"}:
+                raise VideoEditError("sentence-pair: role event ไม่ถูกต้อง")
+            keys = ("start", "end", "size_px", "center_x_px", "center_y_px", "rotation", "outline_px", "shadow")
+            if any(isinstance(event.get(k), bool) or not isinstance(event.get(k), (int, float)) or not math.isfinite(event[k]) for k in keys):
+                raise VideoEditError("sentence-pair: event ต้องเป็นตัวเลข finite")
+            if not 0 <= event["start"] < event["end"] <= 120 or event["size_px"] <= 0 or event["outline_px"] < 0 or event["shadow"] < 0:
+                raise VideoEditError("sentence-pair: ช่วงหรือขนาดข้อความไม่ถูกต้อง")
+            if not isinstance(event.get("text"), str) or not event["text"].strip() or event.get("effect") not in {"none", "fade", "pop"}:
+                raise VideoEditError("sentence-pair: ข้อความหรือ effect ไม่ถูกต้อง")
+            for color in (event.get("fill"), event.get("stroke")):
+                if not isinstance(color, list) or len(color) != 3 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1 for v in color):
+                    raise VideoEditError("sentence-pair: สีข้อความไม่ถูกต้อง")
+            font = Path(event.get("font_file") or "")
+            if font.suffix.lower() not in {".ttf", ".otf", ".ttc"} or not font.is_file() or not isinstance(event.get("font_family"), str):
+                raise VideoEditError("sentence-pair: ไม่พบฟอนต์ที่ใช้วัดข้อความ")
+            if render._font(str(font))[0] != event["font_family"]:
+                raise VideoEditError("sentence-pair: ชื่อฟอนต์ไม่ตรงกับไฟล์ที่ใช้วัด")
+        render.check_pair_events(events, int(W), int(H))
+        out.update(width=W, height=H, subtitle_events=events)
+        return out
+    except (VideoEditError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/motion")
 def make_motion(body: MotionRequest) -> dict[str, Any]:
     """Render a motion template with the user's words to a transparent MOV in <output_dir>/motion."""
@@ -423,6 +485,7 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     specs = motion_templates()
     if body.template not in specs:
         raise HTTPException(400, f"unknown motion template: {body.template}")
+    params = sentence_pair_params(body.params) if body.template == "sentence-pair" else body.params
     npx = shutil.which("npx")
     if not npx:
         raise HTTPException(400, "Node.js (npx) is not installed - run setup")
@@ -435,15 +498,16 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     work = Path(tempfile.mkdtemp(prefix="clipkit_motion_"))
     shutil.copytree(KIT / "motion" / body.template, work, dirs_exist_ok=True)
     page = (work / "index.html").read_text(encoding="utf-8")
-    kit = json.dumps(body.params, ensure_ascii=False).replace("</", "<\\/")
+    kit = json.dumps(params, ensure_ascii=False).replace("</", "<\\/")
     page, n = re.subn(r"<head>", lambda _: f"<head>\n<script>window.KIT = {kit};</script>", page, count=1)
     if not n:
         raise HTTPException(500, "template has no <head>")
     # the renderer reads the clip length from the HTML attributes, not from the script
     try:
-        p = body.params
+        p = params
         how = specs[body.template].get("length", "duration")
-        length = max(float(x[1]) for x in p["pairs"]) if how == "pairs" else float(p[how])
+        length = (max(float(event["end"]) for event in p["subtitle_events"]) if p.get("subtitle_events")
+                  else max(float(x[1]) for x in p["pairs"]) if how == "pairs" else float(p[how]))
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         raise HTTPException(400, f"missing or bad length in params: {exc}")
     if not 0.5 <= length <= 120:
@@ -451,6 +515,18 @@ def make_motion(body: MotionRequest) -> dict[str, Any]:
     page, n = re.subn(r'data-duration="[\d.]+"', f'data-duration="{length:g}"', page)
     if not n:
         raise HTTPException(500, "template has no data-duration")
+    if body.template == "sentence-pair":
+        page = re.sub(r'<meta name="viewport"[^>]*>', f'<meta name="viewport" content="width={params["width"]:g}, height={params["height"]:g}">', page)
+        page = re.sub(r'data-width="[\d.]+"', f'data-width="{params["width"]:g}"', page)
+        page = re.sub(r'data-height="[\d.]+"', f'data-height="{params["height"]:g}"', page)
+        rules = []
+        for index, (family, source) in enumerate(dict.fromkeys(
+                (event["font_family"], event["font_file"]) for event in params["subtitle_events"])):
+            font = Path(source)
+            filename = f"subtitle-font-{index}{font.suffix}"
+            shutil.copyfile(font, work / filename)
+            rules.append(f'@font-face{{font-family:{json.dumps(family)};src:url("{filename}")}}')
+        page = page.replace("</head>", "<style>" + "".join(rules).replace("</", "<\\/") + "</style></head>", 1)
     atomic.write_text((work / "index.html"), page, encoding="utf-8")
     name = re.sub(r'[\\/:*?"<>|]+', "", body.name).strip()[:40] or body.template
     target = out_dir / f"{name}-{__import__('uuid').uuid4().hex}.mov"

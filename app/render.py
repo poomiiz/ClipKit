@@ -9,6 +9,7 @@ from __future__ import annotations
 import atomic
 import json
 import cue_data
+import subtitle_plan
 import math
 import re
 import subprocess
@@ -112,7 +113,7 @@ def normalize_loudness(mp4: Path) -> None:
 
 
 def _font(path: str | None) -> tuple[str, Path]:
-    """(family name, file) for libass: the project's own font when the file exists, else the bundled Kanit."""
+    """Configured fonts must exist; use bundled Kanit only when no font is configured."""
     from fontTools.ttLib import TTFont
     f = Path(path) if path and Path(path).is_file() else DEFAULT_FONT
     if not f.is_file():
@@ -332,10 +333,18 @@ def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[s
         raise VideoEditError(f"preset '{name}' not found in {PRESETS} (have: {', '.join(preset_names())})")
     try:
         p = json.loads(f.read_text(encoding="utf-8"))
-        part = lambda r: (float(r["size"]), float(r["y"]), _rgb(r["color"]), _rgb(r["outline"]),  # noqa: E731
-                          float(r["outline_width"]))
+        def part(role: dict) -> tuple:
+            values = (float(role["size"]), float(role["y"]), _rgb(role["color"]), _rgb(role["outline"]), float(role["outline_width"]))
+            if not all(math.isfinite(v) for v in (values[0], values[1], values[4], *values[2], *values[3])) or values[0] <= 0 or values[4] < 0:
+                raise ValueError("role size/position/outline must be finite, with positive size")
+            return values
         second = p.get("second")
+        if not isinstance(p.get("fixed_size", False), bool) or p.get("font") is not None and not isinstance(p["font"], str):
+            raise ValueError("fixed_size must be boolean and font must be a path")
+        if second and not all(math.isfinite(float(second.get(k, default))) for k, default in (("x", .3), ("rotation", -6))):
+            raise ValueError("second position/rotation must be finite")
         look = {"lead": part(p["normal"]), "punch": part(p["emphasis"]), "fixed_size": bool(p.get("fixed_size")),
+                "_style": dict(style), "_canvas": (W, H),
                 "font": p.get("font"),
                 "caption": part(p["caption"]) if p.get("caption") else None,
                 "caption_lang": (p.get("caption") or {}).get("language", "en"),
@@ -351,7 +360,8 @@ def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[s
                     look[role] = (values[0] * ratio_scale, *values[1:])
             box = safe_box(style)
             scale = CAPCUT_PX * min(W, H) / 1080
-            heights = [look[role][0] * scale * LINE_H for role in ("lead", "punch")]
+            heights = [look[role][0] * scale * LINE_H * (1.3 if role == "punch" else 1)
+                       + 2 * (look[role][0] * scale * look[role][4] * .6 + 4) for role in ("lead", "punch")]
             gap = max(8, min(W, H) * 0.012)
             if sum(heights) + gap > H * (box["bottom"] - box["top"]):
                 raise VideoEditError("ขนาดตัวปกติและคำเน้นใหญ่เกินพื้นที่ · ลดขนาดใน preset ก่อนส่งออก")
@@ -359,10 +369,20 @@ def pair_look(style: dict, W: int | None = None, H: int | None = None) -> dict[s
             punch = H / 2 - look["punch"][1] * H / 2
             if not look["fixed_size"]:
                 punch = max(punch, normal + sum(heights) / 2 + gap)
-            shift = max(0, punch + heights[1] / 2 - H * box["bottom"])
-            for role, center in (("lead", normal - shift), ("punch", punch - shift)):
+            centers = {"lead": normal, "punch": punch}
+            if look["caption"]:
+                caption_h = look["caption"][0] * scale * LINE_H + 2 * (look["caption"][0] * scale * look["caption"][4] * .6 + 7)
+                centers["caption"] = H / 2 - look["caption"][1] * H / 2
+                if not look["fixed_size"]:
+                    centers["caption"] = max(centers["caption"], punch + (heights[1] + caption_h) / 2 + gap)
+            role_heights = dict(zip(("lead", "punch"), heights))
+            if look["caption"]:
+                role_heights["caption"] = caption_h
+            bottom = max(center + role_heights[role] / 2 for role, center in centers.items())
+            shift = max(0, bottom - H * box["bottom"])
+            for role, center in centers.items():
                 values = look[role]
-                look[role] = (values[0], 1 - 2 * center / H, *values[2:])
+                look[role] = (values[0], 1 - 2 * (center - shift) / H, *values[2:])
         return look
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise VideoEditError(f"preset {f.name} is broken: {exc}") from exc
@@ -395,7 +415,9 @@ def upper_row(look: dict, W: int, H: int) -> float:
     """y of the first of two stacked emphasis beats: just above the second, never on it, and no lower than the
     normal text's row."""
     size, y = look["punch"][:2]
-    return max(look["lead"][1], y + 2.1 * size * CAPCUT_PX * min(W, H) / 1080 / H)
+    scale = CAPCUT_PX * min(W, H) / 1080
+    height = size * scale * LINE_H * 1.3 + 2 * (size * scale * look["punch"][4] * .6 + 4)
+    return max(look["lead"][1], y + 2 * (height + max(8, min(W, H) * .012)) / H)
 
 
 def stacks(looks: list[str | None]) -> dict[int, int]:
@@ -575,91 +597,220 @@ def zoom_spans(segs: list) -> list[tuple[float, float]]:
     return out
 
 
-def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
-          look: dict, picked: list | None = None, marks: list | None = None, held: dict | None = None) -> list[str]:
-    """Use the editor/AI's content split and the spoken word clock; keep the lead through the punch.
-    Without a chosen split, show the complete subtitle without inventing emphasis."""
-    held = held if held is not None else {"white": ""}  # a "hold" white line carries over into the next subtitle line
-    flat = unbreak(text)
-    at = _clock([[a, b, "".join(w.split())] for a, b, w in spoken] if spoken else None, t1 - t0, flat)
-    total = len("".join(flat.split())) or 1
-    phrases = []  # (lead, punch, start, punch time, last word time)
-    if picked:
-        tight = lambda t: "".join(t.split())  # noqa: E731  (spaces may be dropped, nothing else)
-        if tight("".join(p[0] + p[1] for p in picked)) != tight(flat):
-            raise VideoEditError(f"clipkit_punch.json does not match the subtitle line: {flat}")
-        if not spoken and any(p[1] for p in picked):
-            raise VideoEditError("ไม่มีเวลาระดับคำสำหรับคำเน้น · ถอดเสียงก่อน หรือเลือกซับธรรมดา")
-        # Match the chosen split to the original word clock, without changing its timing.
-        when = lambda n: t0 + at(min(n, total - 1) / total)  # noqa: E731
-        n = 0
-        for lead, punch, *rest in picked:
-            a, hit = when(n), when(n + len(tight(lead)))
-            n += len(tight(lead)) + len(tight(punch))
-            query = next((x for x in rest if isinstance(x, str)), "")
-            opts = next((x for x in rest if isinstance(x, dict)), None)
-            phrases.append((lead.strip(), punch.strip(), a, hit, when(n - 1), query, opts))
-        if any(first[2] >= second[2] for first, second in zip(phrases, phrases[1:])):
-            raise VideoEditError("ท่อนที่แบ่งละเอียดกว่าเวลาคำพูด · รวมท่อนให้ตรงขอบคำ หรือถอดเสียงระดับคำใหม่")
-    else:
-        phrases.append((flat, "", t0, t0, t1, "", None))
-    k = min(W, H) / 1080 * CAPCUT_PX
-
-    def line(words: str, part: tuple, a: float, b: float, extra: str = "", one: bool = False, x: float = 0, rot: float = 0) -> str:
-        # one line only, never off screen: a long subtitle goes on as the next piece, in time with the voice (one_line)
-        size, y, fill, stroke, width = part
-        out = []
-        room = W * (held.get("box", safe_box({}))["w"] - abs(x))  # off-centre text has less width before the edge
-        shad = 5 if part is look["caption"] and look["caption_shadow"] else 2  # the reading subtitle's dark shadow
-        for piece, pa, pb, px in one_line(words, font_file, size * k, room, a, b, one=True,
-                                         fixed=look.get("fixed_size", False)):
-            if px < size * k:  # one word wider than the frame: shown smaller, listed for the editor
-                held.setdefault("shrunk", []).append({"at": round(pa, 2), "text": piece})
-            safe = _safe_y(H / 2 - y * H / 2, px, H, held)
-            for va, vb in visible_spans(pa, pb, held.get("motions", [])):
-                out.append(f"Dialogue: 0,{_ts(va)},{_ts(vb)},S,,0,0,0,,{{\\an5\\pos({W / 2 + x * W / 2:.0f},{safe:.0f})\\frz{-rot:g}\\fn{fam}"
-                       f"\\fs{px:.0f}\\1c{_ass_color(fill)}\\3c{_ass_color(stroke)}\\bord{px * width * 0.6 + 2:.1f}"
-                       f"\\shad{shad}{extra if pa == a else ''}}}" + piece)
-        return "\n".join(out)
-
+def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_file: Path,
+                *, captions: dict | None = None, held: dict | None = None) -> list[dict]:
+    """Measure one immutable role plan. Adapters serialize these coordinates without fitting again."""
+    from PIL import ImageFont
+    context = held if held is not None else {"white": ""}
+    box, scale = context.get("box") or safe_box({}), CAPCUT_PX * min(W, H) / 1080
+    font = ImageFont.truetype(str(font_file), 100)
+    metrics = font_cell_metrics(font_file)
+    pairs = stacks([(p.get("opts") or {}).get("look") for p in phrases])
     out = []
-    # Hold both rows until their replacement starts, including pauses in speech.
-    ends = [phrases[n + 1][2] if n + 1 < len(phrases) else t1 for n in range(len(phrases))]
-    pairs = stacks([(ph[6] or {}).get("look") for ph in phrases])  # emphasis in two beats, one row each
-    thai = look["caption_lang"] == "th"  # the reading subtitle is the whole spoken line, going on with the voice
-    for n, (lead, punch, a, hit, last, query, opts) in enumerate(phrases):
-        b = ends[n]
-        hit = max(a, min(hit, b - 0.01))
-        white, colour, rgb = _shown(lead, punch, opts, held["white"])
-        held["white"] = white or held["white"]
-        if a < held.get("until", 0):  # the clip title owns the screen for its first seconds
-            white = colour = ""
-        if marks is not None:  # moments for sound effects, b-roll, and the editor's timeline
-            marks.append(("phrase", round(a, 2), round(b, 2), lead, punch, text, n, query, opts, round(hit if white else a, 2), held.get("cue_id")))
-            if colour:
-                marks.append(("pop", hit if white else a))
-            if query:
-                marks.append(("broll", a, b, query))
-        held_on = (opts or {}).get("look") == "hold"
+
+    def line(role: str, words: str, part: tuple, a: float, b: float, cue_id: str | None,
+             *, x: float = 0, rotation: float = 0, effect: str = "none") -> None:
+        if not words.strip() or b <= a:
+            return
+        size, y, fill, stroke, width = part
+        px = size * scale
+        outline = px * width * .6 + 2
+        shadow = 5 if role == "caption" and look.get("caption_shadow") else 2
+        angle = abs(math.radians(rotation))
+        # Reserve stroke and shadow as well as the rotated line. A fixed preset never shrinks.
+        room = W * (box["w"] - abs(x)) - 2 * (outline + shadow)
+        measured = font.getlength(unbreak(words)) / 100 * px
+        height = px * LINE_H
+        rotated_width = measured * math.cos(angle) + height * math.sin(angle)
+        peak = 1.3 if effect == "pop" else 1.0
+        if rotated_width * peak > room + .01:
+            if look.get("fixed_size"):
+                raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ข้อความล้นขนาดคงที่ · ย่อ show หรือแบ่งตามขอบคำ")
+            px *= max(0, room) / max(rotated_width * peak, 1)
+            if px <= 0:
+                raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ไม่มีพื้นที่วางข้อความ")
+            context.setdefault("shrunk", []).append({"at": a, "text": words})
+            outline, measured, height = px * width * .6 + 2, font.getlength(unbreak(words)) / 100 * px, px * LINE_H
+        bw = (measured * math.cos(angle) + height * math.sin(angle)) * peak + 2 * (outline + shadow)
+        bh = (height * math.cos(angle) + measured * math.sin(angle)) * peak + 2 * (outline + shadow)
+        cx = W / 2 + x * W / 2
+        # Safe translation is role based, using the preset size, never a phrase's fitted size.
+        static_height = size * scale * LINE_H * peak + 2 * (size * scale * width * .6 + 2 + shadow)
+        cy = min(max(H / 2 - y * H / 2, H * box["top"] + static_height / 2), H * box["bottom"] - static_height / 2)
+        if (cx - bw / 2 < W * (1 - box["w"]) / 2 - .05 or cx + bw / 2 > W * (1 + box["w"]) / 2 + .05
+                or cy - bh / 2 < H * box["top"] - .05 or cy + bh / 2 > H * box["bottom"] + .05):
+            raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ข้อความเกินพื้นที่ปลอดภัย")
+        event = {"role": role, "cue_id": cue_id, "text": unbreak(words), "start": a, "end": b,
+                 "size_px": px, "font_family": fam, "font_file": str(font_file), "center_x_px": cx,
+                 "center_y_px": cy, "rotation": rotation, "fill": list(fill), "stroke": list(stroke),
+                 "outline_px": outline, "shadow": shadow, "fixed_size": bool(look.get("fixed_size")),
+                 "effect": effect, "peak_scale": peak, "bbox": [cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2]}
+        event.update(metrics)
+        show_start = max(a, context.get("until", 0)) if role != "caption" else a
+        for va, vb in visible_spans(show_start, b, context.get("motions", [])):
+            out.append(dict(event, start=va, end=vb, effect=effect if va == a else "none", effect_start=a))
+
+    for n, phrase in enumerate(phrases):
+        a, b, cue = phrase["start"], phrase["end"], phrase.get("cue_id")
+        opts = phrase.get("opts") or {}
+        white, colour, rgb = _shown(phrase["lead"], phrase["punch"], opts, context.get("white", ""))
+        context["white"] = white or context.get("white", "")
         if white:
-            out.append(line(white, look["lead"], a, b, "" if held_on else "\\fad(80,0)", bool(colour)))
+            line("normal", white, look["lead"], a, b, cue, effect="none" if opts.get("look") == "hold" else "fade")
         if colour:
             part = look["punch"] if rgb is None else look["punch"][:2] + (rgb,) + look["punch"][3:]
             end = b
-            if n in pairs:  # first of two beats: the upper row, on until the second beat is done
-                part, end = part[:1] + (upper_row(look, W, H),) + part[2:], ends[pairs[n]]
-            out.append(line(colour, part, hit if white else a, end, "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)", bool(white)))
-        second = (opts or {}).get("second")
-        if second and look["second"] and a >= held.get("until", 0):  # the second person's short reaction
-            x, rot = look["second_at"]
-            out.append(line(second, look["second"], a, b, "\\fad(120,0)", x=x, rot=rot))
-        if look["caption"] and not held.get("en") and not thai:
-            out.append(line((lead + " " + punch).strip(), look["caption"], a, b))
-    # the preset's small bottom caption, one translated line per spoken line (clipkit_caption.json, by the agent)
-    en = (held.get("en") or {}).get(cue_data.key(held["cue_id"]) if held.get("cue_id") else text)
-    if look["caption"] and phrases and (thai or en):  # shown under the title too
-        out.append(line(unbreak(text) if thai else en, look["caption"], phrases[0][2], t1))
+            if n in pairs:
+                part, end = part[:1] + (upper_row(look, W, H),) + part[2:], phrases[pairs[n]]["end"]
+            # A color-only phrase includes the spoken lead, so it starts at that phrase's onset.
+            line("emphasis", colour, part, phrase["hit"] if white else a, end, cue, effect="pop")
+        if opts.get("second"):
+            if not look.get("second"):
+                raise VideoEditError(f"cue {cue}: preset ไม่มีตำแหน่ง second · เลือก preset ที่รองรับก่อน")
+            x, rotation = look["second_at"]
+            line("second", opts["second"], look["second"], a, b, cue, x=x, rotation=rotation, effect="fade")
+    if look.get("caption"):
+        groups = {}
+        for p in phrases:
+            key = cue_data.phrase_key(p)
+            if key not in groups:
+                groups[key] = [p["start"], p["end"], p["line"], p.get("cue_id")]
+            groups[key][1] = max(groups[key][1], p["end"])
+        for key, (a, b, source, cue) in groups.items():
+            words = source if look.get("caption_lang") == "th" else (captions or {}).get(key)
+            if words:  # A missing translation stays absent; source text is never a fabricated translation.
+                line("caption", words, look["caption"], a, b, cue)
+    check_pair_events(out, W, H, box=box)
     return out
+
+
+def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = None) -> None:
+    """Read-only guard for a measured plan, including public motion requests before allocating a render."""
+    from PIL import ImageFont
+    box = box or safe_box({})
+    measured, fonts = [], {}
+    for event in events:
+        if event["font_file"] not in fonts:
+            fonts[event["font_file"]] = ImageFont.truetype(event["font_file"], 100)
+        font = fonts[event["font_file"]]
+        width = font.getlength(event["text"]) / 100 * event["size_px"]
+        height = event["size_px"] * LINE_H
+        angle, peak = abs(math.radians(event["rotation"])), 1.3 if event["effect"] == "pop" else 1
+        padding = 2 * (event["outline_px"] + event["shadow"])
+        bw = (width * math.cos(angle) + height * math.sin(angle)) * peak + padding
+        bh = (height * math.cos(angle) + width * math.sin(angle)) * peak + padding
+        x, y = event["center_x_px"], event["center_y_px"]
+        bounds = [x - bw / 2, y - bh / 2, x + bw / 2, y + bh / 2]
+        if (bounds[0] < W * (1 - box["w"]) / 2 - .05 or bounds[2] > W * (1 + box["w"]) / 2 + .05
+                or bounds[1] < H * box["top"] - .05 or bounds[3] > H * box["bottom"] + .05):
+            raise VideoEditError(f"cue {event.get('cue_id')} · {event['role']}: ข้อความหรือ motion เกินพื้นที่ปลอดภัย · ย่อ show หรือปรับ preset")
+        measured.append(dict(event, bbox=bounds))
+    active = []
+    for first in sorted(measured, key=lambda event: event["start"]):
+        active = [event for event in active if event["end"] > first["start"] + 1e-6]
+        for second in active:
+            if (max(first["start"], second["start"]) < min(first["end"], second["end"]) - 1e-6
+                    and all(max(first["bbox"][axis], second["bbox"][axis]) < min(first["bbox"][axis + 2], second["bbox"][axis + 2]) - .05
+                            for axis in (0, 1))):
+                raise VideoEditError(f"cue {first['cue_id']} · {first['role']}/{second['role']}: ข้อความทับกัน · ปรับตำแหน่งใน preset")
+        active.append(first)
+
+
+def _resolved_pair_cues(rows: list[dict], words: dict, picks: dict, *, duration: float | None = None) -> list[dict]:
+    ordered = sorted(rows, key=lambda row: row["start"])
+    groups, seen = [], set()
+    for n, row in enumerate(ordered):
+        cue = row.get("id")
+        key = cue_data.key(cue)
+        if cue in seen:
+            raise VideoEditError(f"cue {cue}: cue ID ซ้ำ")
+        seen.add(cue)
+        # First check against the original source cue. Extending the visual hold cannot legitimize bad word clocks.
+        resolved = subtitle_plan.resolve(row["text"], picks.get(key), words.get(key), cue_id=cue,
+                                         start=row["start"], end=row["end"])
+        if n + 1 < len(ordered) and ordered[n + 1]["start"] < row["end"] - subtitle_plan.EPSILON:
+            raise VideoEditError(f"cue {cue}: ช่วงซับทับกัน · แก้ช่วงก่อนส่งออก")
+        groups.append(resolved)
+    # Native rows can include pre-speech silence. The replacement appears at its real
+    # first word, so keep the preceding text until that resolved onset, not row.start.
+    for n, resolved in enumerate(groups):
+        resolved[-1]["end"] = (groups[n + 1][0]["start"] if n + 1 < len(groups)
+                               else max(ordered[n]["end"], duration or ordered[n]["end"]))
+    return [phrase for group in groups for phrase in group]
+
+
+def validate_pair_cues(rows: list[dict], words: dict, picks: dict, *, style: dict, W: int, H: int,
+                       captions: dict | None = None, duration: float | None = None) -> list[dict]:
+    """Read-only preflight shared by manual/Browser AI and every export, with the complete cue context."""
+    look = pair_look(style, W, H)
+    family, font = _font(look.get("font"))
+    phrases = _resolved_pair_cues(rows, words, picks, duration=duration)
+    return pair_events(phrases, look, W, H, family, font, captions=captions, held={"white": "", "box": safe_box(style)})
+
+
+def pair_events_from_timeline(timeline: dict) -> list[dict]:
+    if "subtitle_events" in timeline:
+        return timeline["subtitle_events"]
+    # Older timeline callers may already supply resolved phrases. They use the same planner once.
+    look = pair_look(timeline["style"], timeline["width"], timeline["height"])
+    family, font = _font(look.get("font"))
+    return pair_events(timeline["phrases"], look, timeline["width"], timeline["height"], family, font,
+                       captions=timeline.get("caption_en"), held={"white": "", "box": safe_box(timeline["style"]),
+                       "until": HOOK_DUR if timeline.get("hook") else 0, "motions": timeline.get("motions", [])})
+
+
+def font_cell_metrics(font_file: Path) -> dict:
+    """ASS uses the OS/2 Windows cell; CSS/Pillow font size uses em units.
+
+    See libass/ass_font.c:set_font_metrics. This is a font-unit conversion, never a text fit.
+    """
+    from fontTools.ttLib import TTFont
+    with TTFont(str(font_file), fontNumber=0) as font:
+        units = font["head"].unitsPerEm
+        hhea, os2 = font["hhea"], font.get("OS/2")
+        asc, desc = (os2.usWinAscent, os2.usWinDescent) if os2 and os2.usWinAscent + os2.usWinDescent else (hhea.ascent, -hhea.descent)
+        css_asc, css_desc = ((os2.sTypoAscender, -os2.sTypoDescender) if os2 and os2.fsSelection & 128
+                             else (hhea.ascent, -hhea.descent))
+        return {"font_cell_scale": (asc + desc) / units,
+                "font_cell_center_delta": ((css_asc - css_desc) - (asc - desc)) / (2 * units)}
+
+
+def _ass_text(text: str) -> str:
+    """Keep displayed source text literal: ASS braces and backslash commands are not user formatting.
+
+    libass escapes braces but not backslashes. An invisible word joiner prevents a literal
+    backslash from binding to N/n/h or to an escaped brace, without changing visible glyphs.
+    """
+    return unbreak(text).replace("\\", "\\\u2060").replace("{", "\\{").replace("}", "\\}")
+
+
+def subtitle_ass(event: dict) -> str:
+    extra = {"fade": "\\fad(80,0)", "pop": "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)"}.get(event["effect"], "")
+    metrics = event if "font_cell_scale" in event else font_cell_metrics(Path(event["font_file"]))
+    font_size = event["size_px"] * metrics["font_cell_scale"]
+    # Preserve the common logical line center despite the two font-cell definitions.
+    center_y = event["center_y_px"] + event["size_px"] * metrics["font_cell_center_delta"]
+    return (f"Dialogue: 0,{_ts(event['start'])},{_ts(event['end'])},S,,0,0,0,,{{\\an5"
+            f"\\pos({event['center_x_px']:.3f},{center_y:.3f})\\frz{-event['rotation']:g}"
+            f"\\fn{event['font_family']}\\fs{font_size:.3f}\\1c{_ass_color(event['fill'])}"
+            f"\\3c{_ass_color(event['stroke'])}\\bord{event['outline_px']:.3f}\\shad{event['shadow']}{extra}}}{_ass_text(event['text'])}")
+
+
+def _pair(text: str, spoken: list | None, t0: float, t1: float, W: int, H: int, fam: str, font_file: Path,
+          look: dict, picked: list | None = None, marks: list | None = None, held: dict | None = None) -> list[str]:
+    context = held if held is not None else {"white": ""}
+    if look.get("_canvas") != (W, H) and "_style" in look:
+        look = pair_look(look["_style"], W, H)
+    phrases = subtitle_plan.resolve(unbreak(text), picked, spoken, cue_id=context.get("cue_id"), start=t0, end=t1)
+    events = pair_events(phrases, look, W, H, fam, font_file, captions=context.get("en"), held=context)
+    if marks is not None:
+        for p in phrases:
+            marks.append(("phrase", p["start"], p["end"], p["lead"], p["punch"], p["line"], p["k"], p["query"], p["opts"],
+                          p["hit"], p["cue_id"], p["clock_status"]))
+            if p["query"]:
+                marks.append(("broll", p["start"], p["end"], p["query"]))
+        marks.extend(("pop", event["start"]) for event in events if event["role"] == "emphasis" and event["effect"] == "pop")
+    return [subtitle_ass(event) for event in events]
 
 
 def _karaoke(lines: list[str], spoken: list | None, length: float, base: str, hl: str) -> list[tuple[float, float, str]]:
@@ -849,7 +1000,31 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     held = {"white": "", "until": HOOK_DUR if hook else 0, "en": cue_data.load(folder, "clipkit_caption.json", cue_rows),
             "box": safe_box(style), "motions": overlays}
     text_segments = sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"])
+    subtitle_events = []
+    if anim == "pair":
+        pair = pair_look(style, W, H)
+        fam, fdir = _font(pair.get("font"))
+        family = family or fam
+        font_files.add(fdir)
+        rows = []
+        for segment in text_segments:
+            material = index.get(segment["material_id"], (None, None))[1]
+            if material:
+                start = segment["target_timerange"]["start"] / US
+                rows.append({"id": segment["id"], "text": json.loads(material["content"]).get("text", ""),
+                             "start": start, "end": start + segment["target_timerange"]["duration"] / US})
+        phrases = _resolved_pair_cues(rows, said, punches, duration=sum(seg["target_timerange"]["duration"] for seg in segs) / US)
+        subtitle_events = pair_events(phrases, pair, W, H, fam, fdir, captions=held["en"], held=held)
+        events.extend(subtitle_ass(event) for event in subtitle_events)
+        for p in phrases:
+            marks.append(("phrase", p["start"], p["end"], p["lead"], p["punch"], p["line"], p["k"], p["query"], p["opts"], p["hit"], p["cue_id"], p["clock_status"]))
+            if p["query"]:
+                marks.append(("broll", p["start"], p["end"], p["query"]))
+        marks.extend(("pop", event["start"]) for event in subtitle_events if event["role"] == "emphasis" and event["effect"] == "pop")
+        shown, estimated = len(rows), sum(not said.get(cue_data.key(row["id"])) for row in rows)
     for line_number, s in enumerate(text_segments):
+        if anim == "pair":
+            continue
         m = index.get(s["material_id"], (None, None))[1]
         if not m:
             continue
@@ -867,20 +1042,6 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         y = H / 2 - s["clip"]["transform"]["y"] * H / 2
         t0 = s["target_timerange"]["start"] / US
         t1 = t0 + s["target_timerange"]["duration"] / US
-        if anim == "pair":
-            pair = pair_look(style, W, H)
-            if pair.get("font"):
-                fam, fdir = _font(pair["font"])
-                font_files.add(fdir)
-            t1 = (text_segments[line_number + 1]["target_timerange"]["start"] / US
-                  if line_number + 1 < len(text_segments) else sum(seg["target_timerange"]["duration"] for seg in segs) / US)
-            held["cue_id"] = s["id"]
-            spoken = said.get(cue_data.key(s["id"]))
-            estimated += not bool(spoken)
-            events += _pair(body.get("text", ""), spoken, t0, t1, W, H, fam, fdir,
-                            pair, punches.get(cue_data.key(s["id"])), marks=marks, held=held)
-            shown += 1
-            continue
         marks.append(("phrase", round(t0, 2), round(t1, 2), body.get("text", ""), "", body.get("text", ""), 0, "", None, t0, s["id"]))
         lines, fitted = _fit(body.get("text", ""), fdir, size, W * held["box"]["w"])
         if fitted < size:
@@ -1014,11 +1175,12 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         if dry:  # what the export would contain, for the timeline editor; nothing is encoded
             length = sum(s["target_timerange"]["duration"] for s in segs) / US
             return {"duration": round(length, 2), "width": W, "height": H, "look": anim, "style": style,
-                    "hook": hook, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
+                    "hook": hook, "subtitle_events": subtitle_events, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
                     "progress": bool(style.get("progress")), "emoji": emoji,
                     "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
                                  "query": m[7], "opts": m[8] if len(m) > 8 else None,
-                                 "hit": m[9] if len(m) > 9 else m[1], "cue_id": m[10] if len(m) > 10 else None} for m in marks if m[0] == "phrase"],
+                                 "hit": m[9] if len(m) > 9 else m[1], "cue_id": m[10] if len(m) > 10 else None,
+                                 "clock_status": m[11] if len(m) > 11 else "cue"} for m in marks if m[0] == "phrase"],
                     "broll": plan, "motions": overlays, "quality": quality, "music": {"file": music_file or "", "volume": music_vol},
                     "sfx": fx, "edited": placed is not None, "shrunk": held.get("shrunk", []), "source": src, "src_w": info["width"], "src_h": info["height"],
                     "fit": {"w": vw, "h": vh, "x": ox, "y": oy},

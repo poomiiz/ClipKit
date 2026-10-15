@@ -239,6 +239,9 @@ def stories_are_not_transcribed_twice():
             {"start": 1.0, "end": 3.0, "text": "หนึ่ง", "words": [[1.0, 3.0, "หนึ่ง"]]},
             {"start": 10.0, "end": 12.0, "text": "สอง", "words": [[10.0, 11.0, "ส"], [11.0, 12.0, "อง"]]},
             {"start": 20.0, "end": 22.0, "text": "สาม", "words": []}]), encoding="utf-8")
+        import hashlib
+        video_edit.transcript_file(str(video)).with_suffix(".meta.json").write_text(json.dumps({
+            "schema_version": 2, "sha256": hashlib.sha256(video.read_bytes()).hexdigest()}), encoding="utf-8")
         got = capcut_edit._from_transcript(str(video), 9.0, 15.0)
         assert got == [{"start": 1.0, "end": 3.0, "text": "สอง", "words": [[1.0, 2.0, "ส"], [2.0, 3.0, "อง"]]}], got
         assert capcut_edit._from_transcript(str(video), 11.0, 15.0) is None, "a phrase cut by the edge was reused"

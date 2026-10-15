@@ -144,9 +144,9 @@ class OccurrenceTests(unittest.TestCase):
                 patch.object(hf_build, "_proxy", return_value="fixture.mp4"):
             page = hf_build.build(self.path).read_text(encoding="utf-8")
         for caption, start, duration in (("first caption", "2.000", "4.000"), ("second caption", "6.000", "2.000")):
-            node = next(n for n in re.findall(r'<div id="t[^>]+>[^<]+</div>', page) if caption in n)
-            self.assertIn(f'data-start="{start}"', node)
-            self.assertIn(f'data-duration="{duration}"', node)
+            node = next(n for n in re.findall(r'<div id="t[^>]+><div[^>]*>[^<]+</div></div>', page) if caption in n)
+            self.assertEqual(float(re.search(r'data-start="([\d.]+)"', node)[1]), float(start))
+            self.assertEqual(float(re.search(r'data-duration="([\d.]+)"', node)[1]), float(duration))
         harness = capcut_font_test.CapCutFontTests()
         harness.setUp()
         try:

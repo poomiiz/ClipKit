@@ -25,11 +25,12 @@ import web_ai_transaction as transaction
 import render
 import video_edit
 import story_selection
+import subtitle_plan
 from video_edit import VideoEditError
 
 VERSION = identity.VERSION
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
-LOOKS = {"pair", "white", "color", "red", "hold", "skip"}
+LOOKS = subtitle_plan.LOOKS
 
 
 def _motion_menu() -> list[dict[str, Any]]:
@@ -178,10 +179,14 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
                                  for a, b, w in word_times.get(cue_data.key(s["id"]), [])]} for n, s in enumerate(subs, 1)],
             "motion_templates": _motion_menu()}
     style = render._json(Path(path) / "clipkit_style.json", {})
-    look = render.pair_look(style)
+    draft = capcut_edit._load(Path(path))
+    canvas = draft["canvas_config"]
+    look = render.pair_look(style, canvas["width"], canvas["height"])
+    family, font = render._font(look.get("font"))
     data["subtitle_layout"] = {"fixed_size": look["fixed_size"], "normal_size": look["lead"][0],
                                "emphasis_size": look["punch"][0], "normal_y": look["lead"][1],
-                               "emphasis_y": look["punch"][1]}
+                               "emphasis_y": look["punch"][1], "canvas": {key: canvas[key] for key in ("width", "height")},
+                               "font_family": family, "font_file": font.name, "safe_box": render.safe_box(style)}
     prompt = _prompt("clip.md")
     if max_minutes:
         prompt = prompt.replace("## 1. Subtitle", f"ผู้ตัดต่ออยากได้คลิปยาวราว {max_minutes:g} นาที (คลิปตอนนี้ยาว "
@@ -227,34 +232,37 @@ def _story_selection(video: str, ans: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _item(it: Any, where: str) -> list:
-    if not isinstance(it, list) or not 2 <= len(it) <= 4 or not all(isinstance(x, str) for x in it[:2]):
-        raise VideoEditError(f"{where}: ต้องเป็น [lead, punch] หรือ [lead, punch, คำค้น, ตัวเลือก] (ได้ {it!r})")
-    for x in it[2:]:
-        if isinstance(x, dict):
-            if x.get("look", "pair") not in LOOKS:
-                raise VideoEditError(f"{where}: look ต้องเป็นหนึ่งใน {sorted(LOOKS)} (ได้ {x.get('look')!r})")
-            show = x.get("show")
-            if show is not None and (not isinstance(show, list) or len(show) != 2 or not all(isinstance(s, str) for s in show)):
-                raise VideoEditError(f"{where}: show ต้องเป็น [ข้อความขาว, ข้อความเน้น]")
-            if x.get("color") is not None and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(x["color"])):
-                raise VideoEditError(f"{where}: color ต้องเป็น #rrggbb (ได้ {x['color']!r})")
-            if x.get("second") is not None and not isinstance(x["second"], str):
-                raise VideoEditError(f"{where}: second ต้องเป็นข้อความ")
-        elif not isinstance(x, str):
-            raise VideoEditError(f"{where}: ช่องที่ 3-4 ต้องเป็นคำค้น (ข้อความ) หรือตัวเลือก {{...}}")
-    return it
+    text = it[0] + it[1] if isinstance(it, list) and len(it) >= 2 and all(isinstance(x, str) for x in it[:2]) else "invalid"
+    return subtitle_plan.validate_items(text, [it], cue_id=where)[0]
+
+
+def validate_subtitles(path: str, *, picks: dict | None = None, captions: dict | None = None,
+                       style: dict | None = None, rows: list[dict] | None = None) -> list[dict]:
+    """Read-only shared preflight against real project clocks, canvas, preset and font."""
+    folder = Path(path)
+    draft = capcut_edit._load(folder)
+    original_rows = capcut_edit.read_draft(path)["subtitles"]
+    rows = original_rows if rows is None else rows
+    canvas = draft["canvas_config"]
+    duration = max((segment["target_timerange"]["start"] + segment["target_timerange"]["duration"]) / video_edit.US
+                   for segment in capcut_edit._video_track(draft)["segments"])
+    return render.validate_pair_cues(rows, cue_data.load(folder, "clipkit_words.json", original_rows),
+                                    cue_data.load(folder, "clipkit_punch.json", original_rows) if picks is None else picks,
+                                    style=render._json(folder / "clipkit_style.json", {}) if style is None else style,
+                                    W=canvas["width"], H=canvas["height"],
+                                    captions=cue_data.load(folder, "clipkit_caption.json", original_rows) if captions is None else captions,
+                                    duration=duration)
 
 
 def _prepare_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
     """Run existing editing operations only inside the transaction staging folder."""
     _head(ans, "clip", "project", Path(path).name)
     subs = capcut_edit.read_draft(path)["subtitles"]
-    tight = lambda t: "".join(t.split())  # noqa: E731  (spaces may be dropped, nothing else - render._pair)
     lines = ans.get("lines")
     if (not isinstance(lines, list) or any(not isinstance(x, dict) or type(x.get("n")) is not int for x in lines)
             or [x["n"] for x in lines] != list(range(1, len(subs) + 1))):
         raise VideoEditError(f"lines ต้องมีครบ {len(subs)} บรรทัด เรียง n = 1..{len(subs)} ตามไฟล์ที่ส่งไป")
-    if any(x.get("cue_id", s["id"]) != s["id"] for x, s in zip(lines, subs)):
+    if any(x.get("cue_id") != s["id"] for x, s in zip(lines, subs)):
         raise VideoEditError("cue ID ไม่ตรงกับซับล่าสุด · ส่งออกคำสั่ง AI ใหม่")
     cut = [] if ans.get("cut") is None else ans["cut"]
     if not isinstance(cut, list) or any(type(n) is not int or n not in range(1, len(subs) + 1) for n in cut) or len(set(cut)) >= len(subs):
@@ -283,14 +291,7 @@ def _prepare_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         items = x.get("items")
         if not isinstance(items, list) or not items:
             raise VideoEditError(f"บรรทัด {x['n']}: items ต้องมีอย่างน้อย 1 ท่อน")
-        items = [_item(it, f"บรรทัด {x['n']} ท่อน {k}") for k, it in enumerate(items, 1)]
-        got, want = tight("".join(it[0] + it[1] for it in items)), tight(render.unbreak(s["text"]))
-        if got != want:
-            raise VideoEditError(f"บรรทัด {x['n']}: lead + punch ต้องเป็นคำพูดเดิมครบทุกตัวอักษรตามลำดับ\n"
-                                 f"  ซับ: {want}\n  ได้: {got}")
-        if groups:
-            render._pair(s["text"], s["words"], s["start"], s["end"], 1080, 1920, "Kanit",
-                         render.DEFAULT_FONT, render.pair_look({}), picked=items)
+        items = subtitle_plan.validate_items(s["text"], items, cue_id=s["id"])
         if x.get("cue_id") is not None and x["cue_id"] != s["id"]:
             raise VideoEditError("cue ID ไม่ตรงกับซับล่าสุด · ส่งออกคำสั่ง AI ใหม่")
         punch[cue_data.key(s["id"])] = items
@@ -342,11 +343,15 @@ def _prepare_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
         written.append(f"ตัด {len(set(cut))} บรรทัด")
         kept = {s["id"]: s for s in capcut_edit.read_draft(path)["subtitles"]}
         subs = [kept.get(s["id"], s) for s in subs]
+    subtitle_events = validate_subtitles(path)
     if motion:  # renders each motion here, the same as the editor's Motion button
         for m in motion:
             s = current[m["n"]] if groups else subs[m["n"] - 1]
+            end = s["end"]
+            if m["template"] == "sentence-pair":
+                end = max([end] + [event["end"] for event in subtitle_events if event.get("cue_id") == s["id"]])
             video_editor.draft_overlay_add(video_editor.OverlayRequest(path=path, template=m["template"], params=m.get("params"),
-                                                                       start=s["start"], end=s["end"], text=s["text"], cue_id=s["id"]))
+                                                                       start=s["start"], end=end, text=s["text"], cue_id=s["id"]))
         written.append(video_editor.OVERLAYS)
     out = {"written": written, "lines": len(punch), "cut": len(set(cut)), "motion": len(motion)}
     return out

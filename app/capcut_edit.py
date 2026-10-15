@@ -133,7 +133,14 @@ def _keep_version(folder: Path, text: str, op: str) -> str:
     d.mkdir(exist_ok=True)
     n = len(list(d.glob("*.json.gz"))) + 1  # numbered: two edits in one millisecond still sort in order
     name = f"{n:04d} {time.strftime('%Y%m%d-%H%M%S')} {op}.json.gz"
-    (d / name).write_bytes(gzip.compress(text.encode("utf-8")))
+    import spelling
+    rules = d / (name + ".corrections.json")
+    atomic.write_text(rules, json.dumps(spelling._read(spelling._file(folder)), ensure_ascii=False))
+    try:
+        atomic.write_bytes(d / name, gzip.compress(text.encode("utf-8")))
+    except Exception:
+        rules.unlink(missing_ok=True)
+        raise
     return name
 
 
@@ -152,7 +159,11 @@ def restore(folder: str, version: str) -> None:
     if not src.is_file():
         raise VideoEditError(f"no saved version {version!r} in {f / HISTORY}")
     _load(f)  # refuses a project edited outside ClipKit
-    _save(f, json.loads(gzip.decompress(src.read_bytes()).decode("utf-8")), "restore")
+    import spelling
+    rules = src.with_name(src.name + ".corrections.json")
+    # Legacy snapshots did not record correction rules; retain those rules rather than invent history.
+    _save(f, json.loads(gzip.decompress(src.read_bytes()).decode("utf-8")), "restore",
+          corrections=spelling._read(rules) if rules.is_file() else None)
 
 
 def _log_change(folder: Path, before_text: str, text: str, op: str) -> None:
@@ -251,25 +262,48 @@ def _check(draft: dict[str, Any]) -> None:
                 raise VideoEditError(f"draft would break: {where} has a negative time")
 
 
-def _save(folder: Path, draft: dict[str, Any], op: str) -> None:
+def _save(folder: Path, draft: dict[str, Any], op: str, *, corrections: dict | None = None,
+          sidecars: dict[str, dict] | None = None) -> None:
     _check(draft)
+    import spelling
+    rules_file = spelling._file(folder)
+    spelling._read(rules_file)  # Reject broken rules before changing the visible draft.
+    import web_ai_transaction
+    saved = {name: file.read_bytes() for name, file in web_ai_transaction._files(folder).items()} if corrections is not None or sidecars is not None else None
     content = folder / "draft_content.json"
     backup = content.with_suffix(f".json.bak_{op}")
-    if not backup.exists():
-        shutil.copy2(content, backup)
     text = json.dumps(draft, ensure_ascii=False, indent=2)
     before = content.read_text(encoding="utf-8")
-    atomic.write_text(content, text, encoding="utf-8")
-    sync_timeline(folder, text)
-    _seal(folder, text)
-    _log_change(folder, before, text, op)  # after the write: the draft bot (watch) never sees history ahead of the file
-    meta_path = folder / "draft_meta_info.json"
-    if meta_path.is_file():
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        if "tm_duration" in meta:
-            meta["tm_duration"] = draft.get("duration", meta["tm_duration"])
-            meta["tm_draft_modified"] = int(time.time() * US)
-            atomic.write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        if not backup.exists():
+            shutil.copy2(content, backup)
+        if corrections is not None and not history(str(folder)):
+            _keep_version(folder, before, "start")
+        if corrections is not None:
+            atomic.write_text(rules_file, json.dumps(corrections, ensure_ascii=False, indent=1))
+        atomic.write_text(content, text, encoding="utf-8")
+        sync_timeline(folder, text)
+        _seal(folder, text)
+        _log_change(folder, before, text, op)
+        for name, data in (sidecars or {}).items():
+            file = folder / name
+            if not file.is_file() or json.loads(file.read_text(encoding="utf-8")) != data:
+                cue_data.save(folder, name, data)
+        meta_path = folder / "draft_meta_info.json"
+        if meta_path.is_file():
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if "tm_duration" in meta:
+                meta["tm_duration"] = draft.get("duration", meta["tm_duration"])
+                meta["tm_draft_modified"] = int(time.time() * US)
+                atomic.write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        if saved is not None:
+            for name, file in web_ai_transaction._files(folder).items():
+                if name not in saved:
+                    file.unlink()
+            for name, data in saved.items():
+                atomic.write_bytes(folder / name, data)
+        raise
 
 
 def _text_track(draft: dict[str, Any]) -> dict[str, Any] | None:
@@ -342,9 +376,8 @@ def read_draft(path: str) -> dict[str, Any]:
                 continue
             body = json.loads(material["content"])
             subs.append({
-                "start": round(seg["target_timerange"]["start"] / US, 2),
-                "end": round((seg["target_timerange"]["start"]
-                              + seg["target_timerange"]["duration"]) / US, 2),
+                "start": seg["target_timerange"]["start"] / US,
+                "end": (seg["target_timerange"]["start"] + seg["target_timerange"]["duration"]) / US,
                 "text": body.get("text", ""),
                 "size": material.get("font_size"),
                 "color": material.get("text_color"),
@@ -388,6 +421,18 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
     index = _index(draft)
     text = _text_track(draft)
     old_rows = read_draft(path)["subtitles"]
+    limit = draft.get("duration", 0) / US
+    previous = 0.0
+    if not isinstance(subs, list) or any(not isinstance(sub, dict) for sub in subs):
+        raise VideoEditError("ซับต้องเป็นรายการช่วงข้อความ")
+    for sub in subs:
+        start, end = sub.get("start"), sub.get("end")
+        if (any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in (start, end))
+                or not 0 <= start < end <= limit or start < previous - 1e-6):
+            raise VideoEditError("ช่วงซับต้องเรียง ไม่ทับ และอยู่ภายในวิดีโอ · ไม่ปรับเวลาหรือตัดช่วงให้อัตโนมัติ")
+        if not isinstance(sub.get("text"), str) or not sub["text"].strip():
+            raise VideoEditError("แต่ละช่วงซับต้องมีข้อความ · ลบช่วงออกจากรายการเมื่อต้องการเอาออก")
+        previous = end
     carried_words = (cue_data.load(folder, "clipkit_words.json", old_rows)
                      if not replace or not all(s.get("id") and s.get("words") is not None for s in subs) else {})
     supplied_ids = [s["id"] for s in subs if s.get("id")]
@@ -423,16 +468,10 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
     draft["materials"]["texts"] = [m for m in draft["materials"]["texts"]
                                    if m["id"] in kept_ids]
 
-    limit = draft.get("duration", 0) / US
     made = []
-    for sub in sorted(subs, key=lambda s: s["start"]):
-        body_text = str(sub["text"]).strip()
-        if not body_text:
-            continue
-        start = max(0.0, float(sub["start"]))
-        end = min(float(sub["end"]), limit - 0.07)
-        if end - start < 0.3:
-            continue
+    for sub in subs:
+        body_text = sub["text"].strip()
+        start, end = float(sub["start"]), float(sub["end"])
 
         # a line may carry its own look (the emphasised ones do)
         own = sub.get("style") or {}
@@ -477,15 +516,28 @@ def set_subtitles(path: str, subs: list[dict[str, Any]], size: float | None = No
             segment["clip"]["transform"] = {"x": 0.0, "y": line_y}
         segment["render_index"] = 14001
         made.append(segment)
+        if sub.get("words") is not None:
+            carried_words[cue_data.key(segment["id"])] = sub["words"]
 
     text["segments"] = sorted(keep + made, key=lambda s: s["target_timerange"]["start"])
     if len({s["id"] for s in text["segments"]}) != len(text["segments"]):
         raise VideoEditError("cue ID ของซับซ้ำกัน · ตรวจช่วงซับก่อนบันทึก")
-    _save(folder, draft, "subs")
-    carried_words.update({cue_data.key(s["id"]): s["words"] for s in subs if s.get("id") and s.get("words") is not None})
     active_ids = {cue_data.key(s["id"]) for s in text["segments"]}
-    if carried_words or (folder / "clipkit_words.json").is_file():
-        cue_data.save(folder, "clipkit_words.json", {k: v for k, v in carried_words.items() if k in active_ids})
+    carried_words = {key: value for key, value in carried_words.items() if key in active_ids}
+    candidate_index = _index(draft)
+    rows = [{"id": segment["id"], "start": segment["target_timerange"]["start"] / US,
+             "end": (segment["target_timerange"]["start"] + segment["target_timerange"]["duration"]) / US,
+             "text": json.loads(candidate_index[segment["material_id"]][1]["content"])["text"]}
+            for segment in text["segments"]]
+    import render
+    style_file = folder / "clipkit_style.json"
+    project_style = json.loads(style_file.read_text(encoding="utf-8")) if style_file.is_file() else {}
+    canvas = draft["canvas_config"]
+    render.validate_pair_cues(rows, carried_words, cue_data.load(folder, "clipkit_punch.json", old_rows),
+                              style=project_style, W=canvas["width"], H=canvas["height"],
+                              captions=cue_data.load(folder, "clipkit_caption.json", old_rows))
+    word_updates = {"clipkit_words.json": carried_words} if carried_words or (folder / "clipkit_words.json").is_file() else {}
+    _save(folder, draft, "subs", sidecars=word_updates)
     return {"name": folder.name, "subtitles": len(text["segments"]), "added": len(made)}
 
 
@@ -994,18 +1046,29 @@ def copy_grade(source_path: str, target_path: str) -> dict[str, Any]:
             "copied": len(template), "flags": flags}
 
 
-def _from_transcript(source: str, start: float, end: float) -> list[dict[str, Any]] | None:
+_TRANSCRIPT_MEDIA_CACHE: dict[str, dict] = {}
+
+
+def _from_transcript(source: str, start: float, end: float, *, corrections: dict | None = None) -> list[dict[str, Any]] | None:
     """Reuse the source transcript at complete-word edges, including edges inside an ASR row; None = transcribe."""
     from video_edit import slice_transcript, transcript_file
+    import web_ai_identity as identity
 
     start, end = round(start, 6), round(end, 6)
 
     tf = transcript_file(source)
+    meta, part = tf.with_suffix(".meta.json"), tf.with_suffix(".part.json")
+    if not tf.is_file() or not meta.is_file() or part.exists():
+        return None
+    media, cached = identity._media(Path(source), _TRANSCRIPT_MEDIA_CACHE)
+    _TRANSCRIPT_MEDIA_CACHE[media["path_id"]] = cached
+    before = (identity._stat(tf), identity._stat(meta))
     try:
-        if tf.stat().st_mtime < Path(source).stat().st_mtime:
-            return None
+        provenance = json.loads(meta.read_text(encoding="utf-8"))
         phrases = json.loads(tf.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        raise VideoEditError("อ่าน transcript หรือข้อมูลต้นทางไม่สำเร็จ · ถอดเสียงใหม่ก่อนใช้ซับ") from exc
+    if not isinstance(provenance, dict) or provenance.get("schema_version") != 2 or provenance.get("sha256") != media["sha256"]:
         return None
     if not phrases or any("words" not in p for p in phrases):
         return None
@@ -1013,9 +1076,13 @@ def _from_transcript(source: str, start: float, end: float) -> list[dict[str, An
         phrases = slice_transcript(phrases, start, end)
     except VideoEditError:
         return None
+    if (part.exists() or identity._stat(Path(source)) != media["stat"]
+            or (identity._stat(tf), identity._stat(meta)) != before):
+        raise VideoEditError("ฟุตหรือ transcript เปลี่ยนระหว่างอ่าน · ลองถอดเสียงใหม่")
     import spelling
-    known = spelling.load()  # fixes learned since the transcript was made
-    return [{"start": round(p["start"] - start, 2), "end": round(p["end"] - start, 2), "text": spelling.fix(p["text"], known),
+    known = spelling.load() if corrections is None else corrections
+    return [{"start": round(p["start"] - start, 2), "end": round(p["end"] - start, 2),
+             "text": spelling.fix("".join(w for _, _, w in p["words"]) or p["text"], known),
              "words": [[round(a - start, 2), round(b - start, 2), w] for a, b, w in p["words"]]}
             for p in phrases if start <= p["start"] and p["end"] <= end]
 
@@ -1026,24 +1093,31 @@ def transcribe_draft(path: str) -> dict[str, Any]:
     from video_edit import transcribe
 
     folder = Path(path)
+    import spelling
+    corrections = spelling.load(folder)
     draft = _load(folder)
     source = next((m.get("path") for m in draft["materials"].get("videos", []) if m.get("path")), None)
     if not source or not Path(source).is_file():
         raise VideoEditError(f"source video not found: {source}")
 
-    lines: list[dict[str, Any]] = []
-    cursor = 0.0
-    for segment in _video_track(draft)["segments"]:
-        start = segment["source_timerange"]["start"] / US
-        length = segment["source_timerange"]["duration"] / US
-        for phrase in _from_transcript(source, start, start + length) or transcribe(source, start, start + length):
-            cue_id = str(uuid.uuid4()).upper()
-            spoken = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
-                      for a, b, w in phrase.get("words", [])]
-            lines.append({"id": cue_id, "words": spoken, "start": round(cursor + phrase["start"], 2),
-                          "end": round(cursor + phrase["end"], 2),
-                          "text": phrase["text"]})
-        cursor += length
+    import web_ai_identity as identity
+    with project_lock.writer(source, recover=False):
+        source_stat = identity._stat(Path(source))
+        lines: list[dict[str, Any]] = []
+        cursor = 0.0
+        for segment in _video_track(draft)["segments"]:
+            start = segment["source_timerange"]["start"] / US
+            length = segment["source_timerange"]["duration"] / US
+            for phrase in _from_transcript(source, start, start + length, corrections={}) or transcribe(source, start, start + length):
+                cue_id = str(uuid.uuid4()).upper()
+                spoken = [[round(a - phrase["start"], 2), round(b - phrase["start"], 2), w]
+                          for a, b, w in phrase.get("words", [])]
+                lines.append({"id": cue_id, "words": spoken, "start": round(cursor + phrase["start"], 2),
+                              "end": round(cursor + phrase["end"], 2),
+                              "text": spelling.fix("".join(w for _, _, w in phrase.get("words", [])) or phrase["text"], corrections)})
+            cursor += length
+        if identity._stat(Path(source)) != source_stat:
+            raise VideoEditError("ฟุตเปลี่ยนระหว่างถอดเสียง · ถอดเสียงใหม่ก่อนบันทึกซับ")
 
     lines.sort(key=lambda p: p["start"])
     for first, second in zip(lines, lines[1:]):
@@ -1624,17 +1698,28 @@ def _repick(picked: list, old: str, new: str) -> list:
 
 
 @project_lock.edit
-def set_line_text(path: str, old: str, new: str, cue_id: str | None = None) -> dict[str, Any]:
+def set_line_text(path: str, old: str, new: str, cue_id: str | None = None, *, learn_global: bool = False,
+                  picks_override: list[list[str | dict[str, Any]]] | None = None) -> dict[str, Any]:
     """Change one subtitle line's words (the timeline editor). The ClipKit side files keyed by the line text
     (word times, punch picks) are moved to the new text so they stay attached."""
     folder = Path(path)
+    import spelling
+    spelling.load(folder)  # Validate both retained machine rules and this project's overrides first.
+    corrections, learned = spelling._updated(old, new, spelling._read(spelling._file(folder)))
+    global_rules = spelling._updated(old, new, spelling._read(spelling.FILE))[0] if learn_global else None
     rows = read_draft(path)["subtitles"]
     selected = cue_data.select(rows, old, cue_id)
     sidecars = {name: cue_data.load(folder, name, rows) for name in
                 ("clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json")}
     selected_key = cue_data.key(selected["id"])
-    if selected_key in sidecars["clipkit_punch.json"]:
+    if picks_override is not None:
+        import subtitle_plan
+        sidecars["clipkit_punch.json"][selected_key] = subtitle_plan.validate_items(new, picks_override, cue_id=selected["id"])
+    elif selected_key in sidecars["clipkit_punch.json"]:
         sidecars["clipkit_punch.json"][selected_key] = _repick(sidecars["clipkit_punch.json"][selected_key], old, new)
+    import web_ai_json
+    web_ai_json.validate_subtitles(path, picks=sidecars["clipkit_punch.json"],
+        rows=[{**r, "text": new} if r["id"] == selected["id"] else r for r in rows])
     draft = _load(folder)
     index = _index(draft)
     text = _text_track(draft)
@@ -1657,11 +1742,9 @@ def set_line_text(path: str, old: str, new: str, cue_id: str | None = None) -> d
         hit += 1
     if not hit:
         raise VideoEditError(f"subtitle line not found: {old}")
-    _save(folder, draft, "linetext")
-    import spelling
-    spelling.learn(old, new)  # the words fixed by hand are fixed in the next transcripts too
-    for name, data in sidecars.items():
-        f = folder / name
-        if f.is_file():
-            cue_data.save(folder, name, data)
+    _save(folder, draft, "linetext", corrections=corrections if learned else None,
+          sidecars={name: data for name, data in sidecars.items() if (folder / name).is_file()
+                    or name == "clipkit_punch.json" and picks_override is not None})
+    if learn_global and learned:
+        atomic.write_text(spelling.FILE, json.dumps(global_rules, ensure_ascii=False, indent=1))
     return {"changed": hit}

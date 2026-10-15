@@ -1,5 +1,6 @@
 """Semantic story edges retain complete words across ASR transport rows."""
 import json
+import hashlib
 import os
 import sys
 import tempfile
@@ -28,6 +29,8 @@ class StoryTiming(unittest.TestCase):
             [0, 1, "พูด"], [1, 2, "ดี"], [2, 2.1, "คร"], [2.1, 2.2, "ั"], [2.2, 2.4, "บ"],
             [4, 5, "อัน"], [5, 6, "ต่อไป"]]}]
         video_edit.transcript_file(self.raw).write_text(json.dumps(self.phrases), encoding="utf-8")
+        video_edit.transcript_file(self.raw).with_suffix(".meta.json").write_text(json.dumps({
+            "schema_version": 2, "sha256": hashlib.sha256(Path(self.raw).read_bytes()).hexdigest()}), encoding="utf-8")
 
     def answer(self, stories):
         return {"clipkit_web_ai": 2, **web_ai_identity.issue("stories", self.raw),
