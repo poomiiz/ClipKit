@@ -19,11 +19,19 @@ import video_edit
 import video_editor
 import run_clip
 import jobstore
+import kitconfig
 import web_ai_identity
 from pydantic import ValidationError
 
 
 class StoryTarget(unittest.TestCase):
+    def setUp(self):
+        folder = self.enterContext(tempfile.TemporaryDirectory())
+        config = Path(folder) / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        self.enterContext(patch.dict(os.environ, {"CLIP_KIT_CONFIG": str(config)}))
+        self.enterContext(patch.object(kitconfig, "_CANDIDATES", [config]))
+
     def test_preference_prompt_resume_and_complete_thought(self):
         with tempfile.TemporaryDirectory() as folder:
             raw = str(Path(folder) / "talk.mp4")
@@ -59,7 +67,7 @@ class StoryTarget(unittest.TestCase):
             project = Path(folder) / "project"
             project.mkdir()
             (project / "clipkit.json").write_text(json.dumps({"raw": raw}), encoding="utf-8")
-            draft = {"id": "draft", "duration": 200_000_000, "materials": {
+            draft = {"id": "draft", "duration": 200_000_000, "canvas_config": {"width": 1080, "height": 1920}, "materials": {
                 "videos": [{"id": "video", "path": raw}], "texts": [{"id": "text", "font_size": 15,
                     "content": json.dumps({"text": "spoken", "styles": []})}]}, "tracks": [
                 {"type": "video", "segments": [{"id": "video", "material_id": "video",

@@ -142,5 +142,11 @@
     "exit_code": 0,
     "elapsed_s": 0.078,
     "reported_cases": null
+  },
+  {
+    "program": "story_target_test.py",
+    "exit_code": 0,
+    "elapsed_s": 2.016,
+    "reported_cases": 6
   }
 ]

@@ -106,7 +106,7 @@
 - ใช้ fixed learned layout จาก reference เป็น preset ทดสอบ; ตรวจ normal/punch/caption/hold/color-stack/second ครบทั้ง FFmpeg/HF/CapCut/`motion/sentence-pair` ไม่ใช่ตรวจเฉพาะ pair ธรรมดา
 - overflow ให้ส่งกลับ cue ที่ต้องย่อ `show`/แบ่งความหมาย โดยรักษา source text และเวลาคำ; ไม่ลดขนาดเฉพาะบรรทัดใน fixed preset; legacy preset ไม่เปลี่ยนพฤติกรรมเงียบ ๆ
 - คำแก้เฉพาะโปรเจกต์เป็นค่าเริ่มต้น; การเรียนรู้คำแทนทั้งเครื่องต้องแยกให้ชัด (`app/spelling.py`, `capcut_edit.set_line_text`) เพื่อไม่ให้ชื่อเฉพาะจากงานหนึ่งเปลี่ยนอีกงาน
-- **หลักฐาน EK-05**: [validator/clock/layout และการกู้คืน](test-logs/ek05-20261015.md) ผ่านโปรแกรมตรวจ 24 ชุด พร้อม CPU ASS/HyperFrames และ Playwright ฟอร์มสมมติ; ยังรอฟังเสียงจริง เปิด CapCut และคนตรวจคลิปนำร่อง จึงอยู่ระหว่าง review
+- **หลักฐาน EK-05**: [validator/clock/layout และการกู้คืน](test-logs/ek05-20261015.md) ผ่านโปรแกรมตรวจ 25 ชุด พร้อม CPU ASS/HyperFrames และ Playwright ฟอร์มสมมติ; ยังรอฟังเสียงจริง เปิด CapCut และคนตรวจคลิปนำร่อง จึงอยู่ระหว่าง review
 - จุดกระทบ: `app/render.py:243–305,325–370,577–660`, `app/hf_build.py:137–209`, `app/capcut_build.py:198–257`, `app/video_editor.py:1321`, preset learner/style lab, packet layout metadata
 - **เทสรับงาน**: ไทยสระ/วรรณยุกต์, ไทยปนอังกฤษ, ชื่อ/ตัวเลข, ข้อความซ้ำ, ข้อความยาว, คำเน้นติดท้าย/ต้น, pause, รอยตัด; 9:16/16:9/1:1 ต้องไม่ล้นหรือเปลี่ยน size/center ราย phrase ใน fixed preset; ไม่มี word clock ต้องแจ้ง ไม่อ้าง sync
 - ตัวเลขตรวจเริ่มต้นสำหรับ fixture: onset/offset หลังแปลง clock คลาดไม่เกิน 1 frame ของ output; เสียงจริงให้คน mark anchor ต้น/กลาง/ท้ายและรอยตัด ดู/ฟังทุก cue ที่ผิดหรือคลุมเครือ ไม่ใช้ ASR เทียบ ASR เป็นคำตัดสินสุดท้าย
