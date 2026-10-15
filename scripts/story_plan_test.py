@@ -36,6 +36,8 @@ class StoryPlan(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
+        config = self.root / "config.json"
+        config.write_text("{}", encoding="utf-8")
         self.raw = str(identity._canonical(self.root / "talk.mp4"))
         Path(self.raw).write_bytes(b"original source")
         self.phrases = [{"start": 0, "end": 4, "text": "first point second point", "words": [
@@ -44,7 +46,8 @@ class StoryPlan(unittest.TestCase):
         self.jobs = jobstore.JobStore("ek04-test")
         self.jobs.clear()
         self.jobs.path = self.root / "jobs.json"
-        for context in (patch.object(api, "_story_jobs", self.jobs),
+        for context in (patch.object(video_edit.kitconfig, "_CANDIDATES", [config]),
+                        patch.object(api, "_story_jobs", self.jobs),
                         patch.object(jobstore, "STATE", self.root),
                         patch.object(video_edit, "transcribe_file", side_effect=self.asr),
                         patch.object(api, "Thread", InlineThread)):

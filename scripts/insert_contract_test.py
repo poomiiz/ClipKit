@@ -25,6 +25,11 @@ class InsertContract(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        config = self.root / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        candidates = patch.object(run_clip.video_edit.kitconfig, "_CANDIDATES", [config])
+        candidates.start()
+        self.addCleanup(candidates.stop)
         lock_state = patch.object(jobstore, "STATE", self.root / "locks")
         lock_state.start()
         self.addCleanup(lock_state.stop)

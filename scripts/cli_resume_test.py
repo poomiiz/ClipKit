@@ -54,6 +54,9 @@ class CliResume(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.addCleanup(patch.stopall)
+        config = self.root / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        patch.object(cli.video_edit.kitconfig, "_CANDIDATES", [config]).start()
         patch.object(jobstore, "STATE", self.root / "locks").start()
         patch.object(cli, "say").start()
         self.presets = self.root / "presets"

@@ -23,6 +23,11 @@ class StorySelection(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        config = Path(self.temp.name) / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        candidates = patch.object(video_edit.kitconfig, "_CANDIDATES", [config])
+        candidates.start()
+        self.addCleanup(candidates.stop)
         self.raw = str(Path(self.temp.name) / "talk.mp4")
         Path(self.raw).write_bytes(b"source media")
         self.phrases = [{"start": 0, "end": 6, "text": "พูดดีครับอันต่อไป", "words": [
