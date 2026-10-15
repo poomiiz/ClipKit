@@ -15,6 +15,7 @@ button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:
 button:disabled{opacity:.5;cursor:wait}
 input,select{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit}
 .top{display:flex;gap:6px;align-items:center;padding:8px 14px;min-height:48px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top button,.ck-dlg .ck-dlg-row button{min-height:44px}
 .top h1{font-size:14.5px;font-weight:600;margin:0 8px 0 0;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,380px);gap:10px;padding:10px;min-height:0}
 .player{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;background:#000;border-radius:10px;position:relative}
@@ -152,14 +153,14 @@ async function load(accept = () => true) {
 }
 let building = null, again = false;
 async function live() {
-  if (building) { again = true; return; }
+  if (building) { again = true; return building; }
   const v = $('v'), at = v.currentTime || 0;
   building = api('draft/hf-build', {path: PATH}).then(r => {
     v.setAttribute('src', r.url + '?t=' + Date.now());
     v.style.display = 'block'; $('empty').style.display = 'none';
     v.addEventListener('ready', () => { try { v.seek(at); } catch {} }, {once: true});
   }).catch(e => { $('empty').style.display = ''; $('empty').textContent = '❌ ' + ckErr(e); })
-    .finally(() => { building = null; if (again) { again = false; live(); } });
+    .finally(() => { building = null; if (again) { again = false; return live(); } });
   return building;
 }
 // one save for b-roll / music / effects (the export follows this list exactly)
@@ -769,7 +770,7 @@ $('bAddBr').onclick = () => {
 async function run(btn, text, fn) {
   document.querySelectorAll('.top button').forEach(b => b.disabled = true);
   say('<span class="spin"></span> ' + text);
-  try { await fn(); } catch (e) { say('❌ ' + ckErr(e)); }
+  try { while (building) await building; await fn(); } catch (e) { say('❌ ' + ckErr(e)); }
   document.querySelectorAll('.top button').forEach(b => b.disabled = !!b.dataset.off);
 }
 $('bAuto').onclick = () => run($('bAuto'), 'กำลังทำทุกขั้น… (1–3 นาที)', async () => {
@@ -855,13 +856,11 @@ async function textPanel(st) {
     } catch (e) { say('❌ ' + ckErr(e)); }
   };
 }
-// before an export: long lines tidied the chosen way, then a last look at lines outside the safe zone
+// Export checks are read-only; subtitle tidying remains an explicit editor action.
 async function checkText(label) {
   const c = await api('draft/text-check?path=' + encodeURIComponent(PATH));
   if (!c.look) return true;
-  await api('draft/tidy', {path: PATH, mode: (T.style || {}).tidy || 'lines'});
-  const c2 = await api('draft/text-check?path=' + encodeURIComponent(PATH));
-  if (!c2.problems.length || await ckConfirm(`ยังมี ${c2.problems.length} บรรทัดโดนปุ่มหรือแคปชันของแอป\n\n${c2.problems.slice(0, 5).map(p => p.replace(/[a-z][a-z /]+[a-z]/g, w => WHERE[w] || w)).join('\n')}\n\nกด OK เพื่อ${label}ต่อ · Cancel เพื่อไปแก้ที่ ตั้งค่าทั้งคลิป > ข้อความ`)) return true;
+  if (!c.problems.length || await ckConfirm(`ยังมี ${c.problems.length} บรรทัดโดนปุ่มหรือแคปชันของแอป\n\n${c.problems.slice(0, 5).map(p => p.replace(/[a-z][a-z /]+[a-z]/g, w => WHERE[w] || w)).join('\n')}\n\nกด OK เพื่อ${label}ต่อ · Cancel เพื่อไปแก้ที่ ตั้งค่าทั้งคลิป > ข้อความ`)) return true;
   SEL = null; drawTL(); side(); $('adv').open = true; setTimeout(() => $('txtH') && $('txtH').scrollIntoView({behavior: 'smooth'}), 300);
   return false;
 }
