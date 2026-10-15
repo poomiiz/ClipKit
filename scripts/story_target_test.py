@@ -73,7 +73,7 @@ class StoryTarget(unittest.TestCase):
                 {"type": "video", "segments": [{"id": "video", "material_id": "video",
                     "source_timerange": {"start": 0, "duration": 200_000_000},
                     "target_timerange": {"start": 0, "duration": 200_000_000}}]},
-                {"type": "text", "segments": [{"id": "spoken-1", "material_id": "text", "clip": {"transform": {"y": 0}},
+                {"type": "text", "segments": [{"id": "spoken-1", "material_id": "text", "clip": {"scale": {"x": 1, "y": 1}, "transform": {"x": 0, "y": 0}},
                     "target_timerange": {"start": 0, "duration": 200_000_000}}]}]}
             (project / "draft_content.json").write_text(json.dumps(draft), encoding="utf-8")
             with patch.object(web, "_motion_menu", return_value=[]):

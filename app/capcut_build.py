@@ -152,6 +152,19 @@ def _track(draft: dict, kind: str, segs: list[dict], render_index: int) -> None:
                             "segments": sorted(segs, key=lambda s: s["target_timerange"]["start"])})
 
 
+def _text_tracks(draft, segs, render_index):
+    lanes = []
+    for segment in sorted(segs, key=lambda s:s["target_timerange"]["start"]):
+        start = segment["target_timerange"]["start"]
+        lane = next((row for row in lanes if row[-1]["target_timerange"]["start"] + row[-1]["target_timerange"]["duration"] <= start), None)
+        if lane is None:
+            lane = []
+            lanes.append(lane)
+        lane.append(segment)
+    for lane in lanes:
+        _track(draft,"text",lane,render_index)
+
+
 _T: dict[str, Any] = {}
 _BUILD_LOCK = threading.Lock()  # _T is shared by the native text writers.
 
@@ -288,11 +301,11 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
         y = h["y"] + {"up": 0.04, "down": -0.05}.get(h["grow"], 0)  # CapCut places a text by its centre
         for a, b in render.visible_spans(h["start"], h["end"], t.get("motions", []), role="title"):
             titles.append(_text(draft, "title", h["text"], a, b, y, h["size"], h["fill"], h["stroke"]))
-    _track(draft, "text", whites, 14001)
-    _track(draft, "text", colours, 14002)
-    _track(draft, "text", captions, 14003)
-    _track(draft, "text", titles, 14004)
-    _track(draft, "text", seconds, 14005)
+    _text_tracks(draft, whites, 14001)
+    _text_tracks(draft, colours, 14002)
+    _text_tracks(draft, captions, 14003)
+    _text_tracks(draft, titles, 14004)
+    _text_tracks(draft, seconds, 14005)
 
     # b-roll on an overlay track, filling the frame
     rolls = []

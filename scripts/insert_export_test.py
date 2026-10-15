@@ -252,6 +252,7 @@ class InsertExportTests(unittest.TestCase):
         timeline=render.render_draft(str(project),"",dry=True)
         events=render.validate_pair_cues([{"id":"cue","text":"word","start":0,"end":1}],{}, {},style={},W=320,H=180)
         timeline.update(look="pair",subtitle_events=events)
+        timeline.pop("plain_events", None)  # This fixture deliberately switches to a fresh pair plan.
         with patch.object(render,"render_draft",return_value=timeline):
             page=hf_build.build(str(project)).read_text(encoding="utf-8")
         css=re.search(r"<style>(.*?)</style>",page,re.S)[1]

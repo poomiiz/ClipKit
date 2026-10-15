@@ -50,7 +50,8 @@ class PlainSubtitleTests(unittest.TestCase):
                     first = next(e for e in events if e['cue_id'] == '0')
                     self.assertEqual((first['start'], first['end']), (2, 6))
                     self.assertEqual(first['rotation'], 17)
-                    self.assertAlmostEqual(first['center_x_px'], width * .55)
+                    cue = [e for e in events if e['cue_id'] == '0']
+                    self.assertAlmostEqual(sum(e['center_x_px'] for e in cue) / len(cue), width * .55)
                     self.assertEqual(first['effect'], effect)
                     self.assertEqual(events, web.validate_subtitles(self.path))
                     self.assertEqual(events, render.check_pair_events(events, width, height))
@@ -106,6 +107,10 @@ class PlainSubtitleTests(unittest.TestCase):
             self.assertTrue((self.folder / 'clipkit_hf' / reference).is_file())
 
     def test_native_build_uses_measured_plan_instead_of_default_white_16(self):
+        self.draft['materials']['texts'][0]['content'] = json.dumps({'text': 'First line\nSecond line', 'styles': []})
+        self.f.f.write('clipkit_words.json', {})
+        self.f.f.write('clipkit_punch.json', {})
+        self.save()
         timeline = self.timeline()
         harness = native_fixture.CapCutFontTests()
         harness.setUp()
@@ -116,11 +121,57 @@ class PlainSubtitleTests(unittest.TestCase):
             texts = {m['id']: m for m in native['materials']['texts']}
             segments = [s for t in native['tracks'] if t['type'] == 'text' for s in t['segments']]
             self.assertEqual(len(segments), len(timeline['subtitle_events']))
-            for segment, event in zip(segments, timeline['subtitle_events']):
+            expected = {(e['text'], round(e['start'] * 1000000)): e for e in timeline['subtitle_events']}
+            tracks = [t for t in native['tracks'] if t['type'] == 'text' and t['segments']]
+            self.assertEqual(len(tracks), 2, 'simultaneous normal lines need independent native tracks')
+            for track in tracks:
+                ranges = [s['target_timerange'] for s in track['segments']]
+                self.assertTrue(all(a['start'] + a['duration'] <= b['start'] for a, b in zip(ranges, ranges[1:])))
+            for segment in segments:
+                text = json.loads(texts[segment['material_id']]['content'])['text']
+                event = expected[text, segment['target_timerange']['start']]
                 self.assertAlmostEqual(texts[segment['material_id']]['font_size'], event['size_px'] / render.CAPCUT_PX)
                 self.assertEqual(segment['target_timerange'], {'start': round(event['start'] * 1000000), 'duration': round((event['end'] - event['start']) * 1000000)})
         finally:
             harness.doCleanups()
+
+    def test_rotated_rows_follow_the_block_axis_without_wide_vertical_box_gaps(self):
+        import math
+        self.draft['materials']['texts'][0]['content'] = json.dumps({'text': 'First line\nSecond line', 'styles': []})
+        self.f.f.write('clipkit_words.json', {})
+        self.f.f.write('clipkit_punch.json', {})
+        for rotation in (-45, -12, 0, 30, 90, 180):
+            self.draft['tracks'][1]['segments'][0]['clip']['rotation'] = rotation
+            self.style['anim'] = 'pop'
+            self.save()
+            first, second = [e for e in self.timeline()['plain_events'] if e['cue_id'] == '0']
+            dx, dy = second['center_x_px'] - first['center_x_px'], second['center_y_px'] - first['center_y_px']
+            angle = math.radians(rotation)
+            self.assertAlmostEqual(dx * math.cos(angle) + dy * math.sin(angle), 0)
+            self.assertAlmostEqual(math.hypot(dx, dy), (first['size_px'] * render.LINE_H + 2 * first['outline_px']) * 1.3)
+            self.assertFalse(render._quads_intersect(first['quad'], second['quad']))
+
+    def test_oriented_cells_allow_empty_aabb_corners_but_reject_real_overlap_and_peak_strokes(self):
+        import math
+        event = dict(self.timeline()['plain_events'][0], text='long parallel line', size_px=40,
+                     center_x_px=800, center_y_px=400, outline_px=4, shadow=2, effect='pop')
+        for rotation in (-45, 30, 90, 180):
+            angle = math.radians(rotation)
+            pitch = (40 * render.LINE_H + 12) * 1.3
+            first = dict(event, rotation=rotation)
+            second = dict(first, cue_id='different', center_x_px=800 - math.sin(angle) * (pitch + .1),
+                          center_y_px=400 + math.cos(angle) * (pitch + .1))
+            before = copy.deepcopy([first, second])
+            measured = render.check_pair_events([first, second], 1920, 1080)
+            self.assertEqual([first, second], before)
+            self.assertFalse(render._quads_intersect(measured[0]['quad'], measured[1]['quad']))
+            if rotation in (-45, 30):
+                self.assertTrue(all(max(measured[0]['bbox'][k], measured[1]['bbox'][k]) < min(measured[0]['bbox'][k+2], measured[1]['bbox'][k+2]) for k in (0,1)))
+            with self.assertRaisesRegex(render.VideoEditError, 'ข้อความทับกัน'):
+                render.check_pair_events([first, dict(second, center_x_px=800 - math.sin(angle) * (pitch - 1),
+                                                      center_y_px=400 + math.cos(angle) * (pitch - 1))], 1920, 1080)
+        with self.assertRaisesRegex(render.VideoEditError, 'positive dimensions'):
+            render.check_pair_events([dict(event, text='', outline_px=0, shadow=0)], 1920, 1080)
 
     def test_unrepresentable_rich_style_or_anisotropic_scale_is_never_silently_flattened(self):
         original = copy.deepcopy(self.draft)

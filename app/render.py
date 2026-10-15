@@ -671,24 +671,25 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
         shadow = 5 if role == "caption" and look.get("caption_shadow") else 2
         angle = abs(math.radians(rotation))
         # Reserve stroke and shadow as well as the rotated line. A fixed preset never shrinks.
-        room = W * (box["w"] - abs(x)) - 2 * (outline + shadow)
+        peak = 1.3 if effect == "pop" else 1.0
+        projection = abs(math.cos(angle)) + abs(math.sin(angle))
+        room = W * (box["w"] - abs(x)) / peak - 2 * (outline + shadow) * projection
         measured = font.getlength(unbreak(words)) / 100 * px
         height = px * LINE_H
-        rotated_width = measured * math.cos(angle) + height * math.sin(angle)
-        peak = 1.3 if effect == "pop" else 1.0
-        if rotated_width * peak > room + .01:
+        rotated_width = measured * abs(math.cos(angle)) + height * abs(math.sin(angle))
+        if rotated_width > room + .01:
             if look.get("fixed_size"):
                 raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ข้อความล้นขนาดคงที่ · ย่อ show หรือแบ่งตามขอบคำ")
-            px *= max(0, room) / max(rotated_width * peak, 1)
+            px *= max(0, room) / max(rotated_width, 1)
             if px <= 0:
                 raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ไม่มีพื้นที่วางข้อความ")
             context.setdefault("shrunk", []).append({"at": a, "text": words})
             outline, measured, height = px * width * .6 + 2, font.getlength(unbreak(words)) / 100 * px, px * LINE_H
-        bw = (measured * math.cos(angle) + height * math.sin(angle)) * peak + 2 * (outline + shadow)
-        bh = (height * math.cos(angle) + measured * math.sin(angle)) * peak + 2 * (outline + shadow)
+        bw = (measured * abs(math.cos(angle)) + height * abs(math.sin(angle)) + 2 * (outline + shadow) * projection) * peak
+        bh = (height * abs(math.cos(angle)) + measured * abs(math.sin(angle)) + 2 * (outline + shadow) * projection) * peak
         cx = W / 2 + x * W / 2
         # Safe translation is role based, using the preset size, never a phrase's fitted size.
-        static_height = size * scale * LINE_H * peak + 2 * (size * scale * width * .6 + 2 + shadow)
+        static_height = (size * scale * LINE_H + 2 * (size * scale * width * .6 + 2 + shadow)) * peak
         cy = min(max(H / 2 - y * H / 2, H * box["top"] + static_height / 2), H * box["bottom"] - static_height / 2)
         if (cx - bw / 2 < W * (1 - box["w"]) / 2 - .05 or cx + bw / 2 > W * (1 + box["w"]) / 2 + .05
                 or cy - bh / 2 < H * box["top"] - .05 or cy + bh / 2 > H * box["bottom"] + .05):
@@ -733,8 +734,20 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
             words = source if look.get("caption_lang") == "th" else (captions or {}).get(key)
             if words:  # A missing translation stays absent; source text is never a fabricated translation.
                 line("caption", words, look["caption"], a, b, cue)
-    check_pair_events(out, W, H, box=box)
-    return out
+    return check_pair_events(out, W, H, box=box)
+
+
+def _quads_intersect(first, second):
+    for quad in (first, second):
+        for a,b in ((quad[0],quad[1]), (quad[1],quad[2])):
+            dx,dy = b[0]-a[0],b[1]-a[1]
+            length = math.hypot(dx,dy)
+            axis = (-dy/length,dx/length)
+            one = [p[0]*axis[0]+p[1]*axis[1] for p in first]
+            two = [p[0]*axis[0]+p[1]*axis[1] for p in second]
+            if min(max(one),max(two)) - max(min(one),min(two)) <= .05:
+                return False
+    return True
 
 
 def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = None) -> list[dict]:
@@ -748,23 +761,25 @@ def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = 
         font = fonts[event["font_file"]]
         width = font.getlength(event["text"]) / 100 * event["size_px"]
         height = event["size_px"] * LINE_H
-        angle, peak = abs(math.radians(event["rotation"])), 1.3 if event["effect"] == "pop" else 1
+        angle, peak = math.radians(event["rotation"]), 1.3 if event["effect"] == "pop" else 1
         padding = 2 * (event["outline_px"] + event["shadow"])
-        bw = (width * abs(math.cos(angle)) + height * abs(math.sin(angle))) * peak + padding
-        bh = (height * abs(math.cos(angle)) + width * abs(math.sin(angle))) * peak + padding
+        half_w, half_h = (width+padding)*peak/2, (height+padding)*peak/2
         x, y = event["center_x_px"], event["center_y_px"]
-        bounds = [x - bw / 2, y - bh / 2, x + bw / 2, y + bh / 2]
+        if not all(math.isfinite(v) for v in (half_w,half_h,x,y)) or min(half_w,half_h) <= 0:
+            raise VideoEditError("subtitle cell needs finite positive dimensions and a finite center")
+        c,s = math.cos(angle), math.sin(angle)
+        quad = [[x+dx*c-dy*s,y+dx*s+dy*c] for dx,dy in ((-half_w,-half_h),(half_w,-half_h),(half_w,half_h),(-half_w,half_h))]
+        bounds = [min(p[0] for p in quad),min(p[1] for p in quad),max(p[0] for p in quad),max(p[1] for p in quad)]
         if (bounds[0] < W * (1 - box["w"]) / 2 - .05 or bounds[2] > W * (1 + box["w"]) / 2 + .05
                 or bounds[1] < H * box["top"] - .05 or bounds[3] > H * box["bottom"] + .05):
             raise VideoEditError(f"cue {event.get('cue_id')} · {event['role']}: ข้อความหรือ motion เกินพื้นที่ปลอดภัย · ย่อ show หรือปรับ preset")
-        measured.append(dict(event, bbox=bounds))
+        measured.append(dict(event, bbox=bounds, quad=quad))
     active = []
     for first in sorted(measured, key=lambda event: event["start"]):
         active = [event for event in active if event["end"] > first["start"] + 1e-6]
         for second in active:
             if (max(first["start"], second["start"]) < min(first["end"], second["end"]) - 1e-6
-                    and all(max(first["bbox"][axis], second["bbox"][axis]) < min(first["bbox"][axis + 2], second["bbox"][axis + 2]) - .05
-                            for axis in (0, 1))):
+                    and _quads_intersect(first["quad"],second["quad"])):
                 raise VideoEditError(f"cue {first['cue_id']} · {first['role']}/{second['role']}: ข้อความทับกัน · ปรับตำแหน่งใน preset")
         active.append(first)
     return measured
@@ -845,20 +860,22 @@ def plain_events(draft: dict, rows: list[dict], words: dict, *, style: dict, dur
         lines, px = _fit(phrase["line"], file, size, available / peak)
         angle = abs(math.radians(rotation))
         widest = max(font.getlength(line) for line in lines) / 100 * px
-        bw = (widest * abs(math.cos(angle)) + px * LINE_H * abs(math.sin(angle))) * peak + 2 * px * rate
-        # shortcut: rotated rows use conservative box spacing; calibrate native multiline typography before acceptance.
-        pitch = (px * LINE_H * abs(math.cos(angle)) + widest * abs(math.sin(angle))) * peak + 2 * px * rate
-        factor = min(1, available / max(bw,1), H * (box["bottom"] - box["top"]) / max(len(lines) * pitch,1))
-        px, pitch = px * factor, pitch * factor
-        cy = min(max(requested_y, H*box["top"] + len(lines)*pitch/2), H*box["bottom"] - len(lines)*pitch/2)
+        pitch = (px * LINE_H + 2 * px * rate) * peak
+        block_w, block_h = (widest + 2 * px * rate) * peak, len(lines) * pitch
+        bw = block_w * abs(math.cos(angle)) + block_h * abs(math.sin(angle))
+        bh = block_h * abs(math.cos(angle)) + block_w * abs(math.sin(angle))
+        factor = min(1, available / max(bw,1), H * (box["bottom"] - box["top"]) / max(bh,1))
+        px, pitch, bh = px * factor, pitch * factor, bh * factor
+        cy = min(max(requested_y, H*box["top"] + bh/2), H*box["bottom"] - bh/2)
         fill = ((native.get("fill") or {}).get("content") or {}).get("solid",{}).get("color",[1,1,1])
         stroke = strokes[0]["content"]["solid"]["color"] if strokes else [0,0,0]
         for n, line in enumerate(lines):
             if not line.strip():
                 continue
             out.append({"role":"normal","cue_id":phrase["cue_id"],"text":line,"start":phrase["start"],"end":phrase["end"],
-                "size_px":px,"font_family":family,"font_file":str(file),"center_x_px":cx,
-                "center_y_px":cy+(n-(len(lines)-1)/2)*pitch,"rotation":rotation,"fill":list(fill),"stroke":list(stroke),
+                "size_px":px,"font_family":family,"font_file":str(file),
+                "center_x_px":cx-math.sin(math.radians(rotation))*(n-(len(lines)-1)/2)*pitch,
+                "center_y_px":cy+math.cos(math.radians(rotation))*(n-(len(lines)-1)/2)*pitch,"rotation":rotation,"fill":list(fill),"stroke":list(stroke),
                 "outline_px":px*rate,"outline_extra_px":0,"shadow":0,"fixed_size":False,
                 "effect":"pop" if peak>1 else "none","effect_start":phrase["start"],"peak_scale":peak})
     return check_pair_events(out,W,H,box=box)
