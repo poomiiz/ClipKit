@@ -61,11 +61,13 @@ def answer_file(step: str, target: str) -> Path:
 
 def _packet(prompt: str, data: dict[str, Any], out: Path) -> Path:
     ans = out.with_suffix(".answer.json")
+    local_next = ("แล้วผู้ใช้ตรวจแผนก่อนกดใช้ภาพแทรก" if data.get("operation") == "inserts"
+                  else "แล้ว EditorKrab จะนำเข้าเอง")
     atomic.write_text(out, "# คำสั่งสำหรับ AI: ทำงานจากไฟล์แนบนี้ได้ทันที\n\n"
                    "> ใช้ AI บนเว็บได้โดยไม่ต้องติดตั้ง agent: อ่านคำสั่งและข้อมูลทั้งหมดในไฟล์นี้ "
                    "ทำงานตามขั้นที่ระบุ แล้วตอบ JSON ตามรูปแบบด้านล่าง ผู้ใช้ไม่ต้องพิมพ์ prompt เพิ่ม "
                    "และจะนำคำตอบกลับไปวางใน EditorKrab\n\n"
-                   f"> ทางเลือกสำหรับ AI ที่เขียนไฟล์ในเครื่องได้: บันทึก JSON ลง `{ans.name}` ในโฟลเดอร์เดียวกับไฟล์นี้ แล้ว EditorKrab จะนำเข้าเอง\n\n"
+                   f"> ทางเลือกสำหรับ AI ที่เขียนไฟล์ในเครื่องได้: บันทึก JSON ลง `{ans.name}` ในโฟลเดอร์เดียวกับไฟล์นี้ {local_next}\n\n"
                    + prompt.rstrip() + "\n\n## ข้อมูล (อย่าแก้ช่อง clipkit_web_ai, step, video, project)\n\n```json\n"
                    + json.dumps(data, ensure_ascii=False, indent=1) + "\n```\n", encoding="utf-8")
     if ans.is_file():
@@ -79,7 +81,8 @@ def _issue_packet(step, target, prompt, data):
     output = packet_file(step, target)
     old_packet = output.read_text(encoding="utf-8") if output.is_file() else None
     try:
-        data.update(identity.issue(step, target, {"max_minutes": data["max_minutes"]}))
+        operation = {"operation": data["operation"]} if data.get("operation") else {}
+        data.update(identity.issue(step, target, {"max_minutes": data["max_minutes"]}, **operation))
         return _packet(prompt, data, packet_file(step, target))
     except Exception:
         if previous is None:
@@ -195,6 +198,51 @@ def export_clip(path: str, max_minutes: float | None = None) -> Path:
     return _issue_packet("clip", path, prompt, data)
 
 
+@project_lock.edit
+def export_inserts(path: str, files=None, *, folder=None, provenance=None) -> tuple[Path, Path]:
+    """Reuse the contact-sheet matcher with verified copies and the existing v2 clip transaction."""
+    import insert_plan
+    transaction.recover("clip", path)
+    if files is not None and folder is not None:
+        raise VideoEditError("เลือก files หรือ folder อย่างเดียว")
+    chosen = files if files is not None else folder
+    assets = insert_plan.register_assets(path, chosen, provenance) if chosen is not None else insert_plan.catalog(path)
+    if not assets["candidates"]:
+        raise VideoEditError("เลือกไฟล์ภาพแทรกก่อนส่งออกคำสั่งจับคู่")
+    sheet = insert_plan.contact_sheet(assets, Path(path) / "clipkit_insert_sheet.jpg")
+    from insert_geometry import RAMP_IN, RAMP_FROM
+    draft = capcut_edit._load(Path(path))
+    style = render._json(Path(path) / "clipkit_style.json", {})
+    data = {"clipkit_web_ai": VERSION, "step": "clip", "operation": "inserts", "project": Path(path).name,
+            "max_minutes": None, "contact_sheet": sheet.name, "assets": insert_plan.public_assets(assets),
+            "opportunities": insert_plan.opportunities(path),
+            "insert_settings": {"canvas": {key: draft["canvas_config"][key] for key in ("width", "height")},
+                                "ramp": bool(style.get("ramp")), "ramp_in": RAMP_IN, "ramp_from": RAMP_FROM}}
+    return _issue_packet("clip", path, _prompt("inserts.md"), data), sheet
+
+
+def _insert_rows(path, ans, *, assets=None):
+    import insert_plan
+    _head(ans, "clip", "project", Path(path).name)
+    if ans.get("operation") != "inserts":
+        raise VideoEditError("คำตอบนี้ไม่ใช่งานจับคู่ภาพแทรก")
+    if any(key in ans for key in ("lines", "cut", "motion", "hook", "caption")):
+        raise VideoEditError("งานจับคู่ภาพแทรกห้ามแก้ซับหรือตัดเนื้อหา · ส่งคำตอบภาพแทรกแยก")
+    assets = insert_plan.catalog(path) if assets is None else assets
+    items = ans.get("place")
+    if not isinstance(items, list) or any(not isinstance(item, dict) or item.get("asset_id") not in assets["candidates"] for item in items):
+        raise VideoEditError("place ต้องเลือก asset_id จากไฟล์ที่ส่งออกครั้งนี้เท่านั้น")
+    return insert_plan.normalize(path, items, assets=assets)
+
+
+def preview_inserts(path: str, text: str) -> dict[str, Any]:
+    """Review the same strict plan before explicit apply; no file or active-packet mutation."""
+    with project_lock.writer(path, recover=False):
+        answer = parse(text)
+        identity.verify("clip", path, answer)
+        return {"operation": "inserts", "project": Path(path).name, "broll": _insert_rows(path, answer)}
+
+
 def parse(text: str) -> dict[str, Any]:
     """The AI's answer as pasted: bare JSON, or JSON inside a ```json block with words around it."""
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
@@ -254,9 +302,20 @@ def validate_subtitles(path: str, *, picks: dict | None = None, captions: dict |
                                     duration=duration)
 
 
-def _prepare_clip(path: str, ans: dict[str, Any]) -> dict[str, Any]:
+def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None) -> dict[str, Any]:
     """Run existing editing operations only inside the transaction staging folder."""
     _head(ans, "clip", "project", Path(path).name)
+    if ans.get("operation") == "inserts":
+        items = _insert_rows(path, ans, assets=insert_assets)
+        placed = Path(path) / "clipkit_placed.json"
+        previous = json.loads(placed.read_text(encoding="utf-8")) if placed.is_file() else {}
+        if not isinstance(previous, dict):
+            raise VideoEditError("รายการภาพแทรก/เพลงเดิมไม่ถูกต้อง")
+        previous["broll"] = items
+        atomic.write_text(placed, json.dumps(previous, ensure_ascii=False, indent=1, allow_nan=False))
+        return {"written": ["clipkit_placed.json"], "inserts": len(items), "broll": items}
+    if ans.get("operation") is not None:
+        raise VideoEditError("operation ไม่ถูกต้อง")
     subs = capcut_edit.read_draft(path)["subtitles"]
     lines = ans.get("lines")
     if (not isinstance(lines, list) or any(not isinstance(x, dict) or type(x.get("n")) is not int for x in lines)
@@ -365,6 +424,10 @@ def _import(step: str, target: str, ans: dict[str, Any]) -> dict[str, Any]:
         if previous is not None:
             return previous
         identity.verify(step, target, ans)
+        insert_assets = None
+        if ans.get("operation") == "inserts":
+            import insert_plan
+            insert_assets = insert_plan.catalog(target)
 
         def prepare(work, assets):
             if step == "stories":
@@ -378,7 +441,8 @@ def _import(step: str, target: str, ans: dict[str, Any]) -> dict[str, Any]:
             if host_platform.capcut_running():
                 raise VideoEditError("ปิด CapCut ก่อนนำเข้าคำตอบ AI เพื่อรักษางานที่เปิดอยู่")
             with kit_settings.motion_destination(assets):
-                return _prepare_clip(str(work), ans)
+                return (_prepare_clip(str(work), ans, insert_assets=insert_assets) if insert_assets is not None
+                        else _prepare_clip(str(work), ans))
 
         return transaction.apply(step, target, ans, prepare)
 
@@ -402,6 +466,10 @@ def import_answer(step: str, target: str, text: str) -> dict[str, Any]:
             return {"waiting": True}
         payload = saved.read_text(encoding="utf-8-sig") if saved else text
         ans = parse(payload)
+        if saved and ans.get("operation") == "inserts" and transaction.receipt(step, target, ans) is None:
+            identity.verify(step, target, ans)
+            _insert_rows(target, ans)
+            return {"waiting": True, "review_required": True, "operation": "inserts", "answer": payload}
         out = _import(step, target, ans)
         if saved:
             # Keep local agent evidence; a response/unlink failure cannot replay a committed cut.

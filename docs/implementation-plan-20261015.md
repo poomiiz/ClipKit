@@ -121,6 +121,7 @@
 - ใช้ copy/cache ที่ตรวจ identity แทนย้ายต้นฉบับผู้ใช้; `_local` ปัจจุบันอิง basename+size (`app/hf_build.py:20–29`) ต้องกันไฟล์คนละที่ชื่อ/ขนาดเดียวกันใช้ asset เก่า
 - ส่งค่าเดียวกันถึง `render`, `hf_build`, `capcut_build`; เสียงพูดหลักต้องอยู่ครบ; การตัดที่คร่อม insert ให้ regenerate/แจ้งอย่างชัดเจนผ่านกฎร่วม
 - **เทสรับงาน**: ไฟล์ชื่อซ้ำ, missing/short media, ภาพนิ่ง/วิดีโอ, crop แต่ละ ratio, asset offset ไม่เกินไฟล์, ตัดก่อน/กลาง insert, undo; คนตรวจว่าภาพช่วยประเด็นและเข้าจังหวะคำจริง
+- **หลักฐาน EK-06**: [contract/ภาพแทรก/การกู้คืนและ Playwright](test-logs/ek06-20261015.md) ผ่านโปรแกรมตรวจ 32 ชุด พร้อม CPU export 3 ratios และส่งออก HyperFrames ผ่านปุ่มแอปด้วยสื่อจำลอง; ยังรอคนตรวจเนื้อหาจริงและ native CapCut จึงอยู่ระหว่าง review
 
 ### EK-07 — HyperFrames motion ตามเนื้อหาและจัดวางร่วมกับซับ (P1)
 

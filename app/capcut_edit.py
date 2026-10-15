@@ -263,8 +263,11 @@ def _check(draft: dict[str, Any]) -> None:
 
 
 def _save(folder: Path, draft: dict[str, Any], op: str, *, corrections: dict | None = None,
-          sidecars: dict[str, dict] | None = None) -> None:
+          sidecars: dict[str, Any] | None = None) -> None:
     _check(draft)
+    cue_sidecars = {"clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json", "clipkit_cues.json"}
+    if set(sidecars or {}) - cue_sidecars - {"clipkit_placed.json", "clipkit_overlays.json"}:
+        raise VideoEditError("Unsupported project sidecar")
     import spelling
     rules_file = spelling._file(folder)
     spelling._read(rules_file)  # Reject broken rules before changing the visible draft.
@@ -288,7 +291,10 @@ def _save(folder: Path, draft: dict[str, Any], op: str, *, corrections: dict | N
         for name, data in (sidecars or {}).items():
             file = folder / name
             if not file.is_file() or json.loads(file.read_text(encoding="utf-8")) != data:
-                cue_data.save(folder, name, data)
+                if name in cue_sidecars:
+                    cue_data.save(folder, name, data)
+                else:
+                    atomic.write_text(file, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         meta_path = folder / "draft_meta_info.json"
         if meta_path.is_file():
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -915,12 +921,14 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                 raise VideoEditError(f"ช่วงตัดทับ {name} · ลบ motion หรือภาพประกอบช่วงนี้ก่อนตัด แล้วสร้างใหม่หลังตัดเพื่อให้ตรงเสียง")
             item["start"] = round(shifted(a), 6)
             item[duration_key] = round(shifted(b) - shifted(a), 6)
+            if key and isinstance(item.get("anchor"), dict) and item["anchor"].get("kind") == "timeline":
+                item["anchor"] = {**item["anchor"], "start": item["start"]}
             kept.append(item)
         if key:
             data[key] = kept
         else:
             data = kept
-        sidecars[file] = data
+        sidecars[name] = data
     original_subs = read_draft(path)["subtitles"]
 
     pieces = timeline_to_source(draft)
@@ -991,11 +999,9 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
                 s0 = shifted(sub["start"])
                 said[cue_data.key(sub["id"])] = [[round(shifted(sub["start"] + a) - s0, 6), round(shifted(sub["start"] + b) - s0, 6), w]
                                      for a, b, w in said[cue_data.key(sub["id"])]]
-        cue_data.save(folder, "clipkit_words.json", said)
+        sidecars = {"clipkit_words.json": said, **sidecars}
     draft["duration"] = timeline
-    _save(folder, draft, "trim")
-    for file, data in sidecars.items():
-        atomic.write_text(file, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    _save(folder, draft, "trim", sidecars=sidecars)
     preview.update(applied=True, segments=len(segments),
                    result_length=round(timeline / US, 2))
     return preview

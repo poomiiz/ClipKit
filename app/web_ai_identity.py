@@ -21,10 +21,11 @@ PROMPTS = KIT / "prompts"
 DEFAULT_FONT = KIT / "fonts" / "Kanit-Bold.ttf"
 SIDECARS = ("draft_content.json", "clipkit.json", "clipkit_words.json", "clipkit_cues.json",
             "clipkit_punch.json", "clipkit_caption.json", "clipkit_hook.json", "clipkit_style.json",
-            "clipkit_overlays.json", "clipkit_placed.json", "clipkit_broll.json", "clipkit_seal.json", "clipkit_corrections.json")
+            "clipkit_overlays.json", "clipkit_placed.json", "clipkit_broll.json", "clipkit_seal.json", "clipkit_corrections.json",
+            "clipkit_insert_assets.json")
 DEPENDENCIES = ("web_ai_identity.py", "web_ai_json.py", "web_ai_transaction.py", "video_edit.py",
                 "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py",
-                "story_selection.py", "subtitle_plan.py", "spelling.py")
+                "story_selection.py", "subtitle_plan.py", "spelling.py", "insert_plan.py", "insert_geometry.py")
 
 
 def _hash(value: Any) -> str:
@@ -89,7 +90,7 @@ def _media(path: Path, cache: dict[str, dict]) -> tuple[dict, dict]:
     if _stat(path) != before:
         raise VideoEditError("ฟุตต้นทางกำลังเปลี่ยน · รอให้บันทึกไฟล์เสร็จแล้วส่งคำสั่ง AI ใหม่")
     identity = {"path_id": key, "sha256": sha, "stat": before}
-    return identity, {"stat": before, "sha256": sha}
+    return identity, {"stat": before, "sha256": sha, "path": str(path)}
 
 
 def _preferences(target: Path, step: str, values: dict | None, raw: Path | None) -> dict:
@@ -114,7 +115,9 @@ def _referenced(path: str | Path, folder: Path) -> Path:
 
 
 def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: dict,
-              *, require_transcript: bool = True) -> tuple[dict, dict]:
+              *, require_transcript: bool = True, operation: str | None = None) -> tuple[dict, dict]:
+    if operation is not None and (step != "clip" or operation != "inserts"):
+        raise VideoEditError("operation ของคำสั่ง AI ไม่ถูกต้อง")
     target = _canonical(target)
     if step == "stories" and require_transcript and Path(str(target) + ".transcript.part.json").exists():
         raise VideoEditError("การถอดเสียงยังไม่เสร็จ · ทำต่อให้ครบก่อนใช้รายการเรื่องหรือคำสั่ง AI")
@@ -142,6 +145,17 @@ def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: di
             raise VideoEditError("draft materials ต้องเป็นรายการไฟล์")
         media = [m["path"] for group in ("videos", "audios") for m in materials.get(group, [])
                  if isinstance(m, dict) and m.get("path")]
+        import insert_plan
+        assets = insert_plan.catalog(target)
+        media += [asset["file"] for asset in assets["assets"].values()]
+        for name in ("clipkit_broll.json", "clipkit_placed.json", "clipkit_overlays.json"):
+            saved = _json(target / name)
+            items = (saved.values() if name == "clipkit_broll.json" and isinstance(saved, dict) else
+                     saved.get("broll", []) if name == "clipkit_placed.json" and isinstance(saved, dict) else
+                     saved if isinstance(saved, list) else [])
+            media += [item["file"] for item in items if isinstance(item, dict) and item.get("file")]
+            if name == "clipkit_placed.json" and isinstance(saved, dict) and isinstance(saved.get("music"), dict) and saved["music"].get("file"):
+                media.append(saved["music"]["file"])
         style = _json(target / "clipkit_style.json", {})
         if not isinstance(style, dict):
             raise VideoEditError("clipkit_style.json ต้องเป็น object")
@@ -194,24 +208,28 @@ def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: di
             raise VideoEditError("ข้อมูลอ้างอิงการถอดเสียงต้องเป็น object")
         if isinstance(asr, dict) and asr.get("schema_version") == 2 and asr.get("sha256") != sources[_path_id(raw)]["sha256"]:
             raise VideoEditError("คำถอดเสียงไม่ตรงกับฟุตต้นทาง · ถอดเสียงฟุตล่าสุดก่อนเลือกเรื่อง")
-    for name in ("web_ai/schema.md", f"web_ai/{'stories' if step == 'stories' else 'clip'}.md", "story_split.md"):
+    for name in ("web_ai/schema.md", f"web_ai/{'stories' if step == 'stories' else 'inserts' if operation == 'inserts' else 'clip'}.md", "story_split.md"):
         files["prompt:" + name] = _file(PROMPTS / name, required=True)
     for name in DEPENDENCIES:
         files["code:" + name] = _file(KIT / "app" / name, required=True)
     prefs = _preferences(target, step, preferences, raw)
     snapshot = {"version": VERSION, "step": step, "target_id": _path_id(target),
                 "files": files, "sources": sources, "preferences": prefs}
+    if operation is not None:
+        snapshot["operation"] = operation
     return snapshot, updated
 
 
-def issue(step: str, target: str | Path, preferences: dict | None = None) -> dict[str, Any]:
+def issue(step: str, target: str | Path, preferences: dict | None = None, *, operation: str | None = None) -> dict[str, Any]:
     folder = state_dir(step, target)
     cache = _json(folder / "source-cache.json", {})
     if not isinstance(cache, dict):
         raise VideoEditError("source-cache.json ต้องเป็น object")
-    snapshot, updated = _snapshot(step, target, preferences, cache)
+    snapshot, updated = _snapshot(step, target, preferences, cache, operation=operation)
     identity = {"packet_id": uuid.uuid4().hex, "revision": _hash(snapshot),
                 "source_id": _hash(snapshot["sources"]), "preferences": snapshot["preferences"]}
+    if operation is not None:
+        identity["operation"] = operation
     packets = folder / "packets"
     packets.mkdir(parents=True, exist_ok=True)
     record = {"step": step, "target_id": _path_id(target), "identity": identity, "sources": updated}
@@ -239,7 +257,9 @@ def verify(step: str, target: str | Path, answer: dict) -> dict[str, Any]:
         raise VideoEditError("คำตอบ AI เป็นของคนละงานหรือคนละขั้น · ส่งออกคำสั่ง AI ใหม่")
     if answer.get("revision") != identity.get("revision") or answer.get("source_id") != identity.get("source_id"):
         raise VideoEditError("ข้อมูลอ้างอิง revision/source_id ไม่ตรงกับคำสั่ง AI · ส่งออกคำสั่ง AI ใหม่")
-    snapshot, _ = _snapshot(step, target, identity.get("preferences"), record.get("sources", {}))
+    if answer.get("operation") != identity.get("operation"):
+        raise VideoEditError("operation ไม่ตรงกับคำสั่ง AI ที่ส่งออก · ส่งออกคำสั่งใหม่")
+    snapshot, _ = _snapshot(step, target, identity.get("preferences"), record.get("sources", {}), operation=identity.get("operation"))
     if _hash(snapshot) != identity.get("revision"):
         raise VideoEditError("ฟุต ซับ ความต้องการ หรือสไตล์เปลี่ยนหลังส่งคำสั่ง AI · ส่งออกคำสั่ง AI ใหม่")
     return identity

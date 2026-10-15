@@ -167,7 +167,7 @@ class SubtitleExportTests(unittest.TestCase):
     def test_native_and_hyperframes_animate_children_or_native_channels_not_provider_effects(self):
         event=next(e for e in self.events(1080,1920) if e["role"]=="emphasis")
         animation=hf_build.subtitle_animation(event,"synthetic")
-        self.assertIn("#synthetic > .txt",animation)
+        self.assertIn("#synthetic > .subtitle-glyph",animation)
         draft={"materials":{"texts":[]}}
         segment=capcut_build._event_text(draft,"orange",event,1080,1920)
         self.assertEqual(segment["extra_material_refs"],[])

@@ -1200,6 +1200,8 @@ class WebAiRequest(BaseModel):
     target: str  # the video (stories) or the project folder (clip)
     answer: str = ""
     max_minutes: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    operation: str = Field(default="clip", pattern="^(clip|inserts)$")
+    folder: str | None = None
 
 
 @router.post("/web-ai/export")
@@ -1207,6 +1209,12 @@ def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
     """The file to upload to an AI in the browser instead of pasting the command to the agent here."""
     import web_ai_json as web_ai
     try:
+        if req.operation == "inserts":
+            if req.step != "clip" or not req.folder:
+                raise VideoEditError("เลือกโฟลเดอร์ภาพแทรกก่อนส่งออก")
+            out, sheet = web_ai.export_inserts(req.target, folder=req.folder)
+            return {"file": str(out), "name": out.name, "text": out.read_text(encoding="utf-8"),
+                    "sheet": {"file": str(sheet), "name": sheet.name}}
         out = (web_ai.export_stories(req.target, req.max_minutes) if req.step == "stories"
                else web_ai.export_clip(req.target, req.max_minutes))
     except VideoEditError as exc:
@@ -1214,11 +1222,26 @@ def web_ai_export(req: WebAiRequest) -> dict[str, Any]:
     return {"file": str(out), "name": out.name, "text": out.read_text(encoding="utf-8")}
 
 
+@router.post("/web-ai/preview")
+def web_ai_preview(req: WebAiRequest) -> dict[str, Any]:
+    import web_ai_json as web_ai
+    try:
+        if req.step != "clip" or req.operation != "inserts":
+            raise VideoEditError("ตัวอย่างนี้ใช้กับแผนภาพแทรก")
+        return web_ai.preview_inserts(req.target, req.answer)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/web-ai/import")
 def web_ai_import(req: WebAiRequest) -> dict[str, Any]:
     """The web AI's JSON answer, checked, into the same files the agent writes."""
     import web_ai_json as web_ai
     try:
+        if req.answer.strip():
+            operation = web_ai.parse(req.answer).get("operation")
+            if operation != ("inserts" if req.operation == "inserts" else None):
+                raise VideoEditError("คำตอบภาพแทรกต้องตรวจแผนในช่องคัดภาพแทรกด้วย AI ก่อนใช้")
         return web_ai.import_answer(req.step, req.target, req.answer)
     except VideoEditError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1263,35 +1286,25 @@ def stock_free_download(req: FreeDownload) -> dict[str, Any]:
 
 @project_lock.edit
 def broll_fill(path: str) -> dict[str, Any]:
-    """Free b-roll for the phrases the agent tagged with a search (3rd item in clipkit_punch.json):
-    the first Pixabay hit for each search is saved and listed in clipkit_broll.json."""
+    """Search suggestions only; relevance and rights require an explicit asset choice."""
     import free_stock
     import kit_settings
+    import insert_plan
     folder = Path(path)
-    punch = folder / "clipkit_punch.json"
-    queries = [p[2] for pairs in (json.loads(punch.read_text(encoding="utf-8")).values() if punch.is_file() else [])
-               for p in pairs if len(p) > 2 and isinstance(p[2], str) and p[2]]  # 4th item = display options
+    opportunities = [item for item in insert_plan.opportunities(path) if item.get("query")]
     out_file = folder / "clipkit_broll.json"
     chosen = json.loads(out_file.read_text(encoding="utf-8")) if out_file.is_file() else {}
-    if not queries:
-        return {"broll": chosen, "not_found": [], "queries": 0}
+    if not opportunities:
+        return {"broll": chosen, "not_found": [], "queries": 0, "suggestions": [], "needs_review": False}
     cfg = kit_settings._read_config()
-    store = cfg.get("stock_video") or cfg.get("output_dir") or cfg.get("work_root")
-    if not store:
-        raise VideoEditError("ยังไม่ได้ตั้งโฟลเดอร์สต็อกวิดีโอ — ไปที่ ตั้งค่า > โฟลเดอร์")
-    missing = []
-    for q in queries:
-        if q in chosen and Path(chosen[q]["file"]).is_file():
-            continue
-        hits = free_stock.search(cfg, q, 3)["items"]
-        if not hits:
-            missing.append(q)
-            continue
-        h = hits[0]
-        chosen[q] = {"file": free_stock.download(store, h["source"], h["id"], h["file"]), "source": h["source"],
-                     "id": h["id"], "thumb": h["thumb"], "page": h["url"]}
-    atomic.write_text(out_file, json.dumps(chosen, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"broll": chosen, "not_found": missing, "queries": len(queries)}
+    searches, suggestions = {}, []
+    for item in opportunities:
+        q = item["query"]
+        if q not in searches:
+            searches[q] = free_stock.search(cfg, q, 3)["items"]
+        suggestions.append({**item, "items": searches[q]})
+    return {"broll": chosen, "not_found": [q for q, hits in searches.items() if not hits],
+            "queries": len(opportunities), "suggestions": suggestions, "needs_review": True}
 
 
 @router.post("/draft/broll-auto")
@@ -1348,7 +1361,7 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
         atomic.write_text(f, json.dumps(style, ensure_ascii=False), encoding="utf-8")
         if not video_edit.kitconfig.simple():
             b = broll_fill(req.path)
-            steps.append(f"ภาพประกอบ {len(b['broll'])} จุด" if b["queries"] else "ภาพประกอบ: ยังไม่ได้ให้ Claude เลือกคำค้น")
+            steps.append(f"รอเลือกภาพประกอบ {b['queries']} จุด" if b["queries"] else "ยังไม่มีคำค้นภาพประกอบ")
         cfg = kit_settings._read_config()
         out = cfg.get("output_dir") or cfg.get("work_root")
         if not out:
@@ -1374,26 +1387,41 @@ def draft_auto(req: AutoRequest) -> dict[str, Any]:
 def draft_placed(path: str = Query(...)) -> dict[str, Any]:
     """The b-roll / music / effects list the editor reviews, plus the subtitle lines to add a b-roll at."""
     f = Path(path) / "clipkit_placed.json"
-    subs = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in capcut_edit.read_draft(path)["subtitles"]]
-    return {"placed": json.loads(f.read_text(encoding="utf-8")) if f.is_file() else None, "subs": subs}
+    import insert_plan
+    subs = [{"id": s["id"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in capcut_edit.read_draft(path)["subtitles"]]
+    try:
+        return {"placed": json.loads(f.read_text(encoding="utf-8")) if f.is_file() else None, "subs": subs,
+                "opportunities": insert_plan.opportunities(path), "assets": insert_plan.public_assets(insert_plan.catalog(path))}
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 class BrollItem(BaseModel):
-    start: float = Field(ge=0)
-    dur: float = Field(gt=0.2, le=10)
-    file: str
+    start: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    dur: float = Field(gt=0, allow_inf_nan=False)
+    file: str = ""
     query: str = ""
     thumb: str = ""
+    asset_id: str | None = None
+    placement_id: str | None = None
+    opportunity_id: str | None = None
+    anchor: dict[str, Any] | None = None
+    reason: str = Field(default="ผู้ใช้เลือกภาพและตำแหน่ง", max_length=500)
+    source_start: float = Field(default=0, ge=0, allow_inf_nan=False)
+    focus_x: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    focus_y: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    source_ref: dict[str, Any] | None = None
+    review_required: bool = False
 
 
 class MusicPick(BaseModel):
     file: str = ""  # "" = no music
-    volume: float = Field(default=0.12, ge=0, le=1)
+    volume: float = Field(default=0.12, ge=0, le=1, allow_inf_nan=False)
 
 
 class SfxPick(BaseModel):
     on: bool = True
-    volume: float = Field(default=1.0, ge=0, le=2)
+    volume: float = Field(default=1.0, ge=0, le=2, allow_inf_nan=False)
 
 
 class PlacedRequest(BaseModel):
@@ -1407,18 +1435,45 @@ class PlacedRequest(BaseModel):
 @router.post("/draft/placed")
 @project_lock.edit
 def draft_placed_save(req: PlacedRequest) -> dict[str, Any]:
+    import insert_plan
     f = Path(req.path) / "clipkit_placed.json"
     if req.reset:
         f.unlink(missing_ok=True)
         return {"placed": None}
-    for it in req.broll:
-        if not Path(it.file).is_file():
-            raise HTTPException(400, f"ไม่พบไฟล์ภาพประกอบ: {it.file}")
     if req.music.file and not Path(req.music.file).is_file():
         raise HTTPException(400, f"ไม่พบไฟล์เพลง: {req.music.file}")
-    data = {"broll": [b.model_dump() for b in sorted(req.broll, key=lambda b: b.start)],
-            "music": req.music.model_dump(), "sfx": req.sfx.model_dump()}
-    atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    catalog_file = Path(req.path) / "clipkit_insert_assets.json"
+    before = catalog_file.read_bytes() if catalog_file.is_file() else None
+    try:
+        items = [b.model_dump(exclude_none=True) for b in req.broll]
+        for item in items:
+            if not item.get("anchor"):
+                if item.get("start") is None:
+                    raise VideoEditError("เลือกคำหรือเวลาวางภาพแทรก")
+                item["anchor"] = {"kind": "timeline", "start": item["start"]}
+        current = insert_plan.catalog(req.path)
+        for item in items:
+            if item.get("asset_id") not in current["assets"] and item.get("review_required"):
+                item.pop("asset_id", None)
+        files = [item["file"] for item in items if not item.get("asset_id")]
+        provenance = {item["file"]: item["source_ref"] for item in items if item.get("source_ref") and item["file"] in files}
+        assets = insert_plan.register_assets(req.path, files, provenance=provenance) if files else insert_plan.catalog(req.path)
+        for item in items:
+            if not item.get("asset_id"):
+                digest = insert_plan.file_digest(item["file"])
+                item["asset_id"] = next((key for key, asset in assets["assets"].items() if asset["sha256"] == digest), "")
+            item["review_required"] = False  # This explicit manual Save confirms the chosen placement.
+        data = {"broll": insert_plan.normalize(req.path, items, assets=assets),
+                "music": req.music.model_dump(), "sfx": req.sfx.model_dump()}
+        atomic.write_text(f, json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception as exc:
+        if before is None:
+            catalog_file.unlink(missing_ok=True)
+        elif not catalog_file.is_file() or catalog_file.read_bytes() != before:
+            atomic.write_bytes(catalog_file, before)
+        if isinstance(exc, VideoEditError):
+            raise HTTPException(400, str(exc)) from exc
+        raise
     return {"placed": data}
 
 
@@ -1667,6 +1722,7 @@ def draft_cut(req: CutRange) -> dict[str, Any]:
     for name in UNDO_FILES:
         if (folder / name).is_file():
             shutil.copy2(folder / name, undo / name)
+    atomic.write_text(undo / "files.json", json.dumps([name for name in UNDO_FILES if (undo / name).is_file()]))
     try:
         r = capcut_edit.trim_pauses(req.path, ranges=[(req.start, req.end)])
     except VideoEditError as exc:
@@ -1684,12 +1740,32 @@ def draft_uncut(req: DraftPath) -> dict[str, Any]:
     steps = sorted(box.iterdir()) if box.is_dir() else []
     if not steps:
         raise HTTPException(400, "ไม่มีการตัดให้ย้อนแล้ว")
-    for name in UNDO_FILES:
-        if (steps[-1] / name).is_file():
-            shutil.copy2(steps[-1] / name, Path(req.path) / name)
-    restored = (Path(req.path) / "draft_content.json").read_text(encoding="utf-8")
-    capcut_edit._seal(Path(req.path), restored)
-    capcut_edit.sync_timeline(Path(req.path), restored)
+    import web_ai_transaction
+    folder = Path(req.path)
+    saved = {name: file.read_bytes() for name, file in web_ai_transaction._files(folder).items()}
+    manifest = steps[-1] / "files.json"
+    present = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else None
+    if present is not None and (not isinstance(present, list) or any(name not in UNDO_FILES for name in present)):
+        raise HTTPException(400, "ข้อมูลย้อนการตัดเสียหาย — เก็บไฟล์เดิมไว้เพื่อตรวจสอบ")
+    try:
+        for name in UNDO_FILES:
+            source = steps[-1] / name
+            if source.is_file():
+                atomic.write_bytes(folder / name, source.read_bytes())
+            elif present is not None:
+                if name in present:
+                    raise VideoEditError(f"ไฟล์ย้อนการตัดหาย: {name}")
+                (folder / name).unlink(missing_ok=True)
+        restored = (folder / "draft_content.json").read_text(encoding="utf-8")
+        capcut_edit._seal(folder, restored)
+        capcut_edit.sync_timeline(folder, restored)
+    except Exception:
+        for name, file in web_ai_transaction._files(folder).items():
+            if name not in saved:
+                file.unlink()
+        for name, content in saved.items():
+            atomic.write_bytes(folder / name, content)
+        raise
     shutil.rmtree(steps[-1])
     return {"undo": len(steps) - 1}
 

@@ -157,21 +157,33 @@ source wording, and supply translated captions when `caption_language` is not nu
 Grouping changes subtitle line numbers. Export a fresh packet before another answer; the backup and seal cover
 the merged draft, and no source footage is removed by grouping itself. The group head's styling is retained.
 
-## `inserts` (downloaded stock files to links)
+## Insert matching (`step: clip`, `operation: inserts`, v2)
 
-This separate stock-link matcher remains **v1**; the v2 packet identity/import contract above applies only to
-`stories` and `clip`. Do not change the inserts answer version or add v2 identifiers to it.
+Insert matching reuses the existing clip v2 identity, transaction, receipt and recovery contract. The explicit
+`operation: inserts` is bound to its exported packet; an ordinary clip packet cannot be repurposed to apply
+inserts. Old v1 insert answers remain readable history and cannot mutate a project; export a fresh packet.
 
-After downloading stock clips by hand into one folder:
+Choose local images/videos or previously downloaded stock. Registration copies verified content into a
+project cache, leaves originals untouched, and publishes the catalog only after all chosen files validate.
+Only files selected for this export appear publicly; retained historic cache entries remain local.
+The packet contains metadata and its named contact sheet, never absolute paths, credentials or whole footage.
 
     python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-sheet "<folder>"   # writes "<video> - inserts.md" + ".jpg"
     python scripts/run_clip.py "<video>" --all --no-ai --capcut --insert-from "<folder>" --insert-plan answer.json
 
-Upload both files; the picture has one numbered frame per video. The answer pairs files with the page's links:
+Upload both files. One numbered representative frame per asset does not prove relevance throughout the
+requested span or establish rights. `source_ref` preserves provider/id/page and `license_status`, defaulting
+to `unverified`. Check rights separately. The answer uses opaque content-bound asset IDs and actual anchors:
 
 ```json
-{"clipkit_web_ai": 1, "step": "inserts", "video": "EP07.mov", "place": [{"file": "coffee-cup-X1.mp4", "link": 2}]}
+{"clipkit_web_ai":2,"step":"clip","operation":"inserts","project":"Example clip","packet_id":"COPY_FROM_PACKET","revision":"COPY_FROM_PACKET","source_id":"COPY_FROM_PACKET","place":[{"asset_id":"COPY_ASSET_ID","opportunity_id":"COPY_OPPORTUNITY_ID","anchor":{"cue_id":"COPY_CUE_ID","kind":"keyword","phrase":0},"reason":"The asset explains this spoken point.","source_start":0,"dur":1.5,"focus_x":0.5,"focus_y":0.5}]}
 ```
 
-Every file must be in the folder, every link on the page, each used once; a link that already has a file in
-`clipkit_insert` raises. Files left out stay in the folder. Nothing moves until the whole answer checks out.
+Anchor kinds are `phrase`/`keyword` with cue ID plus copied zero-based phrase number, `word` with cue ID plus
+copied **1-based underlying ASR word index** (whole-word starts may skip indices), or explicitly manual
+`timeline` with finite `start`. Source offset and duration must fit actual media; images use offset zero.
+`focus_x/y` are normalized 0..1. Full-frame placements may not overlap. Repeated queries remain separate cue
+occurrences. Missing or changed assets, source, cue clocks, catalog, style or operation reject before writes.
+Preview is read-only; apply replaces only `placed.broll` while preserving music/SFX. Local polling retains an
+insert answer for review instead of automatically applying it. CLI batch wrappers carry one bound envelope
+per project and resumable per-project receipts; they do not claim an atomic transaction across projects.

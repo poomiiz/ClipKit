@@ -681,13 +681,15 @@ def emoji_pops_on_keywords():
 def speed_ramp_eases_into_normal_speed():
     # a source whose brightness is 25 x its own time: the ramped copy runs 3x at first, 1x after 0.6 s
     import render
+    import insert_plan
     import numpy as np
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "count.mp4"
         subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=64x64:r=30:d=6,geq=lum='T*25':cb=128:cr=128",
                         "-c:v", "libx264", "-crf", "1", "-pix_fmt", "yuv420p", str(src)], check=True)
-        out = render.speed_ramp(str(src), 2.0, Path(tmp) / "c")
-        assert render.speed_ramp(str(src), 2.0, Path(tmp) / "c") == out  # made once, then reused
+        verified = {"source_sha256": insert_plan.file_digest(src), "source_duration": insert_plan._probe(src)["duration"]}
+        out = render.speed_ramp(str(src), 2.0, Path(tmp) / "c", **verified)
+        assert render.speed_ramp(str(src), 2.0, Path(tmp) / "c", **verified) == out  # made once, then reused
         info = render.probe(out)
         assert abs(info["duration"] - 2.0) < 0.1, info
         for at, source_t in ((0.3, 0.75), (0.6, 1.2), (1.6, 2.2)):
@@ -696,7 +698,7 @@ def speed_ramp_eases_into_normal_speed():
             got = np.frombuffer(r.stdout[:64 * 64], np.uint8).mean() / 25  # the Y plane, as geq wrote it
             assert abs(got - source_t) < 0.12, (at, got, source_t)
     try:
-        render.speed_ramp("x", 0, Path("."))
+        render.speed_ramp("x", 0, Path("."), source_sha256="", source_duration=1)
         raise AssertionError("a 0 s b-roll got a ramp")
     except render.VideoEditError:
         pass

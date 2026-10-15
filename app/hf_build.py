@@ -57,14 +57,25 @@ def build_lock(path: str):
 
 
 def _local(out: Path, path: str, name: str | None = None) -> str:
-    """A file the composition points at, inside its own folder (the renderer takes only local or https files).
-    Small files (b-roll, music, effects, font) are copied once; same name = same file."""
+    """Content-addressed local copies never alias equal-size files with the same basename."""
     import shutil
+    import tempfile
+    import insert_plan
     src = Path(path)
-    dst = out / "media" / (name or src.name)
+    digest = insert_plan.file_digest(src)
+    dst = out / "media" / (digest + src.suffix.lower())
     dst.parent.mkdir(exist_ok=True)
-    if not dst.is_file() or dst.stat().st_size != src.stat().st_size:
-        shutil.copy2(src, dst)
+    if not dst.is_file() or insert_plan.file_digest(dst) != digest:
+        fd, temporary = tempfile.mkstemp(prefix=".asset-", suffix=src.suffix, dir=dst.parent)
+        os.close(fd)
+        temp = Path(temporary)
+        try:
+            shutil.copy2(src, temp)
+            if insert_plan.file_digest(temp) != digest or insert_plan.file_digest(src) != digest:
+                raise render.VideoEditError("asset changed while copying; finish saving it before exporting")
+            temp.replace(dst)
+        finally:
+            temp.unlink(missing_ok=True)
     return "media/" + quote(dst.name)
 
 
@@ -75,9 +86,10 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
     import hashlib
     import subprocess
     import tempfile
+    import insert_plan
     source = Path(src)
-    identity = [str(source.resolve()), source.stat().st_size, source.stat().st_mtime_ns]
-    key = hashlib.md5(json.dumps([identity, [(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, render.EDGE_FADE, 3]).encode()).hexdigest()[:10]
+    identity = insert_plan.file_digest(source)
+    key = hashlib.sha256(json.dumps([identity, [(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, render.EDGE_FADE, 3]).encode()).hexdigest()
     dst = out / "media" / f"footage_{key}.mp4"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
@@ -110,8 +122,9 @@ def _motion(out: Path, source: str) -> str:
     """Browser-decodable alpha video; CapCut keeps the original transparent MOV."""
     import hashlib
     import subprocess
+    import insert_plan
     src = Path(source)
-    key = hashlib.sha256(f"{src.resolve()}:{src.stat().st_mtime_ns}:{src.stat().st_size}".encode()).hexdigest()[:16]
+    key = hashlib.sha256(f"alpha-v1:{insert_plan.file_digest(src)}".encode()).hexdigest()
     dst = out / "media" / f"motion_{key}.webm"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
@@ -138,14 +151,15 @@ def subtitle_html(event: dict, identifier: str) -> str:
     """Serialize the measured plan; the timed outer clip never receives animation visibility."""
     return (f'<div id="{identifier}" class="clip subtitle-event" data-role="{event["role"]}" '
             f'data-start="{event["start"]:.6f}" data-duration="{event["end"] - event["start"]:.6f}" data-track-index="3" '
-            f'style="position:absolute;left:{event["center_x_px"]:.6f}px;top:{event["center_y_px"]:.6f}px">'
-            f'<div class="txt" style="left:0;width:max-content;font-size:{event["size_px"]:.6f}px;line-height:{render.LINE_H};'
+            f'style="position:absolute;inset:0">'
+            f'<div class="subtitle-glyph" style="left:{event["center_x_px"]:.6f}px;top:{event["center_y_px"]:.6f}px;'
+            f'width:max-content;font-size:{event["size_px"]:.6f}px;line-height:{render.LINE_H};'
             f'color:{_css_color(event["fill"])};-webkit-text-stroke:{event["outline_px"] * 2:.6f}px {_css_color(event["stroke"])};'
             f'text-shadow:0 {event["shadow"]}px {event["shadow"] * 2}px rgba(0,0,0,.7)">{html.escape(event["text"])}</div></div>')
 
 
 def subtitle_animation(event: dict, identifier: str) -> str:
-    selector = f'#{identifier} > .txt'
+    selector = f'#{identifier} > .subtitle-glyph'
     base = f'tl.set("{selector}",{{xPercent:-50,yPercent:-50,rotation:{event["rotation"]:g}}},0);'
     if event["effect"] == "pop":
         return base + f'tl.fromTo("{selector}",{{scale:1.3}},{{scale:1,duration:0.14,ease:"none"}},{event["start"]:.6f});'
@@ -158,6 +172,7 @@ def _build(path: str) -> Path:
     import web_ai_transaction
     web_ai_transaction.recover("clip", path)
     t = render.render_draft(path, "", dry=True)
+    t["broll"] = render.insert_playback(path, t["broll"], materialize=True)
     W, H, D = t["width"], t["height"], t["duration"]
     st = t["style"] or {}
     subtitle_font = render._font(render.pair_look(st, W, H).get("font"))[1]
@@ -196,14 +211,16 @@ def _build(path: str) -> Path:
         anim.append(f'tl.set(".cam",{{scale:{render.ZOOM}}},{a:.3f});tl.set(".cam",{{scale:1}},{b:.3f});')
     # b-roll over the speaker
     for b in t["broll"]:
-        if b.get("file") and video_edit.is_image(b["file"]):
-            els.append(f'<img id="{nid("b")}" class="clip" src="{_local(out, b["file"])}" data-start="{b["start"]:.3f}" '
-                       f'data-duration="{b["dur"]:.3f}" data-track-index="2" '
-                       f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">')
+        frame = b["frame"]
+        rectangle = f'position:absolute;left:{frame["left"]}px;top:{frame["top"]}px;width:{frame["width"]}px;height:{frame["height"]}px'
+        if b["kind"] == "image":
+            els.append(f'<img id="{nid("b")}" class="clip" src="{_local(out, b["file"])}" data-start="{b["start"]:.9f}" '
+                       f'data-duration="{b["dur"]:.9f}" data-track-index="2" '
+                       f'style="{rectangle}">')
         elif b.get("file"):
-            els.append(f'<video id="{nid("b")}" class="clip" src="{_local(out, b["play"])}" muted playsinline data-start="{b["start"]:.3f}" '
-                       f'data-duration="{b["dur"]:.3f}" data-media-start="0" data-track-index="2" '
-                       f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>')
+            els.append(f'<video id="{nid("b")}" class="clip" src="{_local(out, b["play"])}" muted playsinline data-start="{b["start"]:.9f}" '
+                       f'data-duration="{b["dur"]:.9f}" data-media-start="{b["media_start"]:.9f}" data-track-index="2" '
+                       f'style="{rectangle}"></video>')
 
     def text(words: str, size: float, y: float, fill, stroke, width: float, a: float, b: float, grow: str = "both", floor: float = 0, one: bool = False,
              x: float = 0, rot: float = 0, shadow: bool = False, fixed: bool = False) -> str:
@@ -294,8 +311,9 @@ def _build(path: str) -> Path:
 *{{margin:0;padding:0;box-sizing:border-box}}
 html,body{{width:{W}px;height:{H}px;overflow:hidden;background:#000}}
 .cam{{transform-origin:{W / 2 - fit["x"]}px {H / 2 - fit["y"]}px}}
-.txt{{position:absolute;left:5%;width:90%;white-space:nowrap;transform:translateY(-50%);text-align:center;font-family:"ClipKit Thai",sans-serif;
+.txt,.subtitle-glyph{{position:absolute;white-space:nowrap;text-align:center;font-family:"ClipKit Thai",sans-serif;
   font-weight:700;line-height:1.25;paint-order:stroke fill;text-shadow:0 3px 8px rgba(0,0,0,.45)}}
+.txt{{left:5%;width:90%;transform:translateY(-50%)}}
 </style></head><body>
 {svg}
 <div id="root" data-composition-id="main" data-start="0" data-duration="{D:.3f}" data-width="{W}" data-height="{H}">

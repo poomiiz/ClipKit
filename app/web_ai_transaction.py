@@ -236,7 +236,18 @@ def apply(step: str, target: str, answer: dict, prepare):
         if step == "clip" and host_platform.capcut_running():
             raise VideoEditError("CapCut เปิดขณะบันทึก AI import · ปิดแล้วลองใหม่")
         record = _json(root / "packets" / (answer["packet_id"] + ".json"))
-        snapshot, _ = identity._snapshot(step, target, record["identity"]["preferences"], record["sources"])
+        snapshot, _ = identity._snapshot(step, target, record["identity"]["preferences"], record["sources"],
+                                         operation=record["identity"].get("operation"))
+        original_sources = {}
+        for key, source in record["sources"].items():
+            path = source.get("path")
+            if not isinstance(path, str) or identity._path_id(path) != key:
+                raise VideoEditError("คำสั่ง AI ไม่มีพาธต้นฉบับสำหรับตรวจหลังบันทึก · ส่งออกคำสั่งใหม่")
+            # Recheck bytes even if an applied edit removed this input reference. New generated
+            # derivative sources are legitimate effects of the transaction, not original inputs.
+            current_source, _ = identity._media(Path(path), {})
+            original_sources[key] = current_source
+        snapshot["sources"] = original_sources
         for entry in entries:
             if entry["name"] in snapshot["files"]:
                 snapshot["files"][entry["name"]] = entry["before"]

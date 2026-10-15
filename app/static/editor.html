@@ -66,12 +66,24 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .agent code{display:block;background:#0e0f12;border-radius:8px;padding:8px;margin:6px 0;word-break:break-all;font-size:12.5px}
 .ai-answer{width:100%;min-height:88px;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit;resize:vertical}
 .ai-actions button,.ai-actions summary{min-height:44px}
+.insert-panel input,.insert-panel select,.insert-panel button,.insert-panel summary{min-height:44px;max-width:100%}
+.insert-panel input,.insert-panel select{min-width:0}
+.insert-panel a{display:inline-flex;align-items:center;min-height:44px}
+.insert-panel video,.insert-panel img{width:100%;max-height:220px;object-fit:contain}
+.insert-panel .hint{overflow-wrap:anywhere}
+.insert-panel .reason{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ov{position:absolute;pointer-events:none;z-index:4;background:rgba(5,7,12,.55)}.ov[hidden]{display:none}
 .ov .safe{position:absolute;border:1.5px dashed rgba(255,196,0,.85);border-radius:4px}
 .ov .col{position:absolute;right:0;bottom:0;background:rgba(239,68,68,.22);border-left:1.5px dashed rgba(239,68,68,.8)}
 .ov .otxt{position:absolute;text-align:center;font-weight:700;line-height:1.2;transform:translateY(-50%);font-family:"Kanit","Leelawadee UI",sans-serif;paint-order:stroke fill}
 .opt{display:block;margin:5px 0;cursor:pointer}.prob{color:var(--warn);font-size:12.5px;margin:2px 0}
-@media (max-width:900px){.mid{grid-template-columns:1fr}.player{min-height:300px}}
+@media (max-width:900px){
+  main{height:auto;min-height:100vh;width:100%;grid-template-rows:auto auto auto;grid-template-columns:minmax(0,1fr)}
+  .mid{grid-template-columns:minmax(0,1fr);min-width:0}
+  .side{min-width:0;overflow:visible}
+  .player{min-height:240px;height:300px}
+  .tl{min-width:0}.tlbar{flex-wrap:wrap}.scroll{min-width:0}.tracks{grid-template-columns:84px minmax(0,1fr)}
+}
   body.simple .media { display: none !important; }
 </style>
 <link rel="stylesheet" href="/shell.css?v=8">
@@ -140,9 +152,22 @@ async function live() {
   return building;
 }
 // one save for b-roll / music / effects (the export follows this list exactly)
+let savingPL = false;
 async function savePL() {
-  try { await api('draft/placed', {path: PATH, ...PL, broll: PL.broll.filter(b => b.file)}); say(''); live(); }
-  catch (e) { say('❌ ' + ckErr(e)); }
+  if (savingPL) return false;
+  savingPL = true;
+  const payload = () => JSON.stringify({path: PATH, ...PL, broll: PL.broll.filter(b => b.file)});
+  try {
+    while (true) {
+      const sent = payload(), selected = SEL?.type === 'broll' ? PL.broll[SEL.i] : null;
+      const r = await api('draft/placed', JSON.parse(sent));
+      if (payload() !== sent) continue; // A newer manual edit must finish before adopting canonical rows.
+      PL = r.placed;
+      if (selected) { const i = PL.broll.findIndex(b => selected.placement_id ? b.placement_id === selected.placement_id : b.start === selected.start); SEL = i < 0 ? null : {type: 'broll', i, key: 'b' + i}; }
+      say('บันทึกแล้ว'); drawTL(); side(); live(); return true;
+    }
+  } catch (e) { say('❌ ' + ckErr(e)); return false; }
+  finally { savingPL = false; }
 }
 
 // ── timeline ──
@@ -190,8 +215,8 @@ function dragBlock(d, b) {
     const move = ev => {
       const dt = (ev.clientX - x0) / PX;
       if (Math.abs(ev.clientX - x0) > 3) d._moved = true;
-      if (resize) b.dur = Math.max(0.5, Math.min(10, +(d0 + dt).toFixed(2)));
-      else b.start = Math.max(0, Math.min(T.duration - 0.5, +(s0 + dt).toFixed(2)));
+      if (resize) b.dur = Math.max(0.1, +(d0 + dt).toFixed(2));
+      else { b.start = Math.max(0, +(s0 + dt).toFixed(2)); b.anchor = {kind: 'timeline', start: b.start}; delete b.opportunity_id; }
       d.style.left = b.start * PX + 'px'; d.style.width = Math.max(6, b.dur * PX - 2) + 'px';
     };
     const up = () => { d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up);
@@ -270,6 +295,68 @@ async function importAi() {
   } catch (e) { $('aiMessage').textContent = ckErr(e); }
   finally { button.disabled = false; }
 }
+function insertAiPanel() {
+  let folder = '', reviewed = '';
+  const message = text => { $('insertMessage').textContent = text; };
+  $('insertFolder').onclick = async () => {
+    try {
+      const r = await fetch('/api/kit/browse', {method: 'POST'}).then(x => x.json());
+      if (!r.path) return;
+      folder = r.path; $('insertFolderName').textContent = folder.split(/[\\/]/).pop(); $('insertFolderName').title = folder; $('insertDownload').disabled = false;
+    } catch (e) { message(ckErr(e)); }
+  };
+  $('insertDownload').onclick = async () => {
+    const button = $('insertDownload'); button.disabled = true;
+    try {
+      const r = await api('web-ai/export', {step: 'clip', operation: 'inserts', target: PATH, folder});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([r.text], {type: 'text/markdown'})); a.download = r.name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      const sheet = document.createElement('a'); sheet.href = '/api/kit/media?path=' + encodeURIComponent(r.sheet.file); sheet.download = r.sheet.name; sheet.textContent = 'ดาวน์โหลดภาพรวม';
+      $('insertPlan').replaceChildren(sheet); reviewed = '';
+      message('แนบไฟล์คำสั่งและภาพรวมให้ AI แล้ววางคำตอบ');
+    } catch (e) { message(ckErr(e)); }
+    finally { button.disabled = false; }
+  };
+  $('insertAnswer').oninput = () => { reviewed = ''; $('insertPlan').replaceChildren(); };
+  $('insertFile').onchange = async event => {
+    const file = event.target.files[0]; if (!file) return;
+    try { const text = await file.text(); $('insertAnswer').value = text; $('insertAnswer').oninput(); message('อ่านไฟล์แล้ว · ตรวจแผนก่อนใช้'); }
+    catch (e) { message(ckErr(e)); }
+  };
+  $('insertPreview').onclick = async () => {
+    const answer = $('insertAnswer').value, button = $('insertPreview'); button.disabled = true;
+    try {
+      const result = await api('web-ai/preview', {step: 'clip', operation: 'inserts', target: PATH, answer});
+      reviewed = answer; showInsertPlan($('insertPlan'), result.broll);
+      const apply = document.createElement('button'); apply.textContent = 'ใช้แผนนี้'; apply.className = 'pri';
+      apply.onclick = async () => {
+        if (reviewed !== $('insertAnswer').value) { message('คำตอบเปลี่ยนแล้ว — ตรวจแผนใหม่'); return; }
+        apply.disabled = true;
+        try { await api('web-ai/import', {step: 'clip', operation: 'inserts', target: PATH, answer: reviewed}); await reload(); say('บันทึกภาพแทรกแล้ว · ดูตัวอย่างก่อนส่งออก'); }
+        catch (e) { message(ckErr(e)); apply.disabled = false; }
+      };
+      $('insertPlan').appendChild(apply); message(result.broll.length ? 'เลือกแต่ละช่วงเพื่อดูภาพ เวลา และเหตุผล' : 'แผนนี้ล้างภาพแทรกทั้งหมด');
+    } catch (e) { reviewed = ''; message(ckErr(e)); }
+    finally { button.disabled = false; }
+  };
+}
+function showInsertPlan(box, rows) {
+  box.replaceChildren();
+  if (!rows.length) return;
+  const select = document.createElement('select'), preview = document.createElement('div');
+  select.setAttribute('aria-label', 'ช่วงภาพแทรก');
+  rows.forEach((row, i) => { const option = document.createElement('option'); option.value = i; option.textContent = `${mm(row.start)} · ${row.dur} วิ · ${row.file.split(/[\\/]/).pop().slice(0, 24)}`; select.appendChild(option); });
+  const show = () => {
+    const row = rows[+select.value], media = document.createElement(row.kind === 'image' ? 'img' : 'video');
+    media.src = '/api/kit/media?path=' + encodeURIComponent(row.file);
+    if (row.kind !== 'image') { media.controls = true; media.muted = true; media.onloadedmetadata = () => { media.currentTime = row.source_start || 0; }; }
+    const text = document.createElement('div'); text.className = 'hint reason'; text.textContent = row.reason; text.title = row.reason;
+    const source = document.createElement('div'); source.className = 'hint'; source.textContent = `${row.source_ref?.provider || 'ไฟล์ของเรา'} · สิทธิ์: ${row.source_ref?.license_status || 'unverified'} · ช่วงต้นฉบับ ${row.source_start || 0} วิ`;
+    preview.replaceChildren(media, text, source);
+  };
+  select.onchange = show; box.append(select, preview); show();
+}
 function sideClip(s) {
   const st = T.style || {}, c = st.color || {brightness: 0, contrast: 1, saturation: 1, warmth: 0};
   s.innerHTML = `<h3>⚙️ ตั้งค่าทั้งคลิป</h3>
@@ -280,6 +367,15 @@ function sideClip(s) {
     <label for="aiAnswer">คำตอบ JSON</label><textarea class="ai-answer" id="aiAnswer" rows="4"></textarea>
     <div class="row"><button id="aiImport">นำเข้าคำตอบ</button></div><div class="hint" id="aiMessage" role="status" aria-live="polite"></div>
     <details><summary>ใช้ agent ในเครื่อง</summary><div class="agent"><code>${esc(T.agent_command)}</code><button id="cp">คัดลอกคำสั่ง</button></div></details></details>
+    <details class="ai-actions insert-panel media"><summary>คัดภาพแทรกด้วย AI</summary>
+    <div class="hint">เลือกโฟลเดอร์ภาพ แล้วส่งไฟล์คำสั่งพร้อมภาพรวมให้ AI</div>
+    <div class="row"><button id="insertFolder">เลือกโฟลเดอร์</button><button id="insertDownload" disabled>ไฟล์ให้ AI</button></div>
+    <div class="hint" id="insertFolderName"></div>
+    <label for="insertFile">ไฟล์คำตอบจาก AI หรือ agent</label><input id="insertFile" type="file" accept="application/json,.json">
+    <label for="insertAnswer">คำตอบ JSON</label><textarea class="ai-answer" id="insertAnswer" rows="4"></textarea>
+    <div class="row"><button id="insertPreview">ตรวจแผน</button></div>
+    <div id="insertPlan"></div><div class="hint" id="insertMessage" role="status" aria-live="polite"></div>
+    </details>
     <h4>หน้าตาซับ</h4><div class="looks">${LOOKS.map(([k, t]) => `<button class="look${T.look === k ? ' on' : ''}" data-k="${k}"><img src="/looks/${k}.jpg"><span>${t}</span></button>`).join('')}</div>
     <h4>หัวคลิป (4 วินาทีแรก)</h4>
     ${[0, 1].map(n => `<div class="row"><input id="hk${n}" style="flex:1" placeholder="${n ? 'บรรทัด 2 (ไม่ใส่ก็ได้)' : 'บรรทัด 1 เช่น ธุรกิจสะดุด'}">
@@ -362,6 +458,7 @@ function sideClip(s) {
   $('cp').onclick = () => navigator.clipboard.writeText(T.agent_command).then(() => $('cp').textContent = '✓ คัดลอกแล้ว');
   $('aiDownload').onclick = downloadAi;
   $('aiImport').onclick = importAi;
+  insertAiPanel();
   $('fx').onchange = e => { PL.sfx.on = e.target.checked; savePL(); };
   $('fxv').onchange = e => { PL.sfx.volume = +e.target.value; savePL(); };
 }
@@ -408,27 +505,53 @@ function sidePhrase(s, p) {
   };
 }
 function sideBroll(s, b, i) {
-  s.innerHTML = `${back()}<h3>🖼️ ภาพประกอบ ${mm(b.start)}</h3>
-    ${b.thumb ? `<img src="${b.thumb}" style="width:100%;border-radius:10px">` : `<div class="hint">${esc(b.file)}</div>`}
+  const attr = text => esc(text).replace(/"/g, '&quot;');
+  s.innerHTML = `${back()}<div class="insert-panel"><h3>ภาพแทรก ${mm(b.start)}</h3>
+    <div id="bPreview"></div>
     <div class="row"><label for="bs">เริ่ม (วิ)</label><input type="number" step="0.1" id="bs" value="${b.start}" style="width:90px"><label style="min-width:auto">ยาว</label><input type="number" step="0.5" id="bd" value="${b.dur}" style="width:80px"></div>
-    <div class="row"><label for="bq">คำค้น</label><input id="bq" style="flex:1" value="${esc(b.query)}"><button id="bf">ค้น Pixabay</button></div>
+    <label for="ba">จุดคำพูด</label><select id="ba"><option value="">กำหนดเวลาเอง</option></select>
+    <div class="row"><label for="bo">ต้นฉบับเริ่ม (วิ)</label><input type="number" min="0" step="0.1" id="bo" value="${b.source_start || 0}"></div>
+    <details><summary>ตำแหน่งครอป</summary><div class="row"><label for="bx">ซ้าย–ขวา</label><input type="range" id="bx" min="0" max="1" step="0.01" value="${b.focus_x ?? .5}"></div><div class="row"><label for="by">บน–ล่าง</label><input type="range" id="by" min="0" max="1" step="0.01" value="${b.focus_y ?? .5}"></div></details>
+    <label for="br">เหตุผล</label><input id="br" maxlength="500" value="${attr(b.reason || 'ผู้ใช้เลือกภาพและตำแหน่ง')}">
+    <div class="row"><label for="bq">คำค้น</label><input id="bq" style="flex:1" value="${attr(b.query)}"><button id="bf">ค้น Pixabay</button></div>
     <div class="grid" id="bg"></div>
-    <div class="row"><button id="bown">ใช้ไฟล์ของเรา</button><button id="bdel" style="color:#fca5a5">ลบ</button></div>`;
-  const up = () => { b.start = +$('bs').value; b.dur = +$('bd').value; savePL(); drawTL(); };
-  $('bs').onchange = up; $('bd').onchange = up;
+    <div class="row"><button id="bown">เลือกไฟล์</button><button id="bdel">ลบภาพ</button></div>
+    <div class="row"><button class="pri" id="bSave">บันทึกภาพ</button></div><div class="hint" id="bMessage" role="status" aria-live="polite"></div></div>`;
+  const up = () => { b.start = +$('bs').value; b.dur = +$('bd').value; b.anchor = {kind: 'timeline', start: b.start}; delete b.opportunity_id; $('ba').value = ''; drawTL(); };
+  $('bs').onchange = up; $('bd').onchange = () => { b.dur = +$('bd').value; drawTL(); };
+  $('bo').onchange = () => { b.source_start = +$('bo').value; };
+  $('bx').onchange = () => { b.focus_x = +$('bx').value; }; $('by').onchange = () => { b.focus_y = +$('by').value; };
+  $('br').onchange = () => { b.reason = $('br').value; };
+  $('bSave').onclick = async () => { b.reason = $('br').value; await savePL(); };
+  const preview = () => {
+    const box = $('bPreview'); box.replaceChildren();
+    if (!b.file) { box.textContent = 'ยังไม่มีภาพ — เลือกไฟล์หรือค้น Pixabay'; return; }
+    const media = document.createElement(b.kind === 'image' || /\.(png|jpe?g|webp)$/i.test(b.file) ? 'img' : 'video');
+    media.src = '/api/kit/media?path=' + encodeURIComponent(b.file); media.controls = true; media.muted = true;
+    media.onloadedmetadata = () => { media.currentTime = b.source_start || 0; }; box.appendChild(media);
+    const source = document.createElement('div'); source.className = 'hint'; source.textContent = `${b.source_ref?.provider || 'ไฟล์ของเรา'} · สิทธิ์: ${b.source_ref?.license_status || 'unverified'}`; box.appendChild(source);
+  };
+  preview();
+  api('draft/placed?path=' + encodeURIComponent(PATH)).then(r => {
+    const select = $('ba'); if (!select) return;
+    (r.opportunities || []).forEach(point => { const option = document.createElement('option'); option.value = point.opportunity_id; option.textContent = `${mm(point.start)} ${point.lead || ''} ${point.punch || ''}`.slice(0, 60); select.appendChild(option); });
+    select.value = b.opportunity_id || '';
+    select.onchange = () => { const point = r.opportunities.find(x => x.opportunity_id === select.value); if (!point) { up(); return; } b.anchor = {kind: point.punch ? 'keyword' : 'phrase', cue_id: point.cue_id, phrase: point.phrase}; b.start = point.punch ? point.hit : point.start; b.opportunity_id = point.opportunity_id; $('bs').value = b.start; drawTL(); };
+  }).catch(e => { if ($('bMessage')) $('bMessage').textContent = ckErr(e); });
   $('bdel').onclick = () => del();
   $('bown').onclick = async () => { const r = await fetch('/api/kit/browse-file', {method: 'POST'}).then(x => x.json()).catch(() => ({})); if (!r.path) return;
-    Object.assign(b, {file: r.path, thumb: '', query: 'ไฟล์ของเรา'}); savePL(); drawTL(); side(); };
+    delete b.asset_id; delete b.source_ref; delete b.kind; Object.assign(b, {file: r.path, thumb: '', query: 'ไฟล์ของเรา', source_start: 0}); $('bo').value = 0; preview(); };
   $('bf').onclick = async () => {
     const g = $('bg'); g.innerHTML = '<span class="spin"></span>';
     try {
-      const r = await api('stock/free-search', {query: $('bq').value.trim(), count: 9});
+      const r = await api('stock/free-search', {query: $('bq').value.trim(), count: 6});
       g.innerHTML = '';
-      r.items.forEach(x => { const im = document.createElement('img'); im.src = x.thumb; im.title = x.title;
-        im.onclick = async () => { g.innerHTML = '<span class="spin"></span> กำลังโหลด…';
-          const d = await api('stock/free-download', {source: x.source, id: x.id, file: x.file});
-          Object.assign(b, {file: d.path, thumb: x.thumb, query: $('bq').value.trim()}); savePL(); drawTL(); side(); };
-        g.appendChild(im); });
+      r.items.forEach(x => { const button = document.createElement('button'); button.textContent = x.title.slice(0, 30); button.title = x.title;
+        button.onclick = async () => { button.disabled = true;
+          try { const d = await api('stock/free-download', {source: x.source, id: x.id, file: x.file}); delete b.asset_id; delete b.kind;
+            Object.assign(b, {file: d.path, thumb: x.thumb, query: $('bq').value.trim(), source_start: 0, source_ref: {provider: x.source, id: x.id, page: x.url, license_status: 'unverified'}}); $('bo').value = 0; preview(); }
+          catch (e) { $('bMessage').textContent = ckErr(e); } finally { button.disabled = false; } };
+        g.appendChild(button); });
       if (!r.items.length) g.textContent = 'ไม่เจอ ลองคำอื่น';
     } catch (e) { g.textContent = '❌ ' + ckErr(e); }
   };
@@ -590,7 +713,7 @@ document.addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); const v = $('v'); v.paused ? v.play() : v.pause(); }
   if (e.key === 'Delete') del();
   if (SEL && SEL.type === 'broll' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-    const b = PL.broll[SEL.i]; b.start = Math.max(0, +(b.start + (e.key === 'ArrowLeft' ? -0.1 : 0.1)).toFixed(2)); drawTL(); clearTimeout(window._sv); window._sv = setTimeout(savePL, 400);
+    const b = PL.broll[SEL.i]; b.start = Math.max(0, +(b.start + (e.key === 'ArrowLeft' ? -0.1 : 0.1)).toFixed(2)); b.anchor = {kind: 'timeline', start: b.start}; delete b.opportunity_id; drawTL(); clearTimeout(window._sv); window._sv = setTimeout(savePL, 400);
   }
 });
 // a project this page cannot open: say why where the player would be, and leave only Back and CapCut usable

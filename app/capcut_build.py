@@ -218,6 +218,7 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     _T.clear()
     _T.update(probe)
     t = render.render_draft(path, "", dry=True)
+    t["broll"] = render.insert_playback(path, t["broll"], materialize=True)
     st = t["style"] or {}
     src = Path(path)
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("clipkit*", ".clipkit-web-ai", "*.bak*", "draft_content.before_*"))
@@ -300,22 +301,19 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     # b-roll on an overlay track, filling the frame
     rolls = []
     for it in t["broll"]:
-        if not it.get("file"):
-            continue
-        info = video_edit.probe(it["file"])
         mat = copy.deepcopy(_T["broll"]["mat"])
-        still = video_edit.is_image(it["file"])
+        still = it["kind"] == "image"
         # CapCut keeps a picture as type "photo" with a 3-hour length; as a "video" it would last one frame
-        mat.update(path=Path(it["file"]).as_posix(), material_name=Path(it["file"]).name, name=Path(it["file"]).name,
-                   duration=_us(10800) if still else _us(info["duration"]), width=info["width"], height=info["height"],
+        mat.update(path=Path(it["play"]).as_posix(), material_name=Path(it["play"]).name, name=Path(it["play"]).name,
+                   duration=_us(10800) if still else _us(it["dur"] if it.get("derived_recipe") else it["source_duration"]),
+                   width=it["source_width"], height=it["source_height"],
                    type="photo" if still else "video")
         seg = _clone(draft, _T["broll"], mat, "videos")
-        dur = float(it["dur"]) if still else min(float(it["dur"]), info["duration"])
-        seg["source_timerange"] = {"start": 0, "duration": _us(dur)}
-        seg["target_timerange"] = {"start": _us(float(it["start"])), "duration": _us(dur)}
-        cover = max(W / info["width"], H / info["height"]) / min(W / info["width"], H / info["height"])
-        seg["clip"]["scale"] = {"x": cover, "y": cover}
-        seg["clip"]["transform"] = {"x": 0.0, "y": 0.0}
+        seg["source_timerange"] = {"start": _us(it["media_start"]), "duration": _us(it["dur"])}
+        seg["target_timerange"] = {"start": _us(it["start"]), "duration": _us(it["dur"])}
+        placement = it["clip"]
+        seg["clip"]["scale"] = {"x": placement["scale_x"], "y": placement["scale_y"]}
+        seg["clip"]["transform"] = {"x": placement["x"], "y": placement["y"]}
         seg["volume"] = 0.0
         rolls.append(seg)
     _track(draft, "video", rolls, 1)

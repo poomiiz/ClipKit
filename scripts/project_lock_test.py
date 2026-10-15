@@ -21,6 +21,7 @@ import hf_build
 import jobstore
 import project_lock
 import video_editor
+import web_ai_transaction
 
 
 class ProjectLockTests(unittest.TestCase):
@@ -35,7 +36,7 @@ class ProjectLockTests(unittest.TestCase):
         self.state.start()
         self.addCleanup(self.state.stop)
         self.recover = Mock()
-        recovery = patch.dict(sys.modules, {"web_ai_transaction": SimpleNamespace(recover=self.recover)})
+        recovery = patch.object(web_ai_transaction, "recover", self.recover)
         recovery.start()
         self.addCleanup(recovery.stop)
 

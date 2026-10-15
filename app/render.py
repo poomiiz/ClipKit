@@ -20,6 +20,7 @@ from typing import Any
 
 import capcut_edit
 import video_edit
+from insert_geometry import RAMP_IN, RAMP_FROM, consumption
 from video_edit import FFMPEG, VideoEditError, probe
 
 US = 1_000_000
@@ -552,34 +553,76 @@ def emoji_overlay(vin: str, n: int, k: int, e: dict[str, Any], W: int, H: int) -
             f"enable='between(t,{a:.3f},{a + d:.3f})'[eo{k}]"), f"[eo{k}]"
 
 
-RAMP_IN, RAMP_FROM = 0.6, 3.0  # b-roll rushes in at 3x and eases to normal speed over its first 0.6 s
-
-
-def speed_ramp(file: str, dur: float, cache: Path) -> str:
+def speed_ramp(file: str, dur: float, cache: Path, *, source_start: float = 0, source_sha256: str,
+               source_duration: float) -> str:
     """A muted copy of a b-roll clip, dur seconds long, that starts at RAMP_FROM x speed and slows evenly to 1x
     over RAMP_IN s (the vlog speed ramp). Made once per file and length, kept in cache."""
     import hashlib
-    if dur <= 0:
-        raise VideoEditError("speed ramp needs a b-roll longer than 0 s")
-    st = Path(file).stat()
-    key = hashlib.md5(f"{file}|{st.st_size}|{st.st_mtime_ns}|{dur:.3f}|{RAMP_IN}|{RAMP_FROM}".encode()).hexdigest()[:10]
+    import insert_plan
+    import os
+    needed = consumption(dur, ramp=True)
+    if source_start < 0 or source_start + needed > source_duration + 1e-6:
+        raise VideoEditError("insert source is too short for this speed ramp; shorten it or choose another source range")
+    if insert_plan.file_digest(Path(file)) != source_sha256:
+        raise VideoEditError("insert source changed; register the current file before exporting")
+    recipe = ["ramp-v2", source_sha256, source_start, dur, RAMP_IN, RAMP_FROM, 30, "libx264"]
+    key = hashlib.sha256(json.dumps(recipe, separators=(",", ":")).encode()).hexdigest()
     dst = cache / f"ramp_{key}.mp4"
-    if dst.is_file():
-        return str(dst)
+    manifest = dst.with_suffix(".json")
+    if dst.is_file() and manifest.is_file():
+        try:
+            saved = json.loads(manifest.read_text(encoding="utf-8"))
+            if saved.get("recipe") == recipe and saved.get("sha256") == insert_plan.file_digest(dst):
+                return str(dst)
+        except (ValueError, OSError, AttributeError):
+            pass  # A corrupt/incomplete managed cache entry is rebuilt, never exposed as a finished asset.
     R, S = RAMP_IN, RAMP_FROM
     used = (S + 1) * R / 2  # source seconds the ramp plays through
     # output time for source time T: the inverse of T = S*o - (S-1)*o^2/(2R) during the ramp, then 1:1
     pts = f"if(lt(T,{used:.4f}),({S}-sqrt({S * S}-{2 * (S - 1) / R:.4f}*T))*{R / (S - 1):.4f},T-{used - R:.4f})/TB"
-    cache.mkdir(exist_ok=True)
-    tmp = dst.with_suffix(".part.mp4")
-    r = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", file, "-t", f"{dur - R + used + 0.1:.3f}", "-an",
-                        "-vf", f"setpts=PTS-STARTPTS,setpts='{pts}',fps=30,trim=0:{dur:.3f}",
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(tmp)],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
-    if r.returncode or not tmp.is_file():
-        raise VideoEditError("speed ramp failed: " + r.stderr.strip()[-300:])
-    tmp.replace(dst)
+    cache.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".ramp-", suffix=".mp4", dir=cache)
+    os.close(fd)
+    tmp = Path(temporary)
+    try:
+        r = subprocess.run([FFMPEG, "-v", "error", "-y", "-ss", f"{source_start:.9f}", "-t", f"{needed:.9f}", "-i", file, "-an",
+                            "-vf", f"setpts=PTS-STARTPTS,setpts='{pts}',fps=30,trim=0:{dur:.9f}",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(tmp)],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+        if r.returncode or not tmp.stat().st_size:
+            raise VideoEditError("speed ramp failed: " + r.stderr.strip()[-300:])
+        if insert_plan.file_digest(Path(file)) != source_sha256:
+            raise VideoEditError("insert source changed while preparing the speed ramp")
+        length = probe(str(tmp))["duration"]
+        if abs(length - dur) > 1 / 30 + .01:
+            raise VideoEditError("speed ramp duration does not match the planned insert")
+        digest = insert_plan.file_digest(tmp)
+        tmp.replace(dst)
+        atomic.write_text(manifest, json.dumps({"recipe": recipe, "sha256": digest}, allow_nan=False))
+    finally:
+        tmp.unlink(missing_ok=True)
     return str(dst)
+
+
+def insert_playback(path: str | Path, rows: list[dict], *, materialize: bool = False) -> list[dict]:
+    """Every export uses the same source offset, derived ramp and canvas rectangle."""
+    import insert_plan
+    out = []
+    for row in rows:
+        item = dict(row)
+        if insert_plan.file_digest(Path(item["file"])) != item["source_sha256"]:
+            raise VideoEditError("insert source changed; register the current file before exporting")
+        item["play"], item["media_start"] = item["file"], item["source_start"]
+        if item.get("ramp") and item["kind"] == "video":
+            if item["source_start"] + consumption(item["dur"], ramp=True) > item["source_duration"] + 1e-6:
+                raise VideoEditError("insert source is too short for this speed ramp")
+            item["derived_recipe"] = "ramp-v2"
+            if materialize:
+                item["play"] = speed_ramp(item["file"], item["dur"], Path(path) / "clipkit_ramp",
+                    source_start=item["source_start"], source_sha256=item["source_sha256"], source_duration=item["source_duration"])
+                item["media_start"] = 0.0
+        out.append(item)
+    return out
 
 
 def zoom_spans(segs: list) -> list[tuple[float, float]]:
@@ -1096,33 +1139,25 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         def add(*args: str) -> int:
             ins.extend(args)
             return sum(1 for x in ins if x == "-i")
-        # b-roll: the editor's own list once reviewed (clipkit_placed.json); before that, the free clip the agent's
-        # search found, over the speaker for the phrase (max 2.2 s), never closer than 5 s to the previous one
+        # Only explicit placements enter the picture. Query maps are candidates for review,
+        # never permission to choose a first hit or invent an insertion duration.
         placed = _json(folder / "clipkit_placed.json", None)
-        if placed is None:
-            found, plan, last_b = _json(folder / "clipkit_broll.json", {}), [], -99.0
-            for _, a, b, q in (m for m in marks if m[0] == "broll"):
-                if q in found and a - last_b >= 5:
-                    plan.append({"start": round(a, 2), "dur": round(min(b, a + 2.2) - a, 2), "file": found[q]["file"],
-                                 "query": q, "thumb": found[q].get("thumb", "")})
-                    last_b = a
-        else:
-            plan = placed.get("broll", [])
+        plan = [] if placed is None else placed.get("broll", [])
         simple = video_edit.kitconfig.simple()  # simple mode: no b-roll, music or sound effects
         if simple:
             plan = []
+        import insert_plan
+        plan = insert_plan.normalize(path, plan, allow_legacy=True)
+        plan = insert_playback(path, plan, materialize=not dry)
         for k, it in enumerate(plan):
-            if not Path(it["file"]).is_file():
-                raise VideoEditError(f"b-roll file missing: {it['file']}")
-            # "play": the file both renderers show, the speed-ramped copy when that look is on
-            ramp = style.get("ramp") and not video_edit.is_image(it["file"])
-            it["play"] = speed_ramp(it["file"], float(it["dur"]), folder / "clipkit_ramp") if ramp else it["file"]
             # a still picture is one frame: loop it so it stays up for the whole span
-            n = add("-loop", "1", "-i", it["play"]) if video_edit.is_image(it["file"]) else add("-i", it["play"])
+            n = (add("-loop", "1", "-i", it["play"]) if it["kind"] == "image"
+                 else add("-ss", f"{it['media_start']:.9f}", "-i", it["play"]))
             a, e = float(it["start"]), float(it["start"]) + float(it["dur"])
-            graph += (f";[{n}:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-                      f"trim=0:{e - a:.3f},setpts=PTS-STARTPTS+{a:.3f}/TB[br{k}];"
-                      f"{base}[br{k}]overlay=0:0:eof_action=pass:enable='between(t,{a:.3f},{e:.3f})'[bo{k}]")
+            frame = it["frame"]
+            graph += (f";[{n}:v]scale={frame['width']}:{frame['height']},crop={W}:{H}:{-frame['left']}:{-frame['top']},"
+                      f"trim=0:{e - a:.9f},setpts=PTS-STARTPTS+{a:.9f}/TB[br{k}];"
+                      f"{base}[br{k}]overlay=0:0:eof_action=pass:repeatlast=0:enable='gte(t,{a:.9f})*lt(t,{e:.9f})'[bo{k}]")
             base = f"[bo{k}]"
         for k, e in enumerate(emoji):
             piece, base = emoji_overlay(base, add("-loop", "1", "-i", e["file"]), k, e, W, H)
@@ -1265,7 +1300,7 @@ def safe_zone(path: str) -> list[str]:
             if where:
                 problems.append(f'{s["target_timerange"]["start"] / US:.1f} s "{text[:30]}": ' + ", ".join(where))
     if style.get("anim", "none").startswith("pair"):  # the pair look draws lines from the preset, not the draft
-        look = pair_look(style)
+        look = pair_look(style, W, H)
         for role in ("lead", "punch", "caption"):
             if look[role]:
                 size, y = look[role][0] * CAPCUT_PX * (min(W, H) / 1080), H / 2 - look[role][1] * H / 2

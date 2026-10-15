@@ -11,7 +11,7 @@ Run from the ClipKit folder. Stop and report `Blocked` with the exact error if a
 1. `python scripts/setup_workspace.py D:\ClipKit` (any folder) - makes `config.json` with every folder.
 2. `python scripts/doctor.py` - every line OK (WARN on "preview font" is fine). FAIL = tell the person which line
    and stop. Python packages: `scripts/setup.ps1`. Node.js LTS from nodejs.org. Speech model: `scripts/fetch_model.py`.
-3. Optional: free Pixabay key (pixabay.com/api/docs) as `"pixabay_key"` in `config.json` for automatic b-roll.
+3. Optional: Pixabay key (pixabay.com/api/docs) as `"pixabay_key"` in `config.json` to search stock candidates for review.
 
 ## One command: "ตัดคลิปนี้" / "ทำคลิปสั้นจากไฟล์นี้" (no ClipKit window needed)
 ```
@@ -27,16 +27,19 @@ list: the `presets/` folder; none they like: make one, see **Subtitle presets**)
 `--capcut`; "ขอไฟล์ MP4" = add `--export`. `--look` (pair, karaoke, pop, none) and `--shape` (portrait default)
 rarely change.
 It transcribes, splits into stories, makes one project per story (face crop, subtitles, silences trimmed,
-subtitle look, zoom cut), finds free Pixabay b-roll, makes the cover and the HyperFrames page, and writes
+subtitle look, zoom cut), prepares stock candidates, makes the cover and the HyperFrames page, and writes
 `<video> - ClipKit.html` with one Pixabay search link per b-roll spot. Rerunning skips every finished step.
 1. Run it. Output is one JSON line per step.
 2. `{"WAIT": ...}` (exit 2) = a thinking step is yours: do the pasted command(s) below (`แบ่งเรื่อง`, then
    `เลือกคำเน้น` for each project), choose complete stories near the duration preference, then run the same command again.
 3. Pilot rule: without `--all` only story 1 is built. Send the person the HTML file and wait for their OK
    before `--all`.
-4. Stock links: the person opens the links, downloads into each project's `clipkit_insert` folder (name starts with
-   the link number, e.g. `2 coffee.mp4`), then you run with `--insert`; or downloads them in link order into one empty
-   folder and you run with `--insert-from "<folder>"` (the page numbers links across all projects). Never log in to a stock site for them.
+4. Inserts: the person selects their own images/videos or downloads stock candidates into a folder. Run
+   `--insert-sheet "<folder>"` to create one complete browser/local AI prompt and contact sheets using the shared
+   registered asset catalog. `--insert-from "<folder>"` without a plan does the same and exits `WAIT` (2); filenames,
+   link numbers and download order never choose placements. Review candidates and import the explicit reply with
+   `--insert-from "<folder>" --insert-plan "<answer.json>"`. `--insert` only verifies/reuses accepted placements.
+   Original files remain in place. Existing music/SFX remain intact. Never log in to a stock site for them.
 5. `--capcut` also builds "<project> · CapCut": the same clip laid out in CapCut (subtitle roles on their own
    tracks, title, English caption, b-roll, clicks, music, zoom, skin) for a person to keep editing there.
 6. Before showing the person any project, do the `ClipKit: ตรวจคำผิด` steps below on it. This is not optional and
@@ -55,7 +58,8 @@ Manual editor controls remain available without AI; they edit the same project a
 **Current stories/clip answer contract is v2.** Copy `clipkit_web_ai: 2`, `step`, `video`/`project`, and the exact
 `packet_id`, `revision`, `source_id` from the exported packet. All three identifiers are opaque: never generate
 them, transplant them into an old answer or infer identity from a basename. Preserve each line's `n` and
-`cue_id`, including cut/group-continuation entries. The separate `inserts` stock-link matcher remains v1.
+`cue_id`, including cut/group-continuation entries. Insert matching uses the same v2 `step: "clip"` envelope
+with `operation: "inserts"`, bound to its own exported packet. Legacy unbound v1 insert plans require fresh export.
 
 Each uploaded packet names only the local answer **basename**. Browser AI returns JSON without another prompt;
 an optional local agent saves that answer beside the packet. Exporting again keeps pending answers as
@@ -75,6 +79,25 @@ that finds unexpected external/native edits preserves both versions and stops fo
 recovery state, reseal a draft or bypass the importer to continue. Close CapCut before modifying its project.
 Successful JSON/import checks still require human viewing/listening and native CapCut acceptance before calling
 a clip done. Obtain approval of one pilot before building a batch.
+
+### Browser/local AI insert matching
+
+Run `python scripts/run_clip.py "<video>" [--all] --insert-sheet "<asset folder>"` after story selection.
+Attach every returned `upload` file to the chosen browser AI; the packet already contains all instructions.
+The CLI reply is `{ "clipkit_web_ai": 2, "step": "clip", "operation": "inserts", "projects": [...] }`.
+Keep one individually bound envelope for every requested project, with its exact identifiers and `place: []`
+when no image helps. The local agent can save the same JSON next to the packet and run the import command.
+
+Each placement selects a registered `asset_id`, a copied cue/whole-word anchor, a content-supported `reason`,
+`source_start`, `dur`, `focus_x` and `focus_y`. Use only actual anchors listed in the packet. Do not generate
+paths, invent word times, reuse a previous packet's asset list, select the first search hit without review,
+or claim a stock license is verified from an AI answer. Keep provenance/status supplied by the catalog.
+The source crop/offset and cue clock are validated by the same planner used in the manual editor.
+
+Projects commit separately. If a later project fails, the CLI reports completed receipts; fix the blocker and
+retry the same answer. A committed project is returned from its receipt rather than applied again. Invalid
+answers are preflighted before the first apply; concurrent changes can still stop a later project. Preserve
+the recovery state and both versions if an external edit prevents recovery.
 
 ### `ClipKit: แบ่งเรื่อง "<video path>"`
 1. Run `python scripts/web_ai.py export stories "<video path>"` and read the complete packet
@@ -181,10 +204,11 @@ import returns its receipt, while changing the answer requires a fresh export. T
      contain the exact spoken words for timing. It does not authorize invented claims or letter-based splits.
    Example item: `["บางคนบอกต้องลง", "ระบบ Crm", {"look": "hold", "show": ["", "ลงระบบ CRM"]}]`;
    with a b-roll search: `[lead, punch, "office team computer", {...}]`.
-3. B-roll: about one phrase in three that names something you can see (a product, food, a place, an action,
-   an emotion on a face), add a third item: a short English stock-footage search, e.g.
+3. B-roll: when a relevant image would clarify a product, food, place, action or visible reaction,
+   add a third item: a short English stock-footage search, e.g.
    `["เดี๋ยวมากิน", "กาแฟต่อ", "coffee cup cafe"]`. Concrete nouns, 2-4 words, no brand names.
-   Skip abstract phrases; never two b-roll phrases in a row.
+   Skip unsupported matches; do not add images to meet a count or frequency. A search query prepares
+   candidates only; the explicit insert plan selects the asset, spoken anchor and usable source interval.
 4. Fill the answer's `lines` with numbered entries and their items; the importer writes `clipkit_punch.json`. Each item is
    `[lead, punch]`, `[lead, punch, query]`, `[lead, punch, options]` or `[lead, punch, query, options]`
    covering every line.

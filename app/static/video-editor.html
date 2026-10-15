@@ -566,7 +566,8 @@
   .lib-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 10px; background: var(--card2, #1b2030); font-size: 13.5px; }
   .lib-row .hint { word-break: break-all; }
   #rvEdit h4 { margin: 14px 0 6px; font-size: 14px; }
-  .pl-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 10px; background: var(--card2, #1b2030); margin-bottom: 6px; font-size: 13.5px; }
+  .pl-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 10px; background: var(--card2); margin-bottom: 6px; font-size: 13.5px; }
+  .pl-row button,.pl-row select,.pl-row input{min-height:44px;max-width:100%}
   .pl-row > img, .pl-ph { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; display: grid; place-items: center; background: #000; }
   .pl-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .pl-q { width: 100%; }
@@ -2711,9 +2712,19 @@ async function plLoad() {
   if (!PLMUSIC) PLMUSIC = api('music').then(d => d.music || []).catch(() => []);
   plDraw();
 }
+let plSaving = false;
 async function plSave() {
-  try { await api('draft/placed', {path: state.draft.path, ...PL}); document.getElementById('rvDirty').style.display = ''; }
-  catch (e) { toast('❌ ' + ckErr(e)); }
+  if (plSaving) return;
+  plSaving = true;
+  const payload = () => JSON.stringify({path: state.draft.path, ...PL});
+  try {
+    while (true) {
+      const sent = payload(), r = await api('draft/placed', JSON.parse(sent));
+      if (payload() !== sent) continue;
+      PL = r.placed; plDraw(); document.getElementById('rvDirty').style.display = ''; return;
+    }
+  } catch (e) { toast('❌ ' + ckErr(e)); }
+  finally { plSaving = false; }
 }
 function plDraw() {
   const box = document.getElementById('rvEdit');
@@ -2732,13 +2743,13 @@ function plDraw() {
     q.value = it.query || '';
     q.onchange = () => { it.query = q.value.trim(); plSave(); };
     row.querySelector('[data-a=del]').onclick = () => { PL.broll.splice(i, 1); plSave(); plDraw(); };
-    row.querySelector('[data-a="-"]').onclick = () => { it.start = Math.max(0, +(it.start - 0.5).toFixed(2)); plSave(); plDraw(); };
-    row.querySelector('[data-a="+"]').onclick = () => { it.start = +(it.start + 0.5).toFixed(2); plSave(); plDraw(); };
+    row.querySelector('[data-a="-"]').onclick = () => { it.start = Math.max(0, +(it.start - 0.5).toFixed(2)); it.anchor = {kind: 'timeline', start: it.start}; delete it.opportunity_id; plSave(); plDraw(); };
+    row.querySelector('[data-a="+"]').onclick = () => { it.start = +(it.start + 0.5).toFixed(2); it.anchor = {kind: 'timeline', start: it.start}; delete it.opportunity_id; plSave(); plDraw(); };
     row.querySelector('[data-a=dur]').onchange = e => { it.dur = +e.target.value; plSave(); plDraw(); };
     row.querySelector('[data-a=file]').onclick = async () => {
       const r = await fetch('/api/kit/browse-file', {method: 'POST'}).then(x => x.json());
       if (!r.path) return;
-      it.file = r.path; it.thumb = ''; it.query = it.query || '(ไฟล์ของเรา)'; plSave(); plDraw();
+      plCandidate(row, it, {file: r.path, thumb: '', query: it.query || '(ไฟล์ของเรา)', source_ref: {license_status: 'unverified'}});
     };
     row.querySelector('[data-a=find]').onclick = async () => {
       const alt = row.querySelector('.pl-alt');
@@ -2748,12 +2759,15 @@ function plDraw() {
         const r = await api('stock/free-search', {query: q.value.trim(), count: 6});
         alt.innerHTML = '';
         r.items.forEach(x => {
-          const im = document.createElement('img');
-          im.src = x.thumb; im.title = x.title;
+          const im = document.createElement('button');
+          im.textContent = x.title.slice(0, 30); im.title = x.title;
           im.onclick = async () => {
             alt.innerHTML = '<span class="spin"></span> กำลังโหลด…';
-            const d = await api('stock/free-download', {source: x.source, id: x.id, file: x.file});
-            Object.assign(it, {file: d.path, thumb: x.thumb, query: q.value.trim()}); plSave(); plDraw();
+            try {
+              const d = await api('stock/free-download', {source: x.source, id: x.id, file: x.file});
+              plCandidate(row, it, {file: d.path, thumb: x.thumb, query: q.value.trim(),
+                source_ref: {provider: x.source, id: x.id, page: x.url, license_status: 'unverified'}});
+            } catch (e) { alt.textContent = ckErr(e) + ' · กดเปลี่ยนภาพเพื่อลองใหม่'; }
           };
           alt.appendChild(im);
         });
@@ -2771,7 +2785,8 @@ function plDraw() {
     const sub = PLSUBS[+e.target.value];
     const r = await fetch('/api/kit/browse-file', {method: 'POST'}).then(x => x.json()).catch(() => ({}));
     if (!r.path) { e.target.value = ''; toast('เลือกไฟล์ภาพประกอบ หรือเพิ่มแล้วกด "เปลี่ยนภาพ" เพื่อค้นใน Pixabay'); return; }
-    PL.broll.push({start: sub.start, dur: 2, file: r.path, query: '(ไฟล์ของเรา)', thumb: ''});
+    PL.broll.push({start: sub.start, dur: 2, file: r.path, query: '(ไฟล์ของเรา)', thumb: '',
+      anchor: {kind: 'timeline', start: sub.start}, reason: 'ผู้ใช้เลือกภาพประกอบประโยคนี้'});
     PL.broll.sort((a, b) => a.start - b.start); plSave(); plDraw();
   };
   box.appendChild(add);
@@ -2805,6 +2820,15 @@ function plDraw() {
   fxOn.checked = PL.sfx.on; fxOn.onchange = () => { PL.sfx.on = fxOn.checked; plSave(); };
   svol.value = PL.sfx.volume; svol.onchange = () => { PL.sfx.volume = +svol.value; plSave(); };
   box.appendChild(m);
+}
+function plCandidate(row, item, candidate) {
+  const box = row.querySelector('.pl-alt'), media = document.createElement(/\.(png|jpe?g|webp)$/i.test(candidate.file) ? 'img' : 'video');
+  media.src = '/api/kit/media?path=' + encodeURIComponent(candidate.file); media.controls = true; media.muted = true;
+  media.style.width = '100%'; media.style.height = 'auto'; media.style.maxHeight = '220px'; media.style.objectFit = 'contain';
+  const note = document.createElement('div'); note.className = 'hint'; note.textContent = 'ดูภาพก่อนใช้ · สิทธิ์: unverified';
+  const apply = document.createElement('button'); apply.textContent = 'ใช้ภาพนี้';
+  apply.onclick = async () => { apply.disabled = true; delete item.asset_id; delete item.kind; Object.assign(item, candidate, {source_start: 0}); await plSave(); apply.disabled = false; };
+  box.replaceChildren(media, note, apply);
 }
 async function rePreview() {
   const busy = document.getElementById('rvBusy'), v = document.getElementById('rvVideo');

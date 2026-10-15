@@ -126,6 +126,36 @@ class TrimTiming(unittest.TestCase):
         self.assertEqual(self.read("clipkit_placed.json")["broll"][0]["start"], 6.5)
         self.assertEqual(edit.read_draft(str(self.folder))["duration"], 8)
 
+    def test_undo_restores_absence_of_sidecars_created_after_cut(self):
+        video_editor.draft_cut(video_editor.CutRange(path=str(self.folder), start=0, end=1))
+        self.write("clipkit_placed.json", {"broll": [{"start": 4, "dur": 1}]})
+        self.write("clipkit_overlays.json", [{"start": 4, "duration": 1}])
+        video_editor.draft_uncut(video_editor.DraftPath(path=str(self.folder)))
+        self.assertFalse((self.folder / "clipkit_placed.json").exists())
+        self.assertFalse((self.folder / "clipkit_overlays.json").exists())
+        self.assertEqual(edit.read_draft(str(self.folder))["duration"], 8)
+
+    def test_undo_write_failure_restores_current_state_and_keeps_snapshot(self):
+        video_editor.draft_cut(video_editor.CutRange(path=str(self.folder), start=0, end=1))
+        self.write("clipkit_placed.json", {"broll": []})
+        before = {name: file.read_bytes() for name, file in __import__('web_ai_transaction')._files(self.folder).items()}
+        original = video_editor.atomic.write_bytes
+        failed = False
+
+        def fail_once(file, data):
+            nonlocal failed
+            if Path(file).name == "clipkit_words.json" and not failed:
+                failed = True
+                raise OSError("injected disk error")
+            return original(file, data)
+
+        with patch.object(video_editor.atomic, "write_bytes", side_effect=fail_once):
+            with self.assertRaisesRegex(OSError, "injected disk error"):
+                video_editor.draft_uncut(video_editor.DraftPath(path=str(self.folder)))
+        after = {name: file.read_bytes() for name, file in __import__('web_ai_transaction')._files(self.folder).items()}
+        self.assertEqual(after, before)
+        self.assertEqual(len(list((self.folder / "clipkit_undo").iterdir())), 1)
+
     def test_cut_crossing_rendered_media_refuses_before_any_write(self):
         for name, data in (("clipkit_overlays.json", [{"start": 3, "duration": 2}]),
                            ("clipkit_placed.json", {"broll": [{"start": 3, "dur": 2}]})):
