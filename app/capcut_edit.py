@@ -830,6 +830,10 @@ def trim_pauses(path: str, keep: float = 0.25, min_gain: float = 0.30,
     """Find the pauses left in a draft's timeline and cut them out, sliding the
     subtitles along so they stay on the words. ranges = cut exactly these timeline spans instead (the editor's
     "cut this out"); a subtitle wholly inside one goes with it."""
+    import web_ai_transaction
+    if apply and not web_ai_transaction.staged(path):
+        return web_ai_transaction.manual(path, lambda work: trim_pauses(str(work), keep=keep,
+            min_gain=min_gain, apply=True, ranges=ranges))
     folder = Path(path)
     draft = _load(folder)
     video = _video_track(draft)

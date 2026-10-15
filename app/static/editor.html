@@ -505,9 +505,10 @@ function sidePhrase(s, p) {
   $('pcut').onclick = async () => {
     const sub = (T.subs || []).find(x => x.id === p.cue_id);
     if (!sub) return say('❌ หาประโยคนี้ในซับไม่เจอ');
+    const cue = (T.motion_cues || []).find(x => x.cue_id === p.cue_id);
     if (!await ckConfirm('ตัดประโยคนี้ออกจากคลิป?\n' + p.line)) return;
     say('<span class="spin"></span> กำลังตัด…');
-    try { const r = await api('draft/cut', {path: PATH, start: sub.start, end: sub.end}); SEL = null; await reload(); live(); say('ตัดแล้ว · คลิปยาว ' + mm(r.length)); }
+    try { const r = await api('draft/cut', {path: PATH, start: sub.start, end: Math.max(sub.end, cue?.end ?? sub.end)}); SEL = null; await reload(); live(); say('ตัดแล้ว · คลิปยาว ' + mm(r.length)); }
     catch (e) { say('❌ ' + ckErr(e)); }
   };
   CKAIPlan.motion($('pm'), $('phraseMotionPlan'), () => {

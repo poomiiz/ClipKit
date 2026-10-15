@@ -139,13 +139,13 @@ class MotionCutTests(unittest.TestCase):
         self.install();before=self.files();self.calls.clear();write=capcut_edit.atomic.write_text;failed=False
         def fail(file,*args,**kwargs):
             nonlocal failed
-            if Path(file)==self.folder/'clipkit_words.json' and not failed:
+            if Path(file).name=='clipkit_words.json' and not failed:
                 failed=True;raise OSError('injected sidecar write')
             return write(file,*args,**kwargs)
         with patch.object(capcut_edit.atomic,'write_text',side_effect=fail),self.assertRaisesRegex(OSError,'sidecar'):
             video_editor.draft_cut(video_editor.CutRange(path=self.path,start=3.25,end=3.75))
         self.assertTrue(failed);self.assertEqual(self.files(),before)
-        self.assertEqual(list((self.folder/'clipkit_undo').iterdir()),[])
+        self.assertEqual(video_editor._undo_steps(self.folder),[])
         self.assertEqual(list((self.folder/'clipkit_motion').rglob('*.mov')),[])
 
     def test_legacy_undo_does_not_remove_existing_style(self):
@@ -157,19 +157,16 @@ class MotionCutTests(unittest.TestCase):
         video_editor.draft_uncut(video_editor.DraftPath(path=self.path))
         self.assertEqual(self.f.read('clipkit_style.json'),style)
 
-    def test_failed_rollback_keeps_undo_and_recovery_media(self):
-        self.install();before=self.files()
+    def test_failed_staged_rollback_does_not_change_original_or_create_undo(self):
+        old=self.install();before=self.files();old_media=Path(old['file']).read_bytes()
         def failed_save(folder,draft,*args,**kwargs):
-            self.f.write('draft_content.json',draft)
+            (folder/'draft_content.json').write_text(json.dumps(draft),encoding='utf-8')
             raise OSError('rollback unavailable')
         with patch.object(capcut_edit,'_save',side_effect=failed_save),self.assertRaisesRegex(OSError,'rollback unavailable'):
             video_editor.draft_cut(video_editor.CutRange(path=self.path,start=3.25,end=3.75))
-        self.assertEqual(len(list((self.folder/'clipkit_undo').iterdir())),1)
-        self.assertEqual(len(list((self.folder/'clipkit_motion').rglob('*.mov'))),1)
-        video_editor.draft_uncut(video_editor.DraftPath(path=self.path))
-        after=self.files()
-        self.assertEqual({name:after.get(name) for name in video_editor.UNDO_FILES},
-                         {name:before.get(name) for name in video_editor.UNDO_FILES})
+        self.assertEqual(self.files(),before)
+        self.assertEqual(video_editor._undo_steps(self.folder),[])
+        self.assertEqual(Path(old['file']).read_bytes(),old_media)
 
     def test_ai_preview_of_cut_plans_regeneration_without_render_or_original_writes(self):
         self.install('hook-title',0,8);self.calls.clear()

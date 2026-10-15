@@ -1862,16 +1862,27 @@ class CutRange(BaseModel):
 UNDO_FILES = ("draft_content.json", "clipkit_words.json", "clipkit_punch.json", "clipkit_caption.json", "clipkit_cues.json", "clipkit_placed.json", "clipkit_overlays.json", "clipkit_style.json")
 
 
+def _undo_steps(folder):
+    box = folder / "clipkit_undo"
+    # Transactional deletion can leave empty containers; only metadata is an undo step.
+    return sorted(step for step in box.iterdir() if step.is_dir() and any(step.iterdir())) if box.is_dir() else []
+
+
 @router.post("/draft/cut")
 @project_lock.edit
 def draft_cut(req: CutRange) -> dict[str, Any]:
     """Cut a stretch of the talk out of the clip (subtitles inside it go too, later ones move up); undoable."""
+    import web_ai_transaction
+    if not web_ai_transaction.staged(req.path):
+        try:
+            return web_ai_transaction.manual(req.path, lambda work: draft_cut(req.model_copy(update={"path":str(work)})))
+        except VideoEditError as exc:
+            raise HTTPException(400, str(exc)) from exc
     import shutil
     import time
     if req.end - req.start < 0.1:
         raise HTTPException(400, "ช่วงที่จะตัดสั้นเกินไป")
     folder = Path(req.path)
-    import web_ai_transaction
     before = {name: web_ai_transaction._hash(file) for name, file in web_ai_transaction._files(folder).items()}
     undo = folder / "clipkit_undo" / (time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}")
     undo.mkdir(parents=True)
@@ -1891,19 +1902,23 @@ def draft_cut(req: CutRange) -> dict[str, Any]:
         if isinstance(exc, VideoEditError):
             raise HTTPException(400, str(exc)) from exc
         raise
-    return {"length": r.get("result_length"), "undo": len(list((folder / "clipkit_undo").iterdir()))}
+    return {"length": r.get("result_length"), "undo": len(_undo_steps(folder))}
 
 
 @router.post("/draft/uncut")
 @project_lock.edit
 def draft_uncut(req: DraftPath) -> dict[str, Any]:
     """Undo the last cut made in the editor."""
+    import web_ai_transaction
+    if not web_ai_transaction.staged(req.path):
+        try:
+            return web_ai_transaction.manual(req.path, lambda work: draft_uncut(req.model_copy(update={"path":str(work)})))
+        except VideoEditError as exc:
+            raise HTTPException(400, str(exc)) from exc
     import shutil
-    box = Path(req.path) / "clipkit_undo"
-    steps = sorted(box.iterdir()) if box.is_dir() else []
+    steps = _undo_steps(Path(req.path))
     if not steps:
         raise HTTPException(400, "ไม่มีการตัดให้ย้อนแล้ว")
-    import web_ai_transaction
     folder = Path(req.path)
     saved = {name: file.read_bytes() for name, file in web_ai_transaction._files(folder).items()}
     manifest = steps[-1] / "files.json"

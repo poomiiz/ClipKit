@@ -293,13 +293,13 @@ class InsertExportTests(unittest.TestCase):
         (inner/"draft_content.json").write_bytes(content.read_bytes())
         (project/"draft_meta_info.json").write_text('{"tm_duration":3000000,"tm_draft_modified":1}')
         capcut_edit._seal(project,content.read_text())
-        snapshot=lambda:{p.relative_to(project).as_posix():p.read_bytes() for p in project.rglob("*") if p.is_file()}
+        snapshot=lambda:{p.relative_to(project).as_posix():p.read_bytes() for p in project.rglob("*") if p.is_file() and ".clipkit-web-ai" not in p.relative_to(project).parts}
         before=snapshot();original=capcut_edit.atomic.write_text;failed=False;words_published=False
         def fail_once(path,*args,**kwargs):
             nonlocal failed,words_published
-            if Path(path)==project/"clipkit_placed.json" and not failed:
+            if Path(path).name=="clipkit_placed.json" and not failed:
                 failed=True
-                words_published=(project/"clipkit_words.json").read_bytes()!=before["clipkit_words.json"]
+                words_published=(Path(path).parent/"clipkit_words.json").read_bytes()!=before["clipkit_words.json"]
                 raise OSError("injected late placement publish failure")
             return original(path,*args,**kwargs)
         with patch.object(capcut_edit.atomic,"write_text",side_effect=fail_once),self.assertRaisesRegex(OSError,"late placement"):
@@ -309,11 +309,11 @@ class InsertExportTests(unittest.TestCase):
 
     def test_cut_failure_preserves_absent_sidecars_and_new_backup_absence(self):
         project=self.project()
-        snapshot=lambda:{p.relative_to(project).as_posix():p.read_bytes() for p in project.rglob("*") if p.is_file()}
+        snapshot=lambda:{p.relative_to(project).as_posix():p.read_bytes() for p in project.rglob("*") if p.is_file() and ".clipkit-web-ai" not in p.relative_to(project).parts}
         before=snapshot();original=capcut_edit.atomic.write_text;failed=False
         def fail_once(path,*args,**kwargs):
             nonlocal failed
-            if Path(path)==project/capcut_edit.SEAL and not failed:
+            if Path(path).name==capcut_edit.SEAL and not failed:
                 failed=True
                 raise OSError("injected seal publish failure")
             return original(path,*args,**kwargs)

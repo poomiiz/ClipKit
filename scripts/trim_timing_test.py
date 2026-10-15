@@ -51,6 +51,10 @@ class TrimTiming(unittest.TestCase):
         self.folder.mkdir()
         self.source = self.folder / "source.mp4"
         self.source.touch()
+        config=self.folder.parent/'config.json';config.write_text('{"render_encoder":"libx264"}',encoding='utf-8')
+        self.enterContext(patch.object(render.video_edit.kitconfig,'_CANDIDATES',[config]))
+        import kit_settings
+        self.enterContext(patch.object(kit_settings,'CONFIG',config))
         clip = {"scale": {"x": 1, "y": 1}, "transform": {"x": 0, "y": 0}}
         self.draft = {"id": "test", "duration": 8_000_000, "canvas_config": {"width": 1920, "height": 1080},
             "materials": {"videos": [{"id": "v", "path": str(self.source)}], "texts": [
@@ -116,8 +120,10 @@ class TrimTiming(unittest.TestCase):
         self.assertEqual(first, {"start": 0, "duration": 100_000})
 
     def test_motion_and_broll_move_once_and_undo_restores_both(self):
-        self.write("clipkit_overlays.json", [{"start": 6, "duration": 1, "file": "motion.mov"}])
-        self.write("clipkit_placed.json", {"broll": [{"start": 6.5, "dur": .5, "file": "broll.mp4"}]})
+        (self.folder/"motion.mov").write_bytes(b"synthetic motion")
+        (self.folder/"broll.mp4").write_bytes(b"synthetic broll")
+        self.write("clipkit_overlays.json", [{"start": 6, "duration": 1, "file": str(self.folder/"motion.mov")}])
+        self.write("clipkit_placed.json", {"broll": [{"start": 6.5, "dur": .5, "file": str(self.folder/"broll.mp4")}]})
         video_editor.draft_cut(video_editor.CutRange(path=str(self.folder), start=0, end=1))
         self.assertEqual(self.read("clipkit_overlays.json")[0]["start"], 5)
         self.assertEqual(self.read("clipkit_placed.json")["broll"][0]["start"], 5.5)

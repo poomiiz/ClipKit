@@ -7,11 +7,39 @@ import os
 import shutil
 import tempfile
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 import atomic
 import web_ai_identity as identity
 from video_edit import VideoEditError
+
+
+_work = ContextVar("transaction_work", default=None)
+
+
+def staged(path):
+    return _work.get() == Path(path).resolve()
+
+
+@contextmanager
+def _staging(work):
+    token = _work.set(work.resolve())
+    try:
+        yield
+    finally:
+        _work.reset(token)
+
+
+def manual(target, prepare):
+    """Caller holds the writer lock; manual edits share durable publication and recovery."""
+    import kit_settings
+    answer = {"clipkit_web_ai":identity.VERSION,"step":"clip", **identity.issue("clip", target, operation="manual")}
+    def run(work, assets):
+        with kit_settings.motion_destination(assets):
+            return prepare(work)
+    return apply("clip", target, answer, run)
 
 
 def _hash(file: Path) -> str | None:
@@ -58,7 +86,7 @@ def _files(folder: Path) -> dict[str, Path]:
                 raise VideoEditError(f"Invalid project metadata: {name}")
             files[name] = file
     for pattern in ("Timelines/project.json", "Timelines/*/draft_content.json", "clipkit_history/*.json.gz",
-                    "clipkit_history/*.json.gz.corrections.json"):
+                    "clipkit_history/*.json.gz.corrections.json", "clipkit_undo/*/*.json"):
         for file in folder.glob(pattern):
             parents = file.relative_to(folder).parents
             if file.is_symlink() or any((folder / p).is_symlink() for p in parents):
@@ -175,7 +203,8 @@ def preview_clip(target: str, answer: dict, prepare):
             _copy(source, destination)
             if _hash(destination) != before[name]:
                 raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างเตรียมตัวอย่าง · ตรวจใหม่")
-        result = prepare(work)
+        with _staging(work):
+            result = prepare(work)
         identity.verify("clip", target, answer)
         if {name: _hash(file) for name, file in _files(Path(target)).items()} != before:
             raise VideoEditError("โปรเจกต์เปลี่ยนระหว่างตรวจแผน · ตรวจใหม่")
@@ -198,7 +227,8 @@ def apply(step: str, target: str, answer: dict, prepare):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
     try:
-        result = prepare(work, tx / "assets")
+        with _staging(work):
+            result = prepare(work, tx / "assets")
         # The source, preset and every other packet dependency must still be the exported revision.
         identity.verify(step, target, answer)
         if step == "clip":

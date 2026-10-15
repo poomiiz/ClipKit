@@ -12,15 +12,15 @@ function phrase() {
   const nodes = {}, calls = [];
   const item = {start: 0, end: 2, lead: 'normal', punch: 'keyword', line: 'normal keyword', cue_id: 'second'};
   const context = vm.createContext({
-    T: {phrases: [item], caption_en: {}, motion_cues: [{cue_id:'second',start:0,end:3,text:'normal keyword'}]}, PATH: 'synthetic',
+    T: {phrases: [item], subs:[{id:'second',start:0,end:2}], caption_en: {}, motion_cues: [{cue_id:'second',start:0,end:3,text:'normal keyword'}]}, PATH: 'synthetic',
     CKAIPlan: {motion(button,box,request,preview) { button.onclick=()=>preview(request()); }},
     $: id => nodes[id] ||= {value: ''}, back: () => '', mm: String, esc: String,
     api: async (path, body) => calls.push([path, JSON.parse(JSON.stringify(body))]),
-    reload: async () => {}, say() {}, ckErr: e => e.message,
+    reload: async () => {}, live() {}, ckConfirm:async()=>true, say() {}, ckErr: e => e.message,
   });
   vm.runInContext(phraseCode, context);
   context.sidePhrase({innerHTML: ''}, item);
-  return {nodes, calls};
+  return {nodes, calls, context};
 }
 (async () => {
   let {nodes, calls} = phrase();
@@ -44,6 +44,15 @@ function phrase() {
   assert.equal(calls[0][1].end, 3, 'motion must include canonical caption/hold end');
   assert.equal(calls[0][1].text, 'normal keyword');
   nodes.pl.value='unsaved';assert.throws(nodes.pm.onclick,/บันทึกข้อความก่อน/);
+
+  ({nodes, calls} = phrase());
+  await nodes.pcut.onclick();
+  assert.equal(calls[0][0],'draft/cut');
+  assert.equal(calls[0][1].end,3,'deleting the cue includes its held normal/motion interval');
+
+  const plain=phrase();plain.context.T.motion_cues=[];
+  await plain.nodes.pcut.onclick();
+  assert.equal(plain.calls[0][1].end,2,'without a held cue, keep the original subtitle boundary');
 
   const created = [], submitted = [];
   function node(tag) {

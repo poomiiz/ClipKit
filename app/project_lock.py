@@ -37,7 +37,8 @@ def writer(path: str | Path, *, recover: bool = True):
         try:
             if recover and (Path(canonical) / "draft_content.json").is_file():
                 import web_ai_transaction
-                web_ai_transaction.recover("clip", canonical)
+                if not web_ai_transaction.staged(canonical):
+                    web_ai_transaction.recover("clip", canonical)
             yield
         finally:
             held.remove(canonical)
