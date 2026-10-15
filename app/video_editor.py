@@ -1151,9 +1151,6 @@ def prepare_overlay(req: OverlayRequest, *, previous=None, timeline=None) -> dic
             raise VideoEditError("motion ต้องยาว 0.5–120 วินาที")
         candidate = {"start": req.start, "duration": dur, "bounds": prepared["bounds"],
                      "ownership": ownership, "params": prepared["source_params"]}
-        motion_plan.check_placement(candidate, underlying, width=timeline["width"], height=timeline["height"],
-                                    duration=timeline["duration"], safe_box=render.safe_box(timeline["style"]),
-                                    subject_zones=timeline["style"].get("motion_subject_zones", []))
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     previous = _overlays(req.path) if previous is None else previous
@@ -1165,8 +1162,19 @@ def prepare_overlay(req: OverlayRequest, *, previous=None, timeline=None) -> dic
         if (any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (a, length))
                 or a < 0 or length <= 0):
             raise HTTPException(400, "เวลา motion เดิมไม่ถูกต้อง · ตรวจรายการก่อนเพิ่ม")
-        if a < req.start + dur and req.start < a + length:
-            raise HTTPException(409, "motion ทับช่วงเดิม · เลือกรายการเดิมเพื่อแก้หรือลบก่อน")
+        try:
+            if a < req.start + dur and req.start < a + length and any(
+                    error.get("placement_id") == item.get("placement_id") for error in timeline.get("motion_recipe_errors", [])):
+                raise VideoEditError("stored motion is stale; repair its recipe before concurrent placement")
+            motion_plan.check_overlap(candidate, item)
+        except VideoEditError as exc:
+            raise HTTPException(409, str(exc)) from exc
+    try:
+        motion_plan.check_placement(candidate, underlying, width=timeline["width"], height=timeline["height"],
+                                    duration=timeline["duration"], safe_box=render.safe_box(timeline["style"]),
+                                    subject_zones=timeline["style"].get("motion_subject_zones", []), others=items)
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return {"params": params, "prepared": prepared, "ownership": ownership, "anchor": anchor,
             "timeline": timeline, "items": items, "candidate": candidate,
             "cue_id": next(iter(cues)) if req.template == "sentence-pair" else None}

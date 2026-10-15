@@ -410,6 +410,43 @@ def subject_review_pending(zones, start, end):
     return cursor < end - 1e-6
 
 
+def footprints(motion):
+    start, length, bounds = motion.get("start"), motion.get("duration"), motion.get("bounds")
+    finite = lambda v: not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
+    rectangle = lambda r: (isinstance(r, list) and len(r) == 4 and all(finite(v) for v in r)
+                           and r[0] < r[2] and r[1] < r[3])
+    if not finite(start) or not finite(length) or start < 0 or length <= 0 or not rectangle(bounds):
+        raise VideoEditError("motion interval or measured bounds are invalid")
+    params = motion.get("params", {})
+    if not isinstance(params, dict) or not isinstance(params.get("subtitle_events", []), list):
+        raise VideoEditError("motion replacement events must be an array")
+    parts = params.get("subtitle_events", [])
+    if not parts:
+        return [(start, start + length, bounds)]
+    if any(not isinstance(p, dict) or not rectangle(p.get("bbox")) or not finite(p.get("start"))
+           or not finite(p.get("end")) or not 0 <= p["start"] < p["end"] <= length + 1e-6 for p in parts):
+        raise VideoEditError("motion replacement events have invalid measured bounds or times")
+    return [(start + p["start"], start + p["end"], p["bbox"]) for p in parts]
+
+
+def check_overlap(first, second):
+    """Compare active measured pixels and caption ownership, never the full transparent canvas."""
+    if not (first["start"] < second["start"] + second["duration"] and second["start"] < first["start"] + first["duration"]):
+        return
+    policies = [ownership(m) for m in (first, second)]
+    if any(p["mode"] == "legacy_full_card" for p in policies):
+        raise VideoEditError("overlapping legacy motion needs a verified recipe")
+    if any("file" in m and (not isinstance(m.get("recipe"), dict) or m["recipe"].get("version") != 1) for m in (first, second)):
+        raise VideoEditError("overlapping stored motion needs a verified recipe")
+    cues = {None} | {t["cue_id"] for p in policies for t in p["targets"]}
+    if any(hides(first, role=role, cue_id=cue) and hides(second, role=role, cue_id=cue)
+           for cue in cues for role in ROLES):
+        raise VideoEditError("overlapping motions cannot both own the same subtitle role")
+    if any(a < d and c < b and all(max(r[n], s[n]) < min(r[n+2], s[n+2]) - .05 for n in (0, 1))
+           for a,b,r in footprints(first) for c,d,s in footprints(second)):
+        raise VideoEditError("motion overlaps another motion; choose another interval or placement")
+
+
 def check_placement(motion, events, *, width, height, duration, safe_box, subject_zones=(), others=()):
     """Read-only spatial/time gate before allocating a renderer; no position repair or hiding."""
     def finite(value):
@@ -433,12 +470,10 @@ def check_placement(motion, events, *, width, height, duration, safe_box, subjec
     if targets - {(event.get("cue_id"), event["role"]) for event in events if event["start"] < end and start < event["end"]}:
         raise VideoEditError("motion ownership refers to an unavailable cue or role")
     reproduced = motion.get("params", {}).get("subtitle_events", [])
-    footprints = [(start, end, bounds)]
-    if reproduced:
-        if any(not rectangle(part.get("bbox")) or not finite(part.get("start")) or not finite(part.get("end"))
-               or not 0 <= part["start"] < part["end"] <= length + 1e-6 for part in reproduced):
-            raise VideoEditError("motion replacement events have invalid measured bounds or times")
-        footprints = [(start+part["start"], start+part["end"], part["bbox"]) for part in reproduced]
+    occupied = footprints(motion)
+    for other in others:
+        check_overlap(motion, other)
+    import render
     for event in events:
         if not (event["start"] < end and start < event["end"]):
             continue
@@ -452,17 +487,14 @@ def check_placement(motion, events, *, width, height, duration, safe_box, subjec
                            and part.get("text") == event["text"] and abs(part["start"] + start - event["start"]) <= 1e-6
                            and abs(part["end"] + start - event["end"]) <= 1e-6 for part in reproduced):
                     raise VideoEditError("motion does not reproduce the cue/role it claims to replace")
-        elif any(a < event["end"] and event["start"] < b and intersects(rect, event["bbox"])
-                 for a,b,rect in footprints):
+        elif any(a < hi and lo < b and intersects(rect, event["bbox"])
+                 for lo,hi in render.visible_spans(event["start"], event["end"], others, role=event["role"], cue_id=event.get("cue_id"))
+                 for a,b,rect in occupied):
             raise VideoEditError(f"motion {start:g}s overlaps cue {event.get('cue_id')} {event['role']}; choose another placement")
-    for other in others:
-        if other["start"] < end and start < other["start"] + other["duration"]:
-            if not rectangle(other.get("bounds")) or intersects(bounds, other["bounds"]):
-                raise VideoEditError(f"motion {start:g}s overlaps another motion; choose another interval or placement")
     for zone in validate_subject_zones(subject_zones, duration):
         rect = [zone["x"] * width, zone["y"] * height,
                 (zone["x"] + zone["w"]) * width, (zone["y"] + zone["h"]) * height]
-        if any(a < zone["end"] and zone["start"] < b and intersects(footprint, rect) for a,b,footprint in footprints):
+        if any(a < zone["end"] and zone["start"] < b and intersects(footprint, rect) for a,b,footprint in occupied):
             raise VideoEditError(f"motion {start:g}s overlaps the confirmed subject zone; choose another placement")
 
 

@@ -314,7 +314,6 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
         rolls.append(seg)
     _track(draft, "video", rolls, 1)
 
-    motions = []
     for motion in t.get("motions", []):
         info = video_edit.probe(motion["file"])
         mat = copy.deepcopy(_T["broll"]["mat"])
@@ -326,8 +325,7 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
         seg["clip"]["scale"] = {"x": 1.0, "y": 1.0}
         seg["clip"]["transform"] = {"x": 0.0, "y": 0.0}
         seg["volume"] = 0.0
-        motions.append(seg)
-    _track(draft, "video", motions, 2)
+        _track(draft, "video", [seg], 2)
 
     # a click on every coloured word (one short click, ~30 % volume)
     fx = t["sfx"]

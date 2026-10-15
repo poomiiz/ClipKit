@@ -22,6 +22,25 @@ function phrase() {
   context.sidePhrase({innerHTML: ''}, item);
   return {nodes, calls, context};
 }
+// Concurrent motion bars must remain independently clickable, including short clips at low zoom.
+{
+  const node = tag => ({tag, style:{}, children:[], classList:{add(){}}, appendChild(n){this.children.push(n);}});
+  const nodes=Object.fromEntries(['inner','scroll','motionLabel'].map(id=>[id,node('div')]));
+  nodes.scroll.clientWidth=375;
+  const selected=[];
+  const context=vm.createContext({document:{createElement:node}, $:id=>nodes[id], T:{duration:8,phrases:[],motions:[
+    {start:6,duration:1,text:'later'}, {start:.5,duration:.2,text:'first'}, {start:.5,duration:.2,text:'second'}]},
+    PL:{broll:[],music:{file:''}}, PX:10, SEL:null, esc:String, mm:String, tick(){},seek(){},side(){selected.push(context.SEL.i);}});
+  const draw=editor.slice(editor.indexOf('function drawTL()'),editor.indexOf('const esc ='));
+  vm.runInContext(draw,context);context.drawTL();
+  const bars=nodes.inner.children[3].children;
+  assert.equal(bars.length,3);assert.ok(bars.every(b=>b.tag==='button' && b.style.width==='44px'));
+  assert.notEqual(bars[0].style.top,bars[1].style.top);
+  assert.equal(bars[0].style.top,bars[2].style.top,'reuse a row only after the visible hit target ends');
+  assert.equal(nodes.motionLabel.style.height,'98px');
+  for(const bar of bars)bar.onclick({stopPropagation(){}});
+  assert.deepEqual(selected,[1,2,0],'sorting must preserve original motion identity');
+}
 (async () => {
   let {nodes, calls} = phrase();
   nodes.pl.value = 'normal keyword'; nodes.pp.value = '';

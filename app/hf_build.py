@@ -282,10 +282,10 @@ def _build(path: str) -> Path:
         els.append(f'<img id="{i}" class="clip" src="{_local(out, e["file"])}" data-start="{e["at"]:.3f}" data-duration="{e["dur"]:.3f}" '
                    f'data-track-index="7" style="position:absolute;left:{ex}px;top:{ey}px;width:{es}px;height:{es}px">')
         anim.append(f'tl.fromTo("#{i}",{{scale:0,opacity:0}},{{scale:1,opacity:1,duration:0.18,ease:"back.out(2.5)"}},{e["at"]:.3f});')
-    for motion in t.get("motions", []):
+    for index, motion in enumerate(t.get("motions", [])):
         els.append(f'<video id="{nid("o")}" class="clip" src="{_motion(out, motion["file"])}" muted playsinline '
                    f'data-start="{motion["start"]:.3f}" data-duration="{motion["duration"]:.3f}" data-media-start="0" '
-                   f'data-track-index="8" style="position:absolute;top:0;left:50%;height:100%;width:auto;transform:translateX(-50%)"></video>')
+                   f'data-track-index="{8 + index}" style="position:absolute;top:0;left:50%;height:100%;width:auto;transform:translateX(-50%)"></video>')
     # sound: quiet steady music bed, pops on punches, whooshes as b-roll comes in
     mu = t["music"]
     if mu.get("file"):

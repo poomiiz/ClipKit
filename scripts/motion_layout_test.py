@@ -129,6 +129,44 @@ class MotionLayoutTests(unittest.TestCase):
             self.check({**motion,'ownership':{**motion['ownership'],'caption_policy':'replace'}},[caption])
         self.check({**motion,'ownership':{**motion['ownership'],'caption_policy':'hide'}},[caption])
 
+    def test_simultaneous_motion_checks_active_footprints_and_touching_edges(self):
+        own={'mode':'decorate','targets':[],'caption_policy':'preserve'}
+        first={'start':0,'duration':3,'bounds':[10,10,30,30],'ownership':own}
+        second={**first,'bounds':[30,10,50,30]}
+        self.check(first,[],others=[second])
+        with self.assertRaisesRegex(motion_plan.VideoEditError,'overlap'):
+            self.check(first,[],others=[{**second,'bounds':[29,10,50,30]}])
+        parts=[{'start':0,'end':1,'bbox':[10,10,30,30]}, {'start':1,'end':3,'bbox':[70,70,90,90]}]
+        dynamic={**first,'bounds':[10,10,90,90],'params':{'subtitle_events':parts}}
+        self.check({**second,'start':1,'duration':2},[],others=[dynamic])
+        for params in (None, [], {'subtitle_events':{}}, {'subtitle_events':True}):
+            with self.subTest(params=params),self.assertRaisesRegex(motion_plan.VideoEditError,'array'):
+                self.check(first,[],others=[{**dynamic,'params':params}])
+        with self.assertRaisesRegex(motion_plan.VideoEditError,'invalid measured'):
+            self.check(first,[],others=[{**dynamic,'params':{'subtitle_events':[{'start':0,'end':1,'bbox':None}]}}])
+
+    def test_simultaneous_motions_cannot_claim_the_same_role_even_when_boxes_differ(self):
+        own={'mode':'replace','targets':[{'cue_id':'c','roles':['normal']}],'caption_policy':'preserve'}
+        first={'start':0,'duration':3,'bounds':[10,10,30,30],'ownership':own}
+        second={**first,'bounds':[70,70,90,90]}
+        with self.assertRaisesRegex(motion_plan.VideoEditError,'same subtitle role'):
+            motion_plan.check_overlap(first,second)
+        motion_plan.check_overlap(first,{**second,'ownership':{**own,'targets':[{'cue_id':'other','roles':['normal']}]}})
+        with self.assertRaisesRegex(motion_plan.VideoEditError,'legacy'):
+            motion_plan.check_overlap(first,{'start':1,'duration':1,'bounds':[70,70,90,90]})
+
+    def test_other_motion_hides_only_its_explicit_owned_text_interval(self):
+        event={'start':0,'end':3,'bbox':[10,10,30,30],'role':'normal','cue_id':'c','text':'text'}
+        candidate={'start':0,'duration':3,'bounds':[10,10,30,30],
+                   'ownership':{'mode':'decorate','targets':[],'caption_policy':'preserve'}}
+        other={'start':0,'duration':3,'bounds':[70,70,90,90],
+               'ownership':{'mode':'replace','targets':[{'cue_id':'c','roles':['normal']}],'caption_policy':'preserve'}}
+        self.check(candidate,[event],others=[other])
+        with self.assertRaisesRegex(motion_plan.VideoEditError,'normal'):
+            self.check(candidate,[event],others=[{**other,'duration':1}])
+        with self.assertRaisesRegex(motion_plan.VideoEditError,'normal'):
+            self.check(candidate,[event],others=[{**other,'ownership':{**other['ownership'],'targets':[{'cue_id':'other','roles':['normal']}]}}])
+
 
 if __name__=='__main__':
     unittest.main()

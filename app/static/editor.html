@@ -52,6 +52,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .blk.br{background:#11463a;color:#c9f7e6;display:flex;gap:4px;align-items:center}
 .blk.br img{height:100%;border-radius:4px}
 .blk.mo{background:#4a2a6e;color:#eadcff}
+.lane.motion .blk{height:44px;bottom:auto;min-width:44px}
 .blk.mu{background:#3a3220;color:#f3e1b5;cursor:default}
 .blk.sel{border-color:#fff;box-shadow:0 0 0 2px var(--acc)}
 .blk .rz{position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize;background:rgba(255,255,255,.15)}
@@ -118,7 +119,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
       <button id="bAddBr" class="media">+ ภาพประกอบตรงเส้นแดง</button>
       <span class="hint">คลิกชิ้นไหนเพื่อแก้ทางขวา · ลากภาพประกอบเพื่อเลื่อน ลากขอบขวาเพื่อยืด · Space เล่น/หยุด · Delete ลบ</span></div>
     <div class="tracks" id="tracks">
-      <div><div style="height:18px"></div><div class="lab">ข้อความ</div><div class="lab media">ภาพประกอบ</div><div class="lab">ข้อความใหญ่</div><div class="lab media">เพลง</div></div>
+      <div><div style="height:18px"></div><div class="lab">ข้อความ</div><div class="lab media">ภาพประกอบ</div><div class="lab" id="motionLabel">ข้อความใหญ่</div><div class="lab media">เพลง</div></div>
       <div class="scroll" id="scroll"><div class="inner" id="inner" translate="no"></div></div>
     </div>
   </div>
@@ -193,11 +194,16 @@ function drawTL() {
   const lSub = lane(), lBr = lane(), lMo = lane(), lMu = lane();
   lBr.classList.add('media'); lMu.classList.add('media');
   const blk = (laneEl, cls, a, b, html, sel) => {
-    const d = document.createElement('div');
+    const d = document.createElement(cls === 'mo' ? 'button' : 'div');
     d.className = 'blk ' + cls + (SEL && SEL.key === sel.key ? ' sel' : '');
     d.style.left = a * PX + 'px'; d.style.width = Math.max(6, (b - a) * PX - 2) + 'px';
     d.innerHTML = html;
-    d.onclick = e => { if (d._moved) return; SEL = sel; seek(a); drawTL(); side(); e.stopPropagation(); };
+    d.onclick = e => {
+      if (d._moved) return;
+      const focused = document.activeElement === d;
+      SEL = sel; seek(a); drawTL(); side(); e.stopPropagation();
+      if (focused && cls === 'mo') inner.querySelector('.blk.mo.sel')?.focus({preventScroll:true});
+    };
     laneEl.appendChild(d);
     return d;
   };
@@ -210,7 +216,18 @@ function drawTL() {
     const d = blk(lBr, 'br', b.start, b.start + b.dur, `${b.thumb ? `<img src="${b.thumb}">` : '🎞️'}<span>${esc(b.query || 'ไฟล์ของเรา')}</span><div class="rz"></div>`, {type: 'broll', key: 'b' + i, i});
     dragBlock(d, b);
   });
-  T.motions.forEach((m, i) => blk(lMo, 'mo', m.start, m.start + m.duration, '⚡ ' + esc(m.text || ''), {type: 'motion', key: 'm' + i, i}));
+  lMo.classList.add('motion');
+  const motionEnds = [];
+  T.motions.map((m, i) => ({m, i})).sort((a, b) => a.m.start - b.m.start || a.i - b.i).forEach(({m, i}) => {
+    const left = m.start * PX, width = Math.max(44, m.duration * PX - 2);
+    let row = motionEnds.findIndex(end => end <= left);
+    if (row < 0) row = motionEnds.length;
+    motionEnds[row] = left + width + 2;
+    const d = blk(lMo, 'mo', m.start, m.start + m.duration, '⚡ ' + esc(m.text || ''), {type: 'motion', key: 'm' + i, i});
+    d.style.top = (3 + row * 48) + 'px';
+    d.style.width = width + 'px';
+  });
+  lMo.style.height = $('motionLabel').style.height = (Math.max(1, motionEnds.length) * 48 + 2) + 'px';
   if (PL.music.file) blk(lMu, 'mu', 0, dur, '🎵 ' + esc(PL.music.file.split(/[\\/]/).pop()) + ` · ${Math.round(PL.music.volume * 100)}%`, {type: 'music', key: 'mu'});
   else blk(lMu, 'mu', 0, Math.min(dur, 6), '🎵 ไม่มีเพลง · คลิกเพื่อเลือก', {type: 'music', key: 'mu'});
   const ph = document.createElement('div'); ph.className = 'ph'; ph.id = 'ph'; inner.appendChild(ph);
@@ -859,6 +876,7 @@ $('bCapcut').onclick = () => run($('bCapcut'), 'กำลังจัดซั�
 $('bCover').onclick = () => { SEL = null; drawTL(); side(); $('adv').open = true; $('coverH').scrollIntoView({behavior: 'smooth'}); };
 document.addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input,select,textarea')) return;
+  if (e.key === ' ' && e.target.closest?.('button')) return;
   if (e.key === ' ') { e.preventDefault(); const v = $('v'); v.paused ? v.play() : v.pause(); }
   if (e.key === 'Delete') del();
   if (SEL && SEL.type === 'broll' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {

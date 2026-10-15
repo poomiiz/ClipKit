@@ -153,6 +153,37 @@ class MotionHandoffTests(unittest.TestCase):
                                              "-frames:v", "1", "-vf", "alphaextract", "-f", "rawvideo", "-pix_fmt", "gray", "-"])
             self.assertEqual((min(alpha), max(alpha)), (0, 255))
 
+    def test_concurrent_verified_media_pass_spatial_gate_and_keep_independent_export_tracks(self):
+        own={'mode':'decorate','targets':[],'caption_policy':'preserve'}
+        with tempfile.TemporaryDirectory() as folder:
+            base=Path(folder);motions=[]
+            for index,bounds in enumerate(([100,300,400,500],[600,900,900,1100])):
+                file=base/f'motion{index}.mov';file.write_bytes(b'owned synthetic probe fixture')
+                motions.append({'start':1,'duration':1,'file':str(file),'bounds':bounds,'ownership':own,'recipe':{'version':1}})
+            with patch.object(render,'probe',return_value={'duration':1}):
+                render.check_motions(motions,3)
+                with self.assertRaisesRegex(render.VideoEditError,'overlap'):
+                    render.check_motions([motions[0],{**motions[1],'bounds':motions[0]['bounds']}],3)
+                with self.assertRaisesRegex(render.VideoEditError,'verified recipes'):
+                    render.check_motions([motions[0],{k:v for k,v in motions[1].items() if k!='recipe'}],3)
+            # Serialization fixture only; full stored-recipe verification has separate regressions.
+            for motion in motions:
+                motion.pop('recipe')
+            timeline=self.timeline(motions[0]);timeline['motions']=motions;timeline['phrases']=[]
+            with patch.object(render,'render_draft',return_value=timeline),patch.object(hf_build,'_proxy',return_value='fixture.mp4'),patch.object(hf_build,'_motion',side_effect=lambda out,file:Path(file).name):
+                page=hf_build.build(folder).read_text(encoding='utf-8')
+            self.assertEqual(re.findall(r'<video[^>]*data-track-index="(8|9)"[^>]*>',page),['8','9'])
+            harness=CapCutFontTests();harness.setUp()
+            try:
+                with patch.object(render.video_edit,'probe',return_value={'duration':1,'width':1080,'height':1920}):
+                    _,(output,_)=harness.run_build(base,timeline=timeline)
+                draft=json.loads((output/'draft_content.json').read_text(encoding='utf-8'))
+                tracks=[t for t in draft['tracks'] if t['type']=='video' and t['segments'] and t['segments'][0].get('render_index')==2]
+                self.assertEqual(len(tracks),2)
+                self.assertTrue(all(len(t['segments'])==1 and t['segments'][0]['target_timerange']=={'start':1000000,'duration':1000000} for t in tracks))
+            finally:
+                harness.doCleanups()
+
 
 if __name__ == "__main__":
     unittest.main()

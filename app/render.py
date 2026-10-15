@@ -48,17 +48,22 @@ def check_motions(motions: list[dict], duration: float) -> None:
                                              or not math.isfinite(motion[k]) for k in ("start", "duration")):
             raise VideoEditError("motion start and duration must be finite seconds")
         motion_plan.ownership(motion)
-    previous = 0.0
-    for motion in sorted(motions, key=lambda m: m["start"]):
+    previous = []
+    for motion in motions:
         a, b = motion["start"], motion["start"] + motion["duration"]
-        if a < 0 or b <= a or b > duration + 0.05 or a < previous - 0.001:
-            raise VideoEditError("motion is outside the timeline or overlaps another motion; adjust it before export")
+        if a < 0 or b <= a or b > duration + 0.05:
+            raise VideoEditError("motion is outside the timeline; adjust it before export")
+        for other in previous:
+            if other["start"] < b and a < other["start"] + other["duration"]:
+                if any(not isinstance(m.get("recipe"), dict) or m["recipe"].get("version") != 1 for m in (motion, other)):
+                    raise VideoEditError("overlapping motion needs verified recipes; recreate legacy media")
+                motion_plan.check_overlap(motion, other)
         if not isinstance(motion.get("file"), str) or not Path(motion["file"]).is_file():
             raise VideoEditError("motion file is missing")
         info = probe(motion["file"])
         if motion["duration"] > info["duration"] + 0.05:
             raise VideoEditError("motion duration exceeds its media; adjust it before export")
-        previous = b
+        previous.append(motion)
 CAPCUT_PX = 5.2  # pixels per CapCut font-size unit per 1080 px of the canvas short side (same number the editor preview uses)
 FONTS = Path(__file__).resolve().parents[1] / "fonts"
 DEFAULT_FONT = FONTS / "Kanit-Bold.ttf"  # Google Fonts, OFL: shipped with ClipKit so Thai always shapes

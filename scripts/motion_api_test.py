@@ -42,7 +42,7 @@ class MotionApiTests(unittest.TestCase):
 
     def render(self, body):
         plan=motion_plan.prepare_template(body.template,body.params,width=body.width,height=body.height,placement=body.placement)
-        return {"file":str(Path(self.path)/'fixture.mov'),"recipe":plan}
+        return {"file":str(Path(self.path)/'fixture.mov'),"recipe":{**plan,"version":1}}
 
     def req(self, **values):
         return video_editor.OverlayRequest(path=self.path, template="hook-title", start=1.123456,
@@ -191,6 +191,36 @@ class MotionApiTests(unittest.TestCase):
         self.assertEqual(row["params"]["subtitle_events"][0]["start"],0)
         self.assertEqual(render.visible_spans(0,3,[row],role="normal",cue_id="chosen"),[(0,3)])
         self.assertEqual(render.visible_spans(1,3,[row],role="emphasis",cue_id="chosen"),[])
+
+    def test_simultaneous_disjoint_generic_recipes_append_but_collision_never_renders(self):
+        first=self.req(placement={'x':.15,'y':.15,'w':.7,'h':.15})
+        second=self.req(placement={'x':.15,'y':.55,'w':.7,'h':.15})
+        initial=video_editor.draft_overlay_add(first)['overlays'][0]
+        rows=video_editor.draft_overlay_add(second)['overlays']
+        self.assertEqual(len(rows),2);self.assertEqual(rows[0],initial)
+        self.assertEqual(rows[0]['start'],rows[1]['start'])
+        self.assertEqual(self.make.call_count,2)
+        before=self.file.read_bytes()
+        with self.assertRaises(video_editor.HTTPException) as error:
+            video_editor.draft_overlay_add(second)
+        self.assertEqual(error.exception.status_code,409)
+        self.assertEqual(self.make.call_count,2);self.assertEqual(self.file.read_bytes(),before)
+
+    def test_unverified_or_stale_neighbor_refuses_before_concurrent_render(self):
+        first=self.req(placement={'x':.15,'y':.15,'w':.7,'h':.15})
+        second=self.req(placement={'x':.15,'y':.55,'w':.7,'h':.15})
+        initial=video_editor.draft_overlay_add(first)['overlays'][0]
+        for stale in (False,True):
+            row={**initial,'recipe':dict(initial['recipe'])}
+            if stale:
+                self.timeline['motion_recipe_errors']=[{'placement_id':row['placement_id'],'error':'changed media'}]
+            else:
+                row['recipe'].pop('version')
+            self.file.write_text(json.dumps([row]),encoding='utf-8');before=self.file.read_bytes()
+            with self.assertRaises(video_editor.HTTPException) as error:
+                video_editor.draft_overlay_add(second)
+            self.assertEqual(error.exception.status_code,409)
+            self.assertEqual(self.file.read_bytes(),before);self.assertEqual(self.make.call_count,1)
 
 
 if __name__ == "__main__":
