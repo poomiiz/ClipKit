@@ -924,6 +924,14 @@ def _ass_text(text: str) -> str:
     return unbreak(text).replace("\\", "\\\u2060").replace("{", "\\{").replace("}", "\\}")
 
 
+def subtitle_ass_header(width: int, height: int, family: str) -> str:
+    # libass defaults kerning off; Pillow/Raqm and browser shaping enable it.
+    return (f"[Script Info]\nScriptType: v4.00+\nPlayResX: {width}\nPlayResY: {height}\nWrapStyle: 2\nKerning: yes\n\n"
+            "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, "
+            f"Shadow, Alignment, Encoding\nStyle: S,{family},60,&H00FFFFFF,&H00000000,1,0,0,5,1\n\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+
 def subtitle_ass(event: dict) -> str:
     extra = {"fade": "\\fad(80,0)", "pop": "\\fscx130\\fscy130\\t(0,140,\\fscx100\\fscy100)"}.get(event["effect"], "")
     metrics = event if "font_cell_scale" in event else font_cell_metrics(Path(event["font_file"]))
@@ -1279,12 +1287,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             graph += piece
         if events:
             fam0 = family or _font(None)[0]
-            atomic.write_text((Path(tmp) / "subs.ass"), 
-                "[Script Info]\nScriptType: v4.00+\nPlayResX: %d\nPlayResY: %d\nWrapStyle: 2\n\n"
-                "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, "
-                "Shadow, Alignment, Encoding\nStyle: S,%s,60,&H00FFFFFF,&H00000000,1,0,0,5,1\n\n"
-                "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n%s\n"
-                % (W, H, fam0, "\n".join(events)), encoding="utf-8")
+            atomic.write_text(Path(tmp) / "subs.ass", subtitle_ass_header(W, H, fam0) + "\n".join(events) + "\n", encoding="utf-8")
             # relative names + cwd=tmp: no Windows drive-letter escaping inside the filter string;
             # libass reads one fonts folder, so the project's font files and Kanit are copied into it
             import shutil

@@ -242,10 +242,8 @@ class SubtitleExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             work=Path(folder);(work/"fonts").mkdir()
             shutil.copyfile(render.DEFAULT_FONT,work/"fonts"/render.DEFAULT_FONT.name)
-            header=("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1080\nWrapStyle: 2\n\n"
-                "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, Shadow, Alignment, Encoding\n"
-                "Style: S,Kanit,60,&H00FFFFFF,&H00000000,1,0,0,5,1\n\n[Events]\n"
-                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+            header=render.subtitle_ass_header(1080, 1080, event['font_family'])
+            self.assertIn('Kerning: yes\n', header)
             (work/"subtitles.ass").write_text(header+render.subtitle_ass(event)+"\n",encoding="utf-8")
             result=subprocess.run([render.FFMPEG,"-v","error","-y","-f","lavfi","-i","color=s=1080x1080:d=0.1",
                 "-vf","ass=subtitles.ass:fontsdir=fonts","-frames:v","1","-threads","1","-filter_threads","1","frame.png"],
