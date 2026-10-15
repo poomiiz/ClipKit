@@ -192,7 +192,7 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
             value = meta.get(key)
             if isinstance(value, str) and Path(value).is_absolute():
                 try:
-                    relative = Path(value).relative_to(src)
+                    relative = Path(value).resolve().relative_to(src.resolve())
                 except ValueError:
                     continue
                 meta[key] = (final / relative).as_posix()

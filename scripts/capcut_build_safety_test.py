@@ -113,6 +113,20 @@ class NativeBuildSafetyTests(unittest.TestCase):
         self.assertEqual(snapshot(output), before)
         self.assert_preserved()
 
+    def test_metadata_alias_path_is_resolved_before_relocating_delivery(self):
+        spacer = self.base / "spacer"
+        spacer.mkdir()
+        alias = spacer / ".." / self.project.name
+        file = self.project / "draft_meta_info.json"
+        meta = json.loads(file.read_text(encoding="utf-8"))
+        meta["draft_json_file"] = (alias / "draft_content.json").as_posix()
+        file.write_text(json.dumps(meta), encoding="utf-8")
+        before = snapshot(self.project)
+        output, _ = build.build(str(self.project))
+        actual = json.loads((output / "draft_meta_info.json").read_text(encoding="utf-8"))
+        self.assertEqual(actual["draft_json_file"], (output / "draft_content.json").as_posix())
+        self.assertEqual(snapshot(self.project), before)
+
     def test_capcut_running_is_refused_before_any_writes(self):
         before = snapshot(self.base)
         self.process.return_value = True
