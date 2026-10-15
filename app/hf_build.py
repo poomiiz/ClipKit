@@ -9,12 +9,50 @@ from __future__ import annotations
 import atomic
 import html
 import json
+import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import render
 import video_edit
+
+
+class BuildBusy(video_edit.VideoEditError):
+    pass
+
+
+@contextmanager
+def build_lock(path: str):
+    """One OS-held reservation across app and CLI processes; closing releases it after a crash."""
+    import hashlib
+    import jobstore
+    root = jobstore.STATE / "render-locks"
+    root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(os.path.normcase(str(Path(path).resolve())).encode()).hexdigest()
+    with (root / f"{key}.lock").open("a+b") as lock:
+        if not lock.tell():
+            lock.write(b"\0")
+            lock.flush()
+        lock.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise BuildBusy("โปรเจกต์หรือไฟล์ส่งออกนี้กำลังสร้างอยู่ · รอให้งานเดิมเสร็จ") from exc
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def _local(out: Path, path: str, name: str | None = None) -> str:
@@ -35,15 +73,13 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
     live player shows it: made once per cut list and skin strength."""
     import hashlib
     import subprocess
-    key = hashlib.md5(json.dumps([[(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, render.EDGE_FADE, 2]).encode()).hexdigest()[:10]
+    import tempfile
+    source = Path(src)
+    identity = [str(source.resolve()), source.stat().st_size, source.stat().st_mtime_ns]
+    key = hashlib.md5(json.dumps([identity, [(s["media_start"], s["dur"]) for s in segs], round(skin, 2), render.SKIN_FILTER, render.EDGE_FADE, 3]).encode()).hexdigest()[:10]
     dst = out / "media" / f"footage_{key}.mp4"
     dst.parent.mkdir(exist_ok=True)
     if not dst.is_file():
-        for old in dst.parent.glob("footage_*.mp4"):
-            try:
-                old.unlink()
-            except OSError:  # still open in the editor's player: removed on a later build
-                pass
         a, b = min(s["media_start"] for s in segs), max(s["media_start"] + s["dur"] for s in segs)
         # size down once, before the cuts: trimming 36 pieces off 4K frames took 336 s, this order 78 s (same file)
         size = "scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))'"
@@ -53,12 +89,19 @@ def _proxy(out: Path, src: str, segs: list[dict], skin: float = 0) -> str:
                         for i, s in enumerate(segs))
         graph = parts + "".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[cv][ca];[cv]" + \
             (render.SKIN_FILTER.format(skin=skin) if skin > 0 else "null") + "[sv]"  # smoothing after the size-down: 4x less work
-        r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
-                            "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
-                            "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-                            str(dst)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
-        if r.returncode or not dst.is_file():
-            raise render.VideoEditError("could not prepare the footage: " + r.stderr[-300:])
+        fd, name = tempfile.mkstemp(prefix="footage_", suffix=".tmp.mp4", dir=dst.parent)
+        os.close(fd)
+        temp = Path(name)
+        try:
+            r = subprocess.run([render.FFMPEG, "-v", "error", "-y", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", src,
+                                "-filter_complex", graph, "-map", "[sv]", "-map", "[ca]", "-r", "30", "-c:v", "libx264",
+                                "-preset", "veryfast", "-crf", "18", "-g", "15", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                                str(temp)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
+            if r.returncode or not temp.stat().st_size:
+                raise render.VideoEditError("could not prepare the footage: " + r.stderr[-300:])
+            temp.replace(dst)
+        finally:
+            temp.unlink(missing_ok=True)
     return "media/" + dst.name
 
 
@@ -86,6 +129,11 @@ def _css_color(rgb: list[float]) -> str:
 
 
 def build(path: str) -> Path:
+    with build_lock(path):
+        return _build(path)
+
+
+def _build(path: str) -> Path:
     t = render.render_draft(path, "", dry=True)
     W, H, D = t["width"], t["height"], t["duration"]
     st = t["style"] or {}

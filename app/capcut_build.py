@@ -3,8 +3,8 @@ open it in CapCut and keep editing: cut footage (zoom cuts as 108 % clips, skin 
 subtitle lines on their own tracks, the title, the small English caption, b-roll on an overlay track, a click
 on every coloured word, and the music bed.
 
-Built from the same timeline as the MP4 export (render.render_draft dry run) into a copy of the project,
-"<project> · CapCut", so ClipKit's own project stays as it is. Styles come from app/capcut_templates.json
+Built from the same timeline as the MP4 export (render.render_draft dry run) into a new revision of the project,
+"<project> · CapCut <revision>", so existing projects stay as they are. Styles come from app/capcut_templates.json
 (scripts/capcut/make_templates.py, pulled from hand-made CapCut projects). Colour correction is left to CapCut.
 """
 from __future__ import annotations
@@ -14,11 +14,14 @@ import host_platform
 import copy
 import json
 import shutil
+import tempfile
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
 
 import capcut_edit
+import draft_quality
 import render
 import video_edit
 from video_edit import US, VideoEditError
@@ -114,10 +117,30 @@ def _track(draft: dict, kind: str, segs: list[dict], render_index: int) -> None:
 
 
 _T: dict[str, Any] = {}
+_BUILD_LOCK = threading.Lock()  # _T is shared by the native text writers.
 
 
 def build(path: str) -> tuple[Path, list[str]]:
     """Returns the new project folder and what this machine lacks (shown to the person, never hidden)."""
+    with _BUILD_LOCK:
+        if host_platform.capcut_running():
+            raise VideoEditError("Close CapCut before building a native project")
+        src = Path(path).resolve()
+        capcut_edit._load(src)  # A changed source seal must not be lost when copying sidecars are excluded.
+        final = src.with_name(src.name + " · CapCut " + uuid.uuid4().hex)
+        with tempfile.TemporaryDirectory(prefix=".capcut-build-", dir=src.parent) as staging:
+            dst = Path(staging) / "draft"
+            warnings = _build(str(src), dst, final)
+            draft_quality.check(str(dst))
+            if host_platform.capcut_running():
+                raise VideoEditError("Close CapCut before publishing the native project")
+            if final.exists() or final.is_symlink():
+                raise VideoEditError(f"native project already exists: {final}")
+            dst.rename(final)
+        return final, warnings
+
+
+def _build(path: str, dst: Path, final: Path) -> list[str]:
     if not TEMPLATES.is_file():
         raise VideoEditError("app/capcut_templates.json is missing - run scripts/capcut/make_templates.py")
     probe = json.loads(_machine_paths(TEMPLATES.read_text(encoding="utf-8")))
@@ -156,18 +179,25 @@ def build(path: str) -> tuple[Path, list[str]]:
             mat["content"] = json.dumps(body, ensure_ascii=False)
         family, _ = render._font(body["styles"][0]["font"]["path"])
         mat.update(font_name=family, font_title=family)
+    _T.clear()
     _T.update(probe)
     t = render.render_draft(path, "", dry=True)
     st = t["style"] or {}
     src = Path(path)
-    dst = src.with_name(src.name + " · CapCut")
-    if dst.exists():  # a new build replaces the old copy
-        shutil.rmtree(dst)
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("clipkit*", "*.bak*", "draft_content.before_*"))
     meta_f = dst / "draft_meta_info.json"
     if meta_f.is_file():
         meta = json.loads(meta_f.read_text(encoding="utf-8"))
-        meta.update(draft_name=dst.name, draft_fold_path=dst.as_posix(), draft_id=_id())
+        for key in ("draft_json_file", "draft_cover"):
+            value = meta.get(key)
+            if isinstance(value, str) and Path(value).is_absolute():
+                try:
+                    relative = Path(value).relative_to(src)
+                except ValueError:
+                    continue
+                meta[key] = (final / relative).as_posix()
+        meta.update(draft_name=final.name, draft_fold_path=final.as_posix(),
+                    draft_root_path=final.parent.as_posix(), draft_id=_id())
         atomic.write_text(meta_f, json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     capcut_edit.fresh_ids(dst)  # its own timeline id: never the same as the project it was copied from
     draft = capcut_edit._load(dst)
@@ -335,4 +365,4 @@ def build(path: str) -> tuple[Path, list[str]]:
     # the AI version as handed over, so editdata.py can compare it with what the person approves
     # (approved.json: "ai_version": "clipkit_ai_version.json")
     shutil.copyfile(dst / "draft_content.json", dst / "clipkit_ai_version.json")
-    return dst, warnings
+    return warnings

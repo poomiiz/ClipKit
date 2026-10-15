@@ -1547,6 +1547,8 @@ def draft_hf_build(req: DraftPath) -> dict[str, Any]:
     import hf_build
     try:
         hf_build.build(req.path)
+    except hf_build.BuildBusy as exc:
+        raise HTTPException(409, str(exc)) from exc
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"url": f"/api/video/hfp/{_hf_key(req.path)}/index.html"}
@@ -1567,32 +1569,77 @@ def hf_page(key: str, file: str) -> FileResponse:
 @router.post("/draft/hf-export")
 def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
     """MP4 from the same composition the player shows (hyperframes render)."""
+    import math
     import shutil
+    import tempfile
     import time as _t
     import hf_build
     import kit_settings
+    import render
+    import render_process
     cfg = kit_settings._read_config()
     out = cfg.get("output_dir") or cfg.get("work_root")
     if not out:
         raise HTTPException(400, "ยังไม่ได้ตั้งที่เก็บไฟล์ส่งออก — ไปที่ ตั้งค่า > โฟลเดอร์")
-    page = hf_build.build(req.path)
+    npx = shutil.which("npx")
+    if not npx:
+        raise HTTPException(400, "ไม่พบ npx · ตรวจการติดตั้ง Node.js ก่อนส่งออก")
     target = Path(out) / "exports" / f"{Path(req.path).name}{' - ตัวอย่าง' if req.preview else ''}.mp4"
     target.parent.mkdir(parents=True, exist_ok=True)
-    npx = shutil.which("npx")
     t0 = _t.time()
-    args = [npx, "--yes", f"hyperframes@{kit_settings.HF_VERSION}", "render", "--quiet", "--sdr", "--workers", "4", "-o", str(target)]  # SDR: social clips; HDR pre-extraction needs ~20 GB temp
-    if req.preview:
-        args += ["--quality", "draft"]
-    tmp = Path(out) / "exports" / ".render-tmp"  # frames go next to the exports, not onto a nearly full C: drive
-    tmp.mkdir(parents=True, exist_ok=True)
-    env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1", "TEMP": str(tmp), "TMP": str(tmp)}
-    if host_platform.is_macos():
-        args = host_platform.hyperframes_command(args, page.parent, env)
-    r = subprocess.run(args, cwd=str(page.parent), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env=env, timeout=3600)
-    shutil.rmtree(tmp, ignore_errors=True)
-    if r.returncode != 0 or not target.is_file():
-        raise HTTPException(500, "render failed: " + (r.stderr or r.stdout).strip()[-800:])
-    import render
-    render.normalize_loudness(target)
-    return {"file": str(target), "seconds": round(_t.time() - t0, 1)}
+    cleanup_warning = ""
+    try:
+        with hf_build.build_lock(req.path), hf_build.build_lock(str(target)):
+            expected = capcut_edit._load(Path(req.path))
+            page = hf_build._build(req.path)  # reservation stays held while HyperFrames reads its composition
+            stage = Path(tempfile.mkdtemp(prefix=".render-", dir=target.parent))
+            staged = stage / "output.mp4"
+            tmp = stage / "frames"
+            try:
+                tmp.mkdir()
+                args = [npx, "--yes", f"hyperframes@{kit_settings.HF_VERSION}", "render", "--quiet", "--sdr", "--workers", "4", "-o", str(staged)]
+                if req.preview:
+                    args += ["--quality", "draft"]
+                env = {**__import__("os").environ, "HYPERFRAMES_SKIP_SKILLS": "1", "TEMP": str(tmp), "TMP": str(tmp)}
+                if host_platform.is_macos():
+                    args = host_platform.hyperframes_command(args, page.parent, env)
+                result = render_process.run(args, cwd=str(page.parent), capture_output=True, text=True, encoding="utf-8",
+                                        errors="replace", env=env, timeout=3600)
+                atomic.write_text(stage / "render.log", (result.stdout or "") + "\n" + (result.stderr or ""))
+                if result.returncode or not staged.is_file() or not staged.stat().st_size:
+                    raise VideoEditError("render failed: " + (result.stderr or result.stdout).strip()[-800:])
+                render.normalize_loudness(staged)
+                info = video_edit.probe(str(staged))
+                if not math.isfinite(info["duration"]) or info["duration"] <= 0 or not info.get("audio_codec") or min(info["width"], info["height"]) <= 0:
+                    raise VideoEditError("ไฟล์ส่งออกไม่มีภาพ เสียง หรือความยาวที่ถูกต้อง")
+                canvas = expected["canvas_config"]
+                wrong_size = (info["width"], info["height"]) != (canvas["width"], canvas["height"])
+                if req.preview:
+                    wrong_size = abs(info["width"] / info["height"] - canvas["width"] / canvas["height"]) > .005
+                if wrong_size or abs(info["duration"] - expected["duration"] / video_edit.US) > .1:
+                    raise VideoEditError("ขนาดหรือความยาวไฟล์ส่งออกไม่ตรงกับโปรเจกต์")
+                decoded = subprocess.run([render.FFMPEG, "-v", "error", "-xerror", "-i", str(staged),
+                                          "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"],
+                                         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
+                atomic.write_text(stage / "decode.log", (decoded.stdout or "") + "\n" + (decoded.stderr or ""))
+                if decoded.returncode:
+                    raise VideoEditError("ตรวจไฟล์ส่งออกไม่ผ่าน: " + decoded.stderr[-800:])
+                staged.replace(target)
+            except Exception as exc:
+                details = str(exc)
+                if isinstance(exc, subprocess.TimeoutExpired):
+                    details += "\n" + str(exc.stdout or "") + "\n" + str(exc.stderr or "")
+                try:
+                    atomic.write_text(stage / "error.log", details)
+                except OSError:
+                    pass  # A full disk must not hide the original failure or the preserved final output.
+                raise HTTPException(500, f"ส่งออกไม่สำเร็จ · เก็บหลักฐานที่ {stage}: {exc}") from exc
+            try:
+                shutil.rmtree(stage)
+            except OSError as exc:
+                cleanup_warning = f"ไฟล์ส่งออกสำเร็จ แต่ล้างไฟล์พักไม่ได้: {stage}: {exc}"
+    except hf_build.BuildBusy as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except VideoEditError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"file": str(target), "seconds": round(_t.time() - t0, 1), **({"warning": cleanup_warning} if cleanup_warning else {})}

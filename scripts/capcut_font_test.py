@@ -53,19 +53,26 @@ class CapCutFontTests(unittest.TestCase):
         self.addCleanup(lambda: build._T.update(self.original_templates))
         self.addCleanup(build._T.clear)
 
-    def make_project(self, base):
+    def make_project(self, base, duration):
         project = base / "test project"
         project.mkdir()
-        draft = {"id": "test", "duration": 1_000_000,
-                 "materials": {"videos": [{"id": "video"}], "texts": []},
+        source = base / "source.mp4"
+        source.touch()
+        span = {"start": 0, "duration": round(duration * build.US)}
+        draft = {"id": "test", "duration": span["duration"],
+                 "canvas_config": {"width": 1080, "height": 1920},
+                 "materials": {"videos": [{"id": "video", "path": str(source)}], "texts": []},
                  "tracks": [{"type": "video", "segments": [{"material_id": "video",
-                             "target_timerange": {"start": 0, "duration": 1_000_000},
+                             "target_timerange": span, "source_timerange": span,
                              "clip": {"scale": {"x": 1.0, "y": 1.0}}, "extra_material_refs": []}]}]}
         (project / "draft_content.json").write_text(json.dumps(draft), encoding="utf-8")
         return project
 
     def run_build(self, base, *, templates=None, installed=False, default_font=None, timeline=None):
-        project = self.make_project(base)
+        timeline = timeline or {"style": {}, "zoom": [], "width": 1080, "height": 1920, "look": "plain",
+                    "phrases": [], "hook": [], "broll": [], "sfx": {"on": False}, "music": {}}
+        duration = float(timeline.get("duration", 1.0))
+        project = self.make_project(base, duration)
         resources, fonts, data = base / "resources", base / "fonts", base / "user data"
         for folder in (resources, fonts, data):
             folder.mkdir()
@@ -80,9 +87,13 @@ class CapCutFontTests(unittest.TestCase):
                 shutil.copyfile(build.render.DEFAULT_FONT, target)
         config = {"fonts_dir": str(fonts), "capcut_resources": str(resources),
                   "capcut_user_data": str(data)}
-        timeline = timeline or {"style": {}, "zoom": [], "width": 1080, "height": 1920, "look": "plain",
-                    "phrases": [], "hook": [], "broll": [], "sfx": {"on": False}, "music": {}}
+        def fixture_probe(file):
+            if Path(file).resolve() == (base / "source.mp4").resolve():
+                return {"duration": duration}
+            return build.video_edit.probe(file)
         with ExitStack() as stack:
+            stack.enter_context(patch.object(build.host_platform, "capcut_running", return_value=False))
+            stack.enter_context(patch.object(build.draft_quality, "probe", side_effect=fixture_probe))
             stack.enter_context(patch.object(build.host_platform, "is_macos", return_value=True))
             stack.enter_context(patch.object(build.capcut_edit.kitconfig, "_load", return_value=config))
             # No platform font scan is needed: test real fixture font files and public template resolution.
@@ -176,7 +187,7 @@ class CapCutFontTests(unittest.TestCase):
             with self.assertRaisesRegex(build.VideoEditError, "font file missing"):
                 self.run_build(base, default_font=base / "missing Kanit.ttf")
             self.assertTrue((base / "test project" / "draft_content.json").is_file())
-            self.assertFalse((base / "test project · CapCut").exists())
+            self.assertFalse(any(base.glob("test project · CapCut*")))
 
     def test_invalid_font_path_fails_explicitly_before_copying_project(self):
         templates = json.loads(build.TEMPLATES.read_text(encoding="utf-8"))
@@ -185,7 +196,7 @@ class CapCutFontTests(unittest.TestCase):
             base = Path(folder)
             with self.assertRaisesRegex(build.VideoEditError, "font path must be a string"):
                 self.run_build(base, templates=templates)
-            self.assertFalse((base / "test project · CapCut").exists())
+            self.assertFalse(any(base.glob("test project · CapCut*")))
 
 
 if __name__ == "__main__":
