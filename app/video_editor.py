@@ -2088,7 +2088,7 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
             import web_ai_identity
             check_export = web_ai_identity.export_check(req.path, target)
             expected = capcut_edit._load(Path(req.path))
-            page = hf_build._build(req.path)  # reservation stays held while HyperFrames reads its composition
+            page = hf_build._build(req.path, final=not req.preview)  # reservation stays held while HyperFrames reads its composition
             stage = Path(tempfile.mkdtemp(prefix=".render-", dir=target.parent))
             staged = stage / "output.mp4"
             tmp = stage / "frames"

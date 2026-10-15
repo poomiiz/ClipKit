@@ -113,6 +113,14 @@ class ExportSafety(unittest.TestCase):
         self.assertFalse(self.stages[-1].exists())
         self.assertEqual(marker.read_text(encoding="utf-8"), "another job")
 
+    def test_preview_and_final_exports_use_the_matching_caption_gate(self):
+        for preview in (False, True):
+            with self.subTest(preview=preview):
+                self.build.reset_mock()
+                self.request.preview = preview
+                editor.draft_hf_export(self.request)
+                self.build.assert_called_once_with(str(self.project), final=not preview)
+
     def test_publish_failure_preserves_final_and_retains_staging(self):
         original = Path.replace
         def replace(source, destination):

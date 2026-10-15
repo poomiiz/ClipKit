@@ -195,7 +195,7 @@ def build(path: str) -> tuple[Path, list[str]]:
 def _build(path: str, dst: Path, final: Path) -> list[str]:
     if not TEMPLATES.is_file():
         raise VideoEditError("app/capcut_templates.json is missing - run scripts/capcut/make_templates.py")
-    t = render.render_draft(path, "", dry=True)
+    t = render.render_draft(path, "", dry=True, final=True)
     render.motion_plan.verify_timeline(path, t)
     probe = json.loads(_machine_paths(TEMPLATES.read_text(encoding="utf-8")))
     warnings: list[str] = []

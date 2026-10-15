@@ -168,10 +168,10 @@ def subtitle_animation(event: dict, identifier: str) -> str:
     return base
 
 
-def _build(path: str) -> Path:
+def _build(path: str, *, final: bool = False) -> Path:
     import web_ai_transaction
     web_ai_transaction.recover("clip", path)
-    t = render.render_draft(path, "", dry=True)
+    t = render.render_draft(path, "", dry=True, final=final)
     render.motion_plan.verify_timeline(path, t)
     t["broll"] = render.insert_playback(path, t["broll"], materialize=True)
     W, H, D = t["width"], t["height"], t["duration"]

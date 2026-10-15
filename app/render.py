@@ -732,7 +732,7 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
             groups[key][1] = max(groups[key][1], p["end"])
         for key, (a, b, source, cue) in groups.items():
             words = source if look.get("caption_lang") == "th" else (captions or {}).get(key)
-            if words:  # A missing translation stays absent; source text is never a fabricated translation.
+            if isinstance(words, str) and words.strip():  # Missing/invalid translations stay absent in repair previews.
                 line("caption", words, look["caption"], a, b, cue)
     return check_pair_events(out, W, H, box=box)
 
@@ -1068,7 +1068,8 @@ def _music(style: dict[str, Any]) -> str | None:
     return str(tracks[0]) if tracks else None
 
 
-def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False) -> dict[str, Any]:
+def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False, *, final: bool = False) -> dict[str, Any]:
+    """Dry plans remain repairable; final=True applies delivery checks to a dry adapter plan."""
     encoder = _video_encoder(preview)
     folder, out = Path(path), Path(out_dir)
     target = out / f"{folder.name}{' - ตัวอย่าง' if preview else ''}.mp4"
@@ -1174,6 +1175,10 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
                 rows.append({"id": segment["id"], "text": json.loads(material["content"]).get("text", ""),
                              "start": start, "end": start + segment["target_timerange"]["duration"] / US})
         phrases = _resolved_pair_cues(rows, said, punches, duration=sum(seg["target_timerange"]["duration"] for seg in segs) / US)
+        quality["caption_errors"] = draft_quality.caption_errors(phrases, pair, held["en"])
+        if quality["caption_errors"] and (final or not dry and not preview):
+            gaps = ", ".join(str(issue["cue_id"]) for issue in quality["caption_errors"])
+            raise VideoEditError(f"required {pair['caption_lang']} caption missing for cue(s): {gaps}")
         subtitle_events = pair_events(phrases, pair, W, H, fam, fdir, captions=held["en"], held=held)
         events.extend(subtitle_ass(event) for event in subtitle_events)
         for p in phrases:

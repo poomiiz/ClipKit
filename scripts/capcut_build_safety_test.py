@@ -86,6 +86,7 @@ class NativeBuildSafetyTests(unittest.TestCase):
     def test_success_publishes_valid_revision_with_final_metadata_and_timeline(self):
         build._T["previous_project_only"] = {"private": "do not reuse"}
         output, warnings = build.build(str(self.project))
+        build.render.render_draft.assert_called_once_with(str(self.project), "", dry=True, final=True)
         self.assertNotEqual(output, self.existing)
         self.assertTrue(output.name.startswith(self.project.name + " · CapCut"))
         self.assertEqual(warnings, [])

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import capcut_edit
+import cue_data
 from video_edit import US, VideoEditError, is_image, probe
 
 
@@ -116,3 +117,21 @@ def check(path: str) -> dict[str, Any]:
         raise
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise VideoEditError(f"invalid draft structure: {exc}") from exc
+
+
+def caption_errors(phrases: list[dict], look: dict, captions: dict) -> list[dict]:
+    """Report required translations by source cue; never fabricate one from source wording."""
+    if not look.get("caption") or look.get("caption_lang") == "th":
+        return []
+    missing = {}
+    for phrase in phrases:
+        key = cue_data.phrase_key(phrase)
+        text = captions.get(key)
+        if isinstance(text, str) and text.strip():
+            continue
+        if key not in missing:
+            missing[key] = {"code": "required_caption_missing", "severity": "error",
+                            "cue_id": phrase.get("cue_id"), "language": look.get("caption_lang"),
+                            "start": phrase["start"], "end": phrase["end"]}
+        missing[key]["end"] = max(missing[key]["end"], phrase["end"])
+    return list(missing.values())
