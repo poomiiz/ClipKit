@@ -300,8 +300,53 @@ def prepare_template(template, params, *, width=None, height=None, placement=Non
 
 def verify_inputs(plan):
     import insert_plan
-    if any(insert_plan.file_digest(path) != plan["hashes"][key] for key, path in plan["inputs"].items()):
+    inputs, hashes = plan.get("inputs"), plan.get("hashes")
+    if (not isinstance(inputs, dict) or not inputs or not isinstance(hashes, dict) or set(inputs) != set(hashes)
+            or any(not isinstance(key, str) or not isinstance(path, str) or not path for key, path in inputs.items())):
+        raise VideoEditError("motion template/font fingerprints ไม่ครบ · สร้าง recipe ใหม่")
+    if any(insert_plan.file_digest(path) != hashes[key] for key, path in inputs.items()):
         raise VideoEditError("motion template or font changed during rendering; prepare the layout again")
+
+
+def verify_timeline(folder, timeline, *, strict=True):
+    """Replan stored recipes against current cues; preview keeps stale items available for repair."""
+    import insert_plan
+    import video_editor
+    from fastapi import HTTPException
+    errors = []
+    for item in timeline.get("motions", []):
+        if "recipe" not in item:
+            continue  # Legacy media stays explicitly unverified; no recipe is invented.
+        try:
+            recipe = item["recipe"]
+            if not isinstance(recipe, dict) or recipe.get("version") != 1:
+                raise VideoEditError("motion recipe ไม่ครบหรือเป็นรุ่นที่ไม่รองรับ")
+            verify_inputs(recipe)
+            media = recipe["media"]
+            if (not isinstance(media, dict) or media.get("alpha_decode") is not True or
+                    insert_plan.file_digest(item["file"]) != media["sha256"]):
+                raise VideoEditError("ไฟล์ motion เปลี่ยนหรือยังไม่ผ่านการตรวจ alpha")
+            request = video_editor.OverlayRequest(path=str(folder), template=item["template"],
+                start=item["start"], end=item["start"] + item["duration"], text=item["text"],
+                cue_id=item.get("cue_id"), placement_id=item["placement_id"],
+                params=None if item["template"] == "sentence-pair" else item["params"],
+                anchor=item["anchor"], ownership=item["ownership"], placement=recipe["placement"], reason=item["reason"])
+            plan = video_editor.prepare_overlay(request, previous=timeline["motions"], timeline=timeline)
+            current = plan["prepared"]
+            if (any(recipe[key] != current[key] for key in
+                    ("template", "canvas", "placement", "bounds", "duration", "inputs", "hashes", "layout_sha256"))
+                    or recipe["params"] != current["source_params"] or item["params"] != recipe["params"]
+                    or item["canvas"] != current["canvas"] or item["bounds"] != current["bounds"]
+                    or item["duration"] != current["duration"] or item["ownership"] != plan["ownership"]
+                    or (media["width"], media["height"], media["duration"]) !=
+                       (current["canvas"]["width"], current["canvas"]["height"], current["duration"])):
+                raise VideoEditError("motion ไม่ตรงข้อความ เวลา หรือขนาดภาพล่าสุด")
+        except (VideoEditError, HTTPException, KeyError, TypeError, ValueError, OSError) as exc:
+            message = str(exc.detail) if isinstance(exc, HTTPException) else str(exc)
+            errors.append({"placement_id": item.get("placement_id"), "error": message})
+    if errors and strict:
+        raise VideoEditError("motion เก่าใช้ส่งออกไม่ได้ · ตรวจและสร้างใหม่: " + errors[0]["error"])
+    return errors
 
 
 def verify_media(file, plan):

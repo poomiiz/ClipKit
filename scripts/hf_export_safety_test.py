@@ -124,6 +124,25 @@ class ExportSafety(unittest.TestCase):
         self.assertEqual(self.target.read_bytes(), b"previous approved video")
         self.assertTrue((self.stages[-1] / "error.log").is_file())
 
+    def test_metadata_change_during_encode_preserves_previous_mp4(self):
+        normalize = self.normalize_file
+        def changed(path):
+            normalize(path)
+            (self.project/'clipkit_style.json').write_text('{"anim":"pair"}')
+        with patch.object(render, 'normalize_loudness', side_effect=changed), self.assertRaises(editor.HTTPException) as error:
+            editor.draft_hf_export(self.request)
+        self.assertIn('เปลี่ยนระหว่างส่งออก', str(error.exception.detail))
+        self.assertEqual(self.target.read_bytes(), b'previous approved video')
+        self.assertEqual((self.project/'clipkit_style.json').read_text(), '{"anim":"pair"}')
+        self.assertTrue((self.stages[-1]/'error.log').is_file())
+
+    def test_external_target_change_during_encode_is_not_overwritten(self):
+        def changed(path):
+            self.target.write_bytes(b'external newly approved video')
+        with patch.object(render, 'normalize_loudness', side_effect=changed), self.assertRaises(editor.HTTPException):
+            editor.draft_hf_export(self.request)
+        self.assertEqual(self.target.read_bytes(), b'external newly approved video')
+
     def test_cleanup_error_is_a_warning_after_successful_publish(self):
         with patch("shutil.rmtree", side_effect=PermissionError("temporary file still open")):
             result = editor.draft_hf_export(self.request)

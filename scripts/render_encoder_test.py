@@ -47,7 +47,12 @@ class EncoderTests(unittest.TestCase):
     def test_success_replaces_only_after_encode_and_returns_timing(self):
         self._export(success=True)
 
-    def _export(self, success):
+    def test_input_change_during_encode_preserves_previous_export(self):
+        for change in ('source', 'style', 'target'):
+            with self.subTest(change=change):
+                self._export(success=True, change=change)
+
+    def _export(self, success, change=None):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             folder = root / "project"
@@ -75,6 +80,12 @@ class EncoderTests(unittest.TestCase):
                 self.assertNotEqual(partial, target)
                 self.assertEqual(partial.parent.parent, out)
                 partial.write_bytes(b"new export" if success else b"incomplete")
+                if change == 'source':
+                    source.write_bytes(b'new source edited externally')
+                elif change == 'style':
+                    (folder/'clipkit_style.json').write_text('{"music":"","sfx":false,"zoomcut":true}')
+                elif change == 'target':
+                    target.write_bytes(b'new externally approved export')
                 return SimpleNamespace(returncode=0 if success else 1, stderr="hardware unavailable")
 
             with patch.object(video_edit.kitconfig, "_load", return_value={"render_encoder": "h264_nvenc"}), \
@@ -82,7 +93,10 @@ class EncoderTests(unittest.TestCase):
                     patch.object(render, "probe", return_value={"width": 320, "height": 180, "fps": 30, "duration": 2}), \
                     patch.object(draft_quality, "probe", return_value={"width": 320, "height": 180, "fps": 30, "duration": 2}), \
                     patch.object(render.subprocess, "run", side_effect=encode) as run:
-                if success:
+                if change:
+                    with self.assertRaisesRegex(video_edit.VideoEditError, 'เปลี่ยนระหว่างส่งออก'):
+                        render.render_draft(str(folder), str(out))
+                elif success:
                     result = render.render_draft(str(folder), str(out))
                     self.assertEqual(result["encoder"], "h264_nvenc")
                     self.assertGreaterEqual(result["encode_seconds"], 0)
@@ -90,7 +104,8 @@ class EncoderTests(unittest.TestCase):
                     with self.assertRaisesRegex(video_edit.VideoEditError, r"export failed \(h264_nvenc\)"):
                         render.render_draft(str(folder), str(out))
                 self.assertEqual(run.call_count, 1)
-            self.assertEqual(target.read_bytes(), b"new export" if success else b"previous accepted export")
+            self.assertEqual(target.read_bytes(), b'new externally approved export' if change == 'target' else
+                             b"new export" if success and not change else b"previous accepted export")
             self.assertEqual(list(out.iterdir()), [target])
 
 

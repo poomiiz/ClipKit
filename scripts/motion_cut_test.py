@@ -41,7 +41,8 @@ class MotionCutTests(unittest.TestCase):
         assets.mkdir(parents=True,exist_ok=True)
         file=assets/f'{len(self.calls)}.mov';file.write_bytes(f'fixture encoded {len(self.calls)}'.encode())
         recipe={key:plan[key] for key in ('template','inputs','hashes','layout_sha256','canvas','placement','bounds','duration')}
-        recipe.update(version=1,params=plan['source_params'],media={'sha256':hashlib.sha256(file.read_bytes()).hexdigest()})
+        recipe.update(version=1,params=plan['source_params'],media={'sha256':hashlib.sha256(file.read_bytes()).hexdigest(),
+            'duration':plan['duration'],'width':body.width,'height':body.height,'fps':30,'alpha_decode':True})
         return {'file':str(file),'recipe':recipe}
 
     def install(self,template='sentence-pair',start=2,end=6):

@@ -205,9 +205,21 @@ class NativeBuildSafetyTests(unittest.TestCase):
 
     def test_missing_source_media_does_not_publish(self):
         self.source.unlink()
-        with self.assertRaisesRegex(build.VideoEditError, "source media is missing"):
+        with self.assertRaisesRegex(build.VideoEditError, "ไม่พบฟุตต้นทาง"):
             build.build(str(self.project))
         self.assert_preserved()
+
+    def test_source_edit_during_native_build_is_preserved_without_publication(self):
+        original_build = build._build
+        def changed(*args):
+            result = original_build(*args)
+            self.source.write_bytes(b'external source edit during build')
+            return result
+        with patch.object(build, '_build', side_effect=changed), self.assertRaisesRegex(build.VideoEditError, 'เปลี่ยนระหว่างส่งออก'):
+            build.build(str(self.project))
+        self.assert_preserved()
+        self.assertEqual(self.source.read_bytes(), b'external source edit during build')
+        self.assertEqual(list(self.base.glob(self.project.name+' · CapCut *')), [])
 
     def test_changed_source_seal_is_not_accepted(self):
         content = self.project / "draft_content.json"

@@ -172,6 +172,7 @@ def _build(path: str) -> Path:
     import web_ai_transaction
     web_ai_transaction.recover("clip", path)
     t = render.render_draft(path, "", dry=True)
+    render.motion_plan.verify_timeline(path, t)
     t["broll"] = render.insert_playback(path, t["broll"], materialize=True)
     W, H, D = t["width"], t["height"], t["duration"]
     st = t["style"] or {}

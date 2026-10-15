@@ -26,7 +26,7 @@ SIDECARS = ("draft_content.json", "clipkit.json", "clipkit_words.json", "clipkit
 DEPENDENCIES = ("web_ai_identity.py", "web_ai_json.py", "web_ai_transaction.py", "video_edit.py",
                 "capcut_edit.py", "cue_data.py", "render.py", "video_editor.py", "kit_settings.py",
                 "story_selection.py", "subtitle_plan.py", "spelling.py", "insert_plan.py", "insert_geometry.py", "motion_plan.py",
-                "motion_runtime.js")
+                "motion_runtime.js", "hf_build.py", "capcut_build.py", "capcut_templates.json")
 
 
 def _hash(value: Any) -> str:
@@ -219,6 +219,34 @@ def _snapshot(step: str, target: str | Path, preferences: dict | None, cache: di
     if operation is not None:
         snapshot["operation"] = operation
     return snapshot, updated
+
+
+def export_check(target: str | Path, output: str | Path | None = None):
+    """Capture export inputs without issuing a packet; call again before publishing the staged output."""
+    before, sources = _snapshot("clip", target, None, {})
+    import web_ai_transaction as transaction
+    metadata = {name: transaction._hash(file) for name, file in transaction._files(Path(target)).items()}
+    old_output = transaction._hash(Path(output)) if output is not None else None
+    motion_inputs = {}
+    motions = _json(_canonical(target) / "clipkit_overlays.json", [])
+    if not isinstance(motions, list):
+        raise VideoEditError("motion list must be an array")
+    for item in motions:
+        recipe = item.get("recipe") if isinstance(item, dict) else None
+        if isinstance(recipe, dict) and isinstance(recipe.get("inputs"), dict):
+            for value in recipe["inputs"].values():
+                if not isinstance(value, str):
+                    raise VideoEditError("motion input ต้องเป็นพาธไฟล์")
+                file = _referenced(value, _canonical(target))
+                motion_inputs[file] = _file(file, required=True)
+    def check():
+        after, _ = _snapshot("clip", target, None, sources)
+        if (_hash(after) != _hash(before) or
+                {name: transaction._hash(file) for name, file in transaction._files(Path(target)).items()} != metadata or
+                output is not None and transaction._hash(Path(output)) != old_output or
+                any(_file(file, required=True) != digest for file, digest in motion_inputs.items())):
+            raise VideoEditError("ข้อมูลโปรเจกต์หรือไฟล์อ้างอิงเปลี่ยนระหว่างส่งออก · เก็บไฟล์เดิมไว้และส่งออกใหม่")
+    return check
 
 
 def issue(step: str, target: str | Path, preferences: dict | None = None, *, operation: str | None = None) -> dict[str, Any]:

@@ -163,6 +163,8 @@ def build(path: str) -> tuple[Path, list[str]]:
             raise VideoEditError("Close CapCut before building a native project")
         src = Path(path).resolve()
         capcut_edit._load(src)  # A changed source seal must not be lost when copying sidecars are excluded.
+        import web_ai_identity
+        check_export = web_ai_identity.export_check(src)
         final = src.with_name(src.name + " · CapCut " + uuid.uuid4().hex)
         with tempfile.TemporaryDirectory(prefix=".capcut-build-", dir=src.parent) as staging:
             dst = Path(staging) / "draft"
@@ -172,6 +174,7 @@ def build(path: str) -> tuple[Path, list[str]]:
                 raise VideoEditError("Close CapCut before publishing the native project")
             if final.exists() or final.is_symlink():
                 raise VideoEditError(f"native project already exists: {final}")
+            check_export()
             dst.rename(final)
         return final, warnings
 
@@ -218,6 +221,7 @@ def _build(path: str, dst: Path, final: Path) -> list[str]:
     _T.clear()
     _T.update(probe)
     t = render.render_draft(path, "", dry=True)
+    render.motion_plan.verify_timeline(path, t)
     t["broll"] = render.insert_playback(path, t["broll"], materialize=True)
     st = t["style"] or {}
     src = Path(path)

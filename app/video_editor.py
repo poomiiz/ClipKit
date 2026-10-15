@@ -1075,7 +1075,7 @@ class OverlayRequest(BaseModel):
     review_revision: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
-def prepare_overlay(req: OverlayRequest, *, previous=None) -> dict[str, Any]:
+def prepare_overlay(req: OverlayRequest, *, previous=None, timeline=None) -> dict[str, Any]:
     """Read-only layout preflight shared by single edits and whole AI plans."""
     import kit_settings
     import math
@@ -1086,7 +1086,8 @@ def prepare_overlay(req: OverlayRequest, *, previous=None) -> dict[str, Any]:
     try:
         if not math.isfinite(dur) or dur <= 0:
             raise VideoEditError("motion ต้องมีเวลาเริ่มก่อนเวลาจบ")
-        timeline = render.render_draft(req.path, "", dry=True)
+        if timeline is None:
+            timeline = render.render_draft(req.path, "", dry=True)
         base = {k: v for k, v in timeline.items() if k != "subtitle_events"}
         base["motions"] = []
         if timeline["look"] != "pair" and timeline["phrases"]:
@@ -2025,6 +2026,8 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
         with hf_build.build_lock(req.path), hf_build.build_lock(str(target)):
             import web_ai_transaction
             web_ai_transaction.recover("clip", req.path)
+            import web_ai_identity
+            check_export = web_ai_identity.export_check(req.path, target)
             expected = capcut_edit._load(Path(req.path))
             page = hf_build._build(req.path)  # reservation stays held while HyperFrames reads its composition
             stage = Path(tempfile.mkdtemp(prefix=".render-", dir=target.parent))
@@ -2059,6 +2062,7 @@ def draft_hf_export(req: ExportRequest) -> dict[str, Any]:
                 atomic.write_text(stage / "decode.log", (decoded.stdout or "") + "\n" + (decoded.stderr or ""))
                 if decoded.returncode:
                     raise VideoEditError("ตรวจไฟล์ส่งออกไม่ผ่าน: " + decoded.stderr[-800:])
+                check_export()
                 staged.replace(target)
             except Exception as exc:
                 details = str(exc)

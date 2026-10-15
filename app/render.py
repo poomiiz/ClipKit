@@ -971,7 +971,10 @@ def _music(style: dict[str, Any]) -> str | None:
 
 def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False) -> dict[str, Any]:
     encoder = _video_encoder(preview)
-    folder = Path(path)
+    folder, out = Path(path), Path(out_dir)
+    target = out / f"{folder.name}{' - ตัวอย่าง' if preview else ''}.mp4"
+    import web_ai_identity
+    check_export = web_ai_identity.export_check(path, target) if not dry else None
     draft = capcut_edit._load(folder)
     import draft_quality
     quality = draft_quality.check(path)
@@ -1130,9 +1133,15 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     emoji = emoji_beats([(m[1], m[2], f"{m[3]} {m[4]}") for m in marks if m[0] == "phrase"],
                         HOOK_DUR if hook else 0) if style.get("emoji") else []
 
-    out = Path(out_dir)
+    resolved_phrases = [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
+                         "query": m[7], "opts": m[8] if len(m) > 8 else None,
+                         "hit": m[9] if len(m) > 9 else m[1], "cue_id": m[10] if len(m) > 10 else None,
+                         "clock_status": m[11] if len(m) > 11 else "cue"} for m in marks if m[0] == "phrase"]
+    recipe_errors = motion_plan.verify_timeline(folder, {"duration": sum(s["target_timerange"]["duration"] for s in segs) / US,
+        "width": W, "height": H, "look": anim, "style": style, "hook": hook, "caption_en": held["en"],
+        "phrases": resolved_phrases, "motions": overlays}, strict=not dry)
+
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"{folder.name}{' - ตัวอย่าง' if preview else ''}.mp4"
     with tempfile.TemporaryDirectory(dir=out) as tmp:
         base = "[vo]"
         if style.get("zoomcut"):
@@ -1220,10 +1229,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
             return {"duration": length, "width": W, "height": H, "look": anim, "style": style,
                     "hook": hook, "subtitle_events": subtitle_events, "caption_en": held["en"], "zoom": zoom_spans(segs) if style.get("zoomcut") else [],
                     "progress": bool(style.get("progress")), "emoji": emoji,
-                    "phrases": [{"start": m[1], "end": m[2], "lead": m[3], "punch": m[4], "line": m[5], "k": m[6],
-                                 "query": m[7], "opts": m[8] if len(m) > 8 else None,
-                                 "hit": m[9] if len(m) > 9 else m[1], "cue_id": m[10] if len(m) > 10 else None,
-                                 "clock_status": m[11] if len(m) > 11 else "cue"} for m in marks if m[0] == "phrase"],
+                    "phrases": resolved_phrases, "motion_recipe_errors": recipe_errors,
                     "broll": plan, "motions": overlays, "quality": quality, "music": {"file": music_file or "", "volume": music_vol},
                     "sfx": fx, "edited": placed is not None, "shrunk": held.get("shrunk", []), "source": src, "src_w": info["width"], "src_h": info["height"],
                     "fit": {"w": vw, "h": vh, "x": ox, "y": oy},
@@ -1254,6 +1260,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         encode_seconds = round(time.monotonic() - started, 3)
         if r.returncode != 0 or not encoded.is_file() or not encoded.stat().st_size:
             raise VideoEditError(f"export failed ({encoder[1]}): " + r.stderr.strip()[-800:])
+        check_export()
         encoded.replace(target)
     return {"file": str(target), "subtitles": shown, "motions": len(overlays), "sub_anim": anim,
             "encoder": encoder[1], "encode_seconds": encode_seconds,
