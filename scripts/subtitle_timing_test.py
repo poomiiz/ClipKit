@@ -117,6 +117,9 @@ class SubtitleTimingTests(unittest.TestCase):
     def test_real_dry_timing_reaches_both_hyperframes_and_capcut(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            config = root / "config.json"
+            config.write_text('{"render_encoder":"libx264"}')
+            self.enterContext(patch.object(render.video_edit.kitconfig, "_CANDIDATES", [config]))
             source = root / "source.mp4"
             source.touch()
             project = root / "source project"

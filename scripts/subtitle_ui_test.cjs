@@ -8,18 +8,19 @@ for (const html of [editor, workbench]) {
   for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new vm.Script(match[1]);
 }
 const phraseCode = editor.slice(editor.indexOf('function sidePhrase('), editor.indexOf('function sideBroll('));
-function phrase() {
+function phrase(opts) {
   const nodes = {}, calls = [];
   const item = {start: 0, end: 2, lead: 'normal', punch: 'keyword', line: 'normal keyword', cue_id: 'second'};
+  if (opts) item.opts = opts;
   const context = vm.createContext({
     T: {phrases: [item], subs:[{id:'second',start:0,end:2}], caption_en: {}, motion_cues: [{cue_id:'second',start:0,end:3,text:'normal keyword'}]}, PATH: 'synthetic',
     CKAIPlan: {motion(button,box,request,preview) { button.onclick=()=>preview(request()); }},
     $: id => nodes[id] ||= {value: ''}, back: () => '', mm: String, esc: String,
     api: async (path, body) => calls.push([path, JSON.parse(JSON.stringify(body))]),
-    reload: async () => {}, live() {}, ckConfirm:async()=>true, say() {}, ckErr: e => e.message,
+    reload: async () => {}, load: async accept => accept(), live() {}, ckConfirm:async()=>true, say() {}, ckErr: e => e.message,
   });
   vm.runInContext(phraseCode, context);
-  context.sidePhrase({innerHTML: ''}, item);
+  context.sidePhrase({innerHTML: '', classList:{add(){}}}, item);
   return {nodes, calls, context};
 }
 // Concurrent motion bars must remain independently clickable, including short clips at low zoom.
@@ -42,6 +43,52 @@ function phrase() {
   assert.deepEqual(selected,[1,2,0],'sorting must preserve original motion identity');
 }
 (async () => {
+  for (const fail of [false, true]) {
+    const edited = phrase();
+    let finish, adopted = 0;
+    edited.context.api = () => new Promise((resolve, reject) => { finish = fail ? () => reject(Error('save failed')) : resolve; });
+    edited.context.load = async accept => { if (accept()) adopted++; };
+    const oldError = edited.nodes.phraseError;
+    const pending = edited.nodes.ps.onclick();
+    assert.equal(edited.nodes.pNormal.disabled, true);
+    assert.equal(edited.nodes.ps.disabled, true);
+    await edited.nodes.ps.onclick();
+    edited.nodes.ps = {disabled:false};
+    edited.nodes.phraseError = {textContent:'new form'};
+    edited.nodes.pNormal = {value:'new unsaved words'};
+    finish(); await pending;
+    assert.equal(adopted, 0, 'response must not redraw a different phrase form');
+    assert.equal(edited.nodes.phraseError.textContent, 'new form');
+    assert.equal(edited.nodes.pNormal.value, 'new unsaved words');
+    if (fail) assert.equal(oldError.textContent, 'save failed');
+  }
+  {
+    const edited = phrase();
+    let finish, accept, adopted = 0;
+    edited.context.api = async () => {};
+    edited.context.load = async guard => { accept = guard; await new Promise(resolve=>finish=resolve); if (guard()) adopted++; };
+    const pending = edited.nodes.ps.onclick();
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.ok(accept());
+    edited.nodes.ps = {};
+    finish(); await pending;
+    assert.equal(adopted,0,'navigation while the refreshed timeline loads must also be preserved');
+  }
+  {
+    const edited = phrase({second:'reply'});
+    edited.nodes.pShow.checked = true;
+    edited.nodes.pNormal.value = 'short';
+    edited.nodes.pEmphasis.value = 'key';
+    assert.throws(edited.nodes.pm.onclick, /บันทึกข้อความก่อน/);
+    await edited.nodes.ps.onclick();
+    const request = edited.calls[0][1];
+    assert.deepEqual(request.pairs, [['normal', 'keyword', {second:'reply', look:'pair', show:['short','key']}]]);
+    assert.ok(!('source_text' in request), 'display-only changes preserve source wording and word clocks');
+    const restored = phrase({show:['short','key'], second:'reply'});
+    restored.nodes.pShow.checked = false;
+    await restored.nodes.ps.onclick();
+    assert.deepEqual(restored.calls[0][1].pairs, [['normal', 'keyword', {second:'reply',look:'pair'}]]);
+  }
   let {nodes, calls} = phrase();
   nodes.pl.value = 'normal keyword'; nodes.pp.value = '';
   await nodes.ps.onclick();

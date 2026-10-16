@@ -651,7 +651,7 @@ def zoom_spans(segs: list) -> list[tuple[float, float]]:
 
 
 def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_file: Path,
-                *, captions: dict | None = None, held: dict | None = None) -> list[dict]:
+                *, captions: dict | None = None, held: dict | None = None, layout_errors: list | None = None) -> list[dict]:
     """Measure one immutable role plan. Adapters serialize these coordinates without fitting again."""
     from PIL import ImageFont
     context = held if held is not None else {"white": ""}
@@ -678,20 +678,21 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
         height = px * LINE_H
         rotated_width = measured * abs(math.cos(angle)) + height * abs(math.sin(angle))
         if rotated_width > room + .01:
-            if look.get("fixed_size"):
+            if look.get("fixed_size") and layout_errors is None:
                 raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ข้อความล้นขนาดคงที่ · ย่อ show หรือแบ่งตามขอบคำ")
-            px *= max(0, room) / max(rotated_width, 1)
-            if px <= 0:
-                raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ไม่มีพื้นที่วางข้อความ")
-            context.setdefault("shrunk", []).append({"at": a, "text": words})
-            outline, measured, height = px * width * .6 + 2, font.getlength(unbreak(words)) / 100 * px, px * LINE_H
+            if not look.get("fixed_size"):
+                px *= max(0, room) / max(rotated_width, 1)
+                if px <= 0:
+                    raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ไม่มีพื้นที่วางข้อความ")
+                context.setdefault("shrunk", []).append({"at": a, "text": words})
+                outline, measured, height = px * width * .6 + 2, font.getlength(unbreak(words)) / 100 * px, px * LINE_H
         bw = (measured * abs(math.cos(angle)) + height * abs(math.sin(angle)) + 2 * (outline + shadow) * projection) * peak
         bh = (height * abs(math.cos(angle)) + measured * abs(math.sin(angle)) + 2 * (outline + shadow) * projection) * peak
         cx = W / 2 + x * W / 2
         # Safe translation is role based, using the preset size, never a phrase's fitted size.
         static_height = (size * scale * LINE_H + 2 * (size * scale * width * .6 + 2 + shadow)) * peak
         cy = min(max(H / 2 - y * H / 2, H * box["top"] + static_height / 2), H * box["bottom"] - static_height / 2)
-        if (cx - bw / 2 < W * (1 - box["w"]) / 2 - .05 or cx + bw / 2 > W * (1 + box["w"]) / 2 + .05
+        if layout_errors is None and (cx - bw / 2 < W * (1 - box["w"]) / 2 - .05 or cx + bw / 2 > W * (1 + box["w"]) / 2 + .05
                 or cy - bh / 2 < H * box["top"] - .05 or cy + bh / 2 > H * box["bottom"] + .05):
             raise VideoEditError(f"cue {cue_id or '(unbound)'} · {role}: ข้อความเกินพื้นที่ปลอดภัย")
         event = {"role": role, "cue_id": cue_id, "text": unbreak(words), "start": a, "end": b,
@@ -734,7 +735,7 @@ def pair_events(phrases: list[dict], look: dict, W: int, H: int, fam: str, font_
             words = source if look.get("caption_lang") == "th" else (captions or {}).get(key)
             if isinstance(words, str) and words.strip():  # Missing/invalid translations stay absent in repair previews.
                 line("caption", words, look["caption"], a, b, cue)
-    return check_pair_events(out, W, H, box=box)
+    return check_pair_events(out, W, H, box=box, layout_errors=layout_errors)
 
 
 def _quads_intersect(first, second):
@@ -750,7 +751,7 @@ def _quads_intersect(first, second):
     return True
 
 
-def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = None) -> list[dict]:
+def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = None, layout_errors: list | None = None) -> list[dict]:
     """Read-only guard for a measured plan, including public motion requests before allocating a render."""
     from PIL import ImageFont
     box = box or safe_box({})
@@ -772,7 +773,11 @@ def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = 
         bounds = [min(p[0] for p in quad),min(p[1] for p in quad),max(p[0] for p in quad),max(p[1] for p in quad)]
         if (bounds[0] < W * (1 - box["w"]) / 2 - .05 or bounds[2] > W * (1 + box["w"]) / 2 + .05
                 or bounds[1] < H * box["top"] - .05 or bounds[3] > H * box["bottom"] + .05):
-            raise VideoEditError(f"cue {event.get('cue_id')} · {event['role']}: ข้อความหรือ motion เกินพื้นที่ปลอดภัย · ย่อ show หรือปรับ preset")
+            message = f"cue {event.get('cue_id')} · {event['role']}: ข้อความหรือ motion เกินพื้นที่ปลอดภัย · ย่อ show หรือปรับ preset"
+            if layout_errors is None:
+                raise VideoEditError(message)
+            layout_errors.append({"code": "subtitle_bounds", "severity": "error", "cue_id": event.get("cue_id"),
+                                  "role": event["role"], "start": event["start"], "end": event["end"], "bbox": bounds, "message": message})
         measured.append(dict(event, bbox=bounds, quad=quad))
     active = []
     for first in sorted(measured, key=lambda event: event["start"]):
@@ -780,7 +785,13 @@ def check_pair_events(events: list[dict], W: int, H: int, *, box: dict | None = 
         for second in active:
             if (max(first["start"], second["start"]) < min(first["end"], second["end"]) - 1e-6
                     and _quads_intersect(first["quad"],second["quad"])):
-                raise VideoEditError(f"cue {first['cue_id']} · {first['role']}/{second['role']}: ข้อความทับกัน · ปรับตำแหน่งใน preset")
+                message = f"cue {first['cue_id']} · {first['role']}/{second['role']}: ข้อความทับกัน · ปรับตำแหน่งใน preset"
+                if layout_errors is None:
+                    raise VideoEditError(message)
+                layout_errors.append({"code": "subtitle_overlap", "severity": "error", "cue_id": first["cue_id"],
+                    "other_cue_id": second["cue_id"], "role": first["role"], "other_role": second["role"],
+                    "start": max(first["start"], second["start"]), "end": min(first["end"], second["end"]),
+                    "bbox": [first["bbox"], second["bbox"]], "message": message})
         active.append(first)
     return measured
 
@@ -809,12 +820,12 @@ def _resolved_pair_cues(rows: list[dict], words: dict, picks: dict, *, duration:
 
 
 def validate_pair_cues(rows: list[dict], words: dict, picks: dict, *, style: dict, W: int, H: int,
-                       captions: dict | None = None, duration: float | None = None) -> list[dict]:
+                       captions: dict | None = None, duration: float | None = None, layout_errors: list | None = None) -> list[dict]:
     """Read-only preflight shared by manual/Browser AI and every export, with the complete cue context."""
     look = pair_look(style, W, H)
     family, font = _font(look.get("font"))
     phrases = _resolved_pair_cues(rows, words, picks, duration=duration)
-    return pair_events(phrases, look, W, H, family, font, captions=captions, held={"white": "", "box": safe_box(style)})
+    return pair_events(phrases, look, W, H, family, font, captions=captions, held={"white": "", "box": safe_box(style)}, layout_errors=layout_errors)
 
 
 def plain_events(draft: dict, rows: list[dict], words: dict, *, style: dict, duration: float) -> list[dict]:
@@ -881,7 +892,7 @@ def plain_events(draft: dict, rows: list[dict], words: dict, *, style: dict, dur
     return check_pair_events(out,W,H,box=box)
 
 
-def pair_events_from_timeline(timeline: dict) -> list[dict]:
+def pair_events_from_timeline(timeline: dict, *, layout_errors: list | None = None) -> list[dict]:
     if "plain_events" in timeline:
         out = []
         for event in timeline["plain_events"]:
@@ -896,7 +907,7 @@ def pair_events_from_timeline(timeline: dict) -> list[dict]:
     family, font = _font(look.get("font"))
     return pair_events(timeline["phrases"], look, timeline["width"], timeline["height"], family, font,
                        captions=timeline.get("caption_en"), held={"white": "", "box": safe_box(timeline["style"]),
-                       "until": HOOK_DUR if timeline.get("hook") else 0, "motions": timeline.get("motions", [])})
+                       "until": HOOK_DUR if timeline.get("hook") else 0, "motions": timeline.get("motions", [])}, layout_errors=layout_errors)
 
 
 def font_cell_metrics(font_file: Path) -> dict:
@@ -1095,7 +1106,7 @@ def validate_output(file: Path, width: int, height: int, duration: float, *, pre
     return info
 
 
-def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False, *, final: bool = False) -> dict[str, Any]:
+def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = False, *, final: bool = False, repair: bool = False) -> dict[str, Any]:
     """Dry plans remain repairable; final=True applies delivery checks to a dry adapter plan."""
     encoder = _video_encoder(preview)
     folder, out = Path(path), Path(out_dir)
@@ -1181,6 +1192,8 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
     held = {"white": "", "until": HOOK_DUR if hook else 0, "en": cue_data.load(folder, "clipkit_caption.json", cue_rows),
             "box": safe_box(style), "motions": overlays}
     text_segments = sorted((text or {}).get("segments", []), key=lambda s: s["target_timerange"]["start"])
+    layout_errors = [] if repair and dry and not final else None
+    quality["layout_errors"] = layout_errors if layout_errors is not None else []
     subtitle_events, plain = [], None
     if anim in ("none", "pop"):
         plain = plain_events(draft, cue_rows, said, style=style, duration=sum(seg["target_timerange"]["duration"] for seg in segs) / US)
@@ -1206,7 +1219,7 @@ def render_draft(path: str, out_dir: str, preview: bool = False, dry: bool = Fal
         if quality["caption_errors"] and (final or not dry and not preview):
             gaps = ", ".join(str(issue["cue_id"]) for issue in quality["caption_errors"])
             raise VideoEditError(f"required {pair['caption_lang']} caption missing for cue(s): {gaps}")
-        subtitle_events = pair_events(phrases, pair, W, H, fam, fdir, captions=held["en"], held=held)
+        subtitle_events = pair_events(phrases, pair, W, H, fam, fdir, captions=held["en"], held=held, layout_errors=layout_errors)
         events.extend(subtitle_ass(event) for event in subtitle_events)
         for p in phrases:
             marks.append(("phrase", p["start"], p["end"], p["lead"], p["punch"], p["line"], p["k"], p["query"], p["opts"], p["hit"], p["cue_id"], p["clock_status"]))

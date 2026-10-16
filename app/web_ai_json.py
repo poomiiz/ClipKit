@@ -322,7 +322,7 @@ def _item(it: Any, where: str) -> list:
 
 
 def validate_subtitles(path: str, *, picks: dict | None = None, captions: dict | None = None,
-                       style: dict | None = None, rows: list[dict] | None = None) -> list[dict]:
+                       style: dict | None = None, rows: list[dict] | None = None, layout_errors: list | None = None) -> list[dict]:
     """Read-only shared preflight against real project clocks, canvas, preset and font."""
     folder = Path(path)
     draft = capcut_edit._load(folder)
@@ -343,7 +343,7 @@ def validate_subtitles(path: str, *, picks: dict | None = None, captions: dict |
                                     style=active_style,
                                     W=canvas["width"], H=canvas["height"],
                                     captions=cue_data.load(folder, "clipkit_caption.json", original_rows) if captions is None else captions,
-                                    duration=duration)
+                                    duration=duration, layout_errors=layout_errors)
 
 
 def _prepare_clip(path: str, ans: dict[str, Any], *, insert_assets=None, preview=False) -> dict[str, Any]:

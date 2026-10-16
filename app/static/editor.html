@@ -79,6 +79,10 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
 .motion-editor .role{display:inline-flex;align-items:center;gap:8px}
 .motion-editor .role input{flex:none}
 .motion-editor{overflow-wrap:anywhere}
+.phrase-editor input,.phrase-editor select,.phrase-editor button,.phrase-editor summary{min-height:44px;max-width:100%}
+.phrase-editor input,.phrase-editor select{min-width:0}
+.phrase-editor .source-copy,.phrase-editor .repair-message{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.repair-badge{color:var(--warn);border:1px solid var(--warn);border-radius:7px;padding:4px 8px}
 .subject-box{position:absolute;pointer-events:none;z-index:5;border:2px dashed var(--warn);color:var(--warn);font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ov{position:absolute;pointer-events:none;z-index:4;background:rgba(5,7,12,.55)}.ov[hidden]{display:none}
 .ov .safe{position:absolute;border:1.5px dashed rgba(255,196,0,.85);border-radius:4px}
@@ -102,6 +106,7 @@ input,select{background:var(--card2);color:var(--txt);border:1px solid var(--lin
   <div class="top">
     <button onclick="location.href='/video-editor.html'">‹</button>
     <h1 id="title" translate="no">กำลังโหลด…</h1>
+    <span id="repairStatus" class="repair-badge" role="status" hidden>ต้องแก้ซับ</span>
     <button class="pri" id="bAuto" title="ถอดเสียง ตัดเงียบ ซับ ภาพประกอบ เพลง เอฟเฟกต์ ให้ครบในครั้งเดียว">ทำให้ครบ</button>
     <button id="bCover">ปก</button>
     <button id="bExport" class="pri">ส่งออก</button>
@@ -145,6 +150,7 @@ async function load(accept = () => true) {
   if (!accept()) return false;
   T = timeline;
   $('title').textContent = T.name;
+  $('repairStatus').hidden = !(T.quality?.layout_errors?.length);
   document.title = T.name + ' · ตัดต่อ';
   PL = {broll: T.broll.map(b => ({...b})), music: {...T.music}, sfx: {...T.sfx}};
   drawTL(); side();
@@ -572,30 +578,60 @@ function sideClip(s) {
 }
 function sidePhrase(s, p) {
   const line = T.phrases.filter(x => x.cue_id === p.cue_id);
+  const shown = p.opts?.show || [p.lead, p.punch];
+  const issues = (T.quality?.layout_errors || []).filter(x => x.cue_id === p.cue_id || x.other_cue_id === p.cue_id);
+  s.classList.add("phrase-editor");
   s.innerHTML = `${back()}<h3>💬 ข้อความ ${mm(p.start)}</h3>
-    <div class="hint">ประโยค: ${esc(p.line)}</div>
-    <div class="row"><label for="pl">ตัวขาว</label><input id="pl" style="flex:1"></div>
-    <div class="row"><label for="pp">คำเน้น</label><input id="pp" style="flex:1"></div>
+    ${issues.length ? `<div class="repair-badge" role="status">ต้องแก้ซับ</div><div class="hint repair-message">ย่อข้อความบนจอ หรือปรับพรีเซ็ตก่อนส่งออก</div>` : ""}
+    <div class="hint source-copy">คำพูดต้นฉบับ: ${esc(p.line)}</div>
+    <div class="row"><label for="pl">คำพูดปกติ</label><input id="pl" style="flex:1"></div>
+    <div class="row"><label for="pp">คำพูดที่เน้น</label><input id="pp" style="flex:1"></div>
     <div class="row"><label for="po">แบบ</label><select id="po" style="flex:1">
       <option value="pair">ขาว + สี</option><option value="white">ขาวอย่างเดียว</option><option value="color">สีอย่างเดียว</option>
       <option value="red">ขาว + แดง (จุดแรงสุด)</option><option value="hold">ขาวค้างจากท่อนก่อน + สี (ลิสต์)</option><option value="skip">ไม่ขึ้นซับ</option></select></div>
+    <details ${T.look === 'pair' ? '' : 'hidden'}><summary>ข้อความบนจอ</summary>
+      <label class="row"><input id="pShow" type="checkbox">ใช้ข้อความย่อ</label>
+      <div class="row"><label for="pNormal">ตัวปกติ</label><input id="pNormal" style="flex:1"></div>
+      <div class="row"><label for="pEmphasis">ตัวเน้น</label><input id="pEmphasis" style="flex:1"></div>
+      <div class="hint">คงคำพูดต้นฉบับและเวลาคำ</div>
+    </details>
     <div class="row media"><label for="pq">หาภาพประกอบ</label><input id="pq" style="flex:1" placeholder="คำค้นอังกฤษ เช่น coffee cup"></div>
     <div class="row"><label for="pc">ซับแปล (ทั้งประโยค)</label><input id="pc" style="flex:1" placeholder="ตัวเล็กด้านล่าง ถ้าพรีเซ็ตมีซับแปล"></div>
     <div class="row"><button class="pri" id="ps">บันทึก</button><button id="pm">ตรวจ motion</button></div>
+    <div id="phraseError" class="prob" style="overflow-wrap:anywhere" role="alert"></div>
     <div id="phraseMotionPlan" class="ai-plan" role="status" aria-live="polite"></div>
-    <div class="row"><button id="pcut" style="color:#fca5a5">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
+    <div class="row"><button id="pcut" style="color:var(--warn)">✂️ ตัดประโยคนี้ออกจากคลิป</button><span class="hint">ย้อนได้ที่ ตั้งค่าทั้งคลิป</span></div>
     <div class="hint">แก้คำได้เลย (แก้ในซับด้วย) · ย้ายคำระหว่างตัวขาวกับคำเน้นได้ · ใส่คำค้นแล้วบันทึก ระบบหาภาพประกอบให้ตอน "ทำให้ครบ" หรือกดหาเองในแถบภาพประกอบ</div>`;
   $('pl').value = p.lead; $('pp').value = p.punch; $('pq').value = p.query || ''; $('po').value = (p.opts || {}).look || 'pair'; $('pc').value = (T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '';
+  $('pShow').checked = !!p.opts?.show;
+  $('pNormal').value = shown[0]; $('pEmphasis').value = shown[1];
+  $('pShow').onchange = () => { $('pNormal').disabled = $('pEmphasis').disabled = !$('pShow').checked; };
+  $('pShow').onchange();
+  const save = $('ps'), error = $('phraseError');
   $('ps').onclick = async () => {
+    if (save.disabled) return;
     const opts = {...(p.opts || {}), look: $('po').value};
+    if ($('pShow').checked) opts.show = [$('pNormal').value.trim(), $('pEmphasis').value.trim()];
+    else delete opts.show;
     const pairs = line.map(x => x === p ? [$('pl').value.trim(), $('pp').value.trim(), $('pq').value.trim(), opts] : [x.lead, x.punch, x.query || '', x.opts])
-      .map(([l, k, q, o]) => [l, k, ...(q ? [q] : []), ...(o && (o.show || (o.look && o.look !== 'pair')) ? [o] : [])]);
+      .map(([l, k, q, o]) => [l, k, ...(q ? [q] : []), ...(o && Object.keys(o).some(key => key !== 'look' || o.look !== 'pair') ? [o] : [])]);
+    const fields = ['pl','pp','po','pq','pc','pShow','pNormal','pEmphasis','ps','pm','pcut'].map(id => $(id));
+    const disabled = fields.map(field => field.disabled);
+    fields.forEach(field => field.disabled = true);
+    save.textContent = 'กำลังบันทึก…'; error.textContent = '';
     try {
       const caption = $('pc').value.trim() === ((T.caption_en || {})[p.cue_id ? "cue:" + p.cue_id : p.line] || '') ? {} : {caption: $('pc').value};
       const sourceText = pairs.map(([lead, punch]) => [lead, punch].filter(Boolean).join(' ')).join(' ');
       const correction = sourceText.replace(/\s/g, '') === p.line.replace(/\s/g, '') ? {} : {source_text: sourceText};
-      await api('draft/phrases', {path: PATH, line: p.line, cue_id: p.cue_id, pairs, ...correction, ...caption}); await reload(); say('บันทึกแล้ว');
-    } catch (e) { say('❌ ' + ckErr(e)); }
+      await api('draft/phrases', {path: PATH, line: p.line, cue_id: p.cue_id, pairs, ...correction, ...caption});
+      if ($('ps') === save && await load(() => $('ps') === save)) say('บันทึกแล้ว');
+    } catch (e) {
+      error.textContent = ckErr(e);
+      if ($('ps') === save) say('❌ ' + ckErr(e));
+    } finally {
+      fields.forEach((field, i) => field.disabled = disabled[i]);
+      save.textContent = 'บันทึก';
+    }
   };
   $('pcut').onclick = async () => {
     const sub = (T.subs || []).find(x => x.id === p.cue_id);
@@ -607,7 +643,7 @@ function sidePhrase(s, p) {
     catch (e) { say('❌ ' + ckErr(e)); }
   };
   CKAIPlan.motion($('pm'), $('phraseMotionPlan'), () => {
-    if ($('pl').value !== p.lead || $('pp').value !== p.punch || $('po').value !== ((p.opts || {}).look || 'pair') ||
+    if ($('pShow').checked !== !!p.opts?.show || ($('pShow').checked && ($('pNormal').value !== shown[0] || $('pEmphasis').value !== shown[1])) || $('pl').value !== p.lead || $('pp').value !== p.punch || $('po').value !== ((p.opts || {}).look || 'pair') ||
         $('pc').value !== ((T.caption_en || {})[p.cue_id ? 'cue:' + p.cue_id : p.line] || '')) throw Error('บันทึกข้อความก่อนตรวจ motion');
     const cue = (T.motion_cues || []).find(item => item.cue_id === p.cue_id);
     if (!cue) throw Error('ไม่พบช่วงข้อความ · โหลด Timeline ใหม่');

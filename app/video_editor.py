@@ -1635,7 +1635,7 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
     """Everything the export will put on screen and in the sound, as tracks for the timeline editor."""
     import render
     try:
-        t = render.render_draft(path, "", dry=True)
+        t = render.render_draft(path, "", dry=True, repair=True)
     except VideoEditError as exc:
         raise HTTPException(400, str(exc)) from exc
     d = capcut_edit.read_draft(path)
@@ -1652,7 +1652,7 @@ def draft_timeline(path: str = Query(...)) -> dict[str, Any]:
     t["punch_picked"] = (Path(path) / "clipkit_punch.json").is_file()
     base = {key: value for key, value in t.items() if key != "subtitle_events"}
     base["motions"] = []
-    events = render.pair_events_from_timeline(base) if t["look"] == "pair" or "plain_events" in t else []
+    events = render.pair_events_from_timeline(base, layout_errors=[]) if t["look"] == "pair" or "plain_events" in t else []
     t["motion_cues"] = [{"cue_id": sub["id"], "text": sub["text"],
                          "roles": {role: {"start": min(e["start"] for e in events if e.get("cue_id") == sub["id"] and e["role"] == role),
                                           "end": max(e["end"] for e in events if e.get("cue_id") == sub["id"] and e["role"] == role)}
@@ -1695,7 +1695,19 @@ def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
             else:
                 captions.pop(cue_data.key(selected["id"]), None)
         candidate = [{**row, "text": line} if row["id"] == selected["id"] else row for row in rows]
-        web_ai_json.validate_subtitles(req.path, picks=data, captions=captions, rows=candidate)
+        baseline = []
+        web_ai_json.validate_subtitles(req.path, layout_errors=baseline)
+
+        def validate_repair(path, **changes):
+            issues = []
+            web_ai_json.validate_subtitles(path, layout_errors=issues, **changes)
+            unchanged = {json.dumps(issue, sort_keys=True) for issue in baseline}
+            for issue in issues:
+                if (selected["id"] in (issue["cue_id"], issue.get("other_cue_id"))
+                        or json.dumps(issue, sort_keys=True) not in unchanged):
+                    raise VideoEditError(issue["message"])
+
+        validate_repair(req.path, picks=data, captions=captions, rows=candidate)
         if line != req.line or captions is not None:
             import web_ai_identity
             import web_ai_transaction
@@ -1709,7 +1721,7 @@ def draft_phrases(req: PhraseEdit) -> dict[str, Any]:
                 if line != req.line:
                     capcut_edit.set_line_text(str(work), req.line, line, selected["id"], picks_override=items)
                 cue_data.save(work, "clipkit_punch.json", data)
-                web_ai_json.validate_subtitles(str(work))
+                validate_repair(str(work))
                 return {"line": line, "cue_id": selected["id"]}
 
             return web_ai_transaction.apply("clip", req.path, answer, prepare)
@@ -2039,7 +2051,7 @@ def draft_hf_build(req: DraftPath) -> dict[str, Any]:
     """Write the project as a HyperFrames composition; the editor's player shows it live."""
     import hf_build
     try:
-        hf_build.build(req.path)
+        hf_build.build(req.path, repair=True)
     except hf_build.BuildBusy as exc:
         raise HTTPException(409, str(exc)) from exc
     except VideoEditError as exc:

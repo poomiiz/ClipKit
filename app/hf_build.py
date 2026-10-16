@@ -142,9 +142,9 @@ def _css_color(rgb: list[float]) -> str:
     return "#%02x%02x%02x" % tuple(max(0, min(255, round(c * 255))) for c in rgb[:3])
 
 
-def build(path: str) -> Path:
+def build(path: str, *, repair: bool = False) -> Path:
     with build_lock(path):
-        return _build(path)
+        return _build(path, repair=repair)
 
 
 def subtitle_html(event: dict, identifier: str, font_face: str = "ClipKit Thai") -> str:
@@ -168,10 +168,10 @@ def subtitle_animation(event: dict, identifier: str) -> str:
     return base
 
 
-def _build(path: str, *, final: bool = False, audio_check=None) -> Path:
+def _build(path: str, *, final: bool = False, audio_check=None, repair: bool = False) -> Path:
     import web_ai_transaction
     web_ai_transaction.recover("clip", path)
-    t = render.render_draft(path, "", dry=True, final=final)
+    t = render.render_draft(path, "", dry=True, final=final, repair=repair)
     render.motion_plan.verify_timeline(path, t)
     t["broll"] = render.insert_playback(path, t["broll"], materialize=True)
     W, H, D = t["width"], t["height"], t["duration"]
