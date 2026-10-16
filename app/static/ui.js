@@ -1,18 +1,13 @@
 // EditorKrab shared UI helpers, loaded in <head> of every page (also inside the editor iframe):
 // friendly error text and in-app dialogs instead of the browser's alert / confirm / prompt boxes.
 (() => {
-  const report = text => fetch('/api/kit/bug-report', {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({text: '[auto] ' + text, page: location.pathname + location.search, errors: [text], auto: true})})
-    .catch(() => {});   // the server is down: the next error tries again
-
   // what a person reads when something failed: the server's own message, or a plain sentence for app bugs
   window.ckErr = e => {
     const msg = (e && e.message) || String(e);
     if (e instanceof TypeError && /fetch|network|load failed/i.test(msg))
       return 'ติดต่อ EditorKrab ไม่ได้ ตรวจว่าโปรแกรมยังเปิดอยู่ แล้วลองอีกครั้ง';
     if (e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError || e instanceof RangeError) {
-      report(`${e.name}: ${msg}\n${(e.stack || '').split('\n').slice(0, 4).join('\n')}`);
-      return 'เกิดข้อผิดพลาดในหน้านี้ ส่งรายงานให้ทีมแล้ว ลองรีเฟรชหน้าอีกครั้ง';
+      return 'หน้านี้เกิดข้อผิดพลาด ลองรีเฟรชหรือแจ้งผ่าน GitHub';
     }
     return msg;
   };
@@ -73,7 +68,7 @@
   document.head.insertAdjacentHTML('beforeend', '<style>html.ck-i18n-wait body{visibility:hidden}' +
     'body.dropping::after{content:"Drop video files or folders here"!important}</style>');
   const reveal = () => root.classList.remove('ck-i18n-wait');
-  const TH = /[฀-๿]/, ATTRS = ['title', 'placeholder', 'aria-label'];
+  const TH = /[฀-๿]/, ATTRS = ['title', 'placeholder', 'aria-label', 'alt'];
   const SKIP = 'script,style,textarea,[contenteditable],[translate=no]';
   fetch('/i18n/en.json').then(r => { if (!r.ok) throw new Error('i18n ' + r.status); return r.json(); }).then(dict => {
     const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
